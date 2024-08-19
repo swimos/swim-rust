@@ -1140,7 +1140,7 @@ where
                     maybe_downlink = downlinks.next(), if !downlinks.is_empty() => {
                         maybe_downlink.map(|downlink_event| TaskEvent::DownlinkReady { downlink_event })
                     }
-                    maybe_req = lane_readers.next() => {
+                    maybe_req = lane_readers.next(), if !lane_readers.is_empty() => {
                         maybe_req.map(|req| {
                             match req {
                                 (id, Ok(LaneReadEvent::Value(request))) => TaskEvent::ValueRequest{
@@ -1158,8 +1158,10 @@ where
                             }
                         })
                     }
+                    else => None,
                 }
             };
+
             let task_event: TaskEvent<ItemModel> = tokio::select! {
                 biased;
                 maybe_cmd_result = &mut cmd_send_fut, if !cmd_send_fut.is_terminated() => {
@@ -1264,7 +1266,15 @@ where
                     }
                     OpenDownlinkResult::Failed(error, retry) => {
                         if error.is_fatal() {
-                            error!(error = %error, address = %{request.path}, kind = ?{request.kind}, "Start a downlink failed with a fatal error.");
+                            let DownlinkSpawnRequest {
+                                path,
+                                kind,
+                                on_done,
+                                ..
+                            } = request;
+                            error!(error = %error, address = %path, kind = ?kind, "Start a downlink failed with a fatal error.");
+                            let handler = on_done(Err(error));
+                            exec_handler!(handler);
                         } else {
                             error!(address = %{&request.path}, kind = ?{request.kind}, error = %error, "Starting a downlink failed. Attempting to retry.");
                             let fut = open_new_downlink(
@@ -1778,6 +1788,17 @@ struct DownlinkSpawnRequest<Context> {
     on_done: DownlinkSpawnOnDone<Context>,
 }
 
+impl<Context> std::fmt::Debug for DownlinkSpawnRequest<Context> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DownlinkSpawnRequest")
+            .field("path", &self.path)
+            .field("kind", &self.kind)
+            .field("make_channel", &"...")
+            .field("on_done", &"...")
+            .finish()
+    }
+}
+
 impl<Context> DownlinkSpawner<Context> for RefCell<Vec<DownlinkSpawnRequest<Context>>> {
     fn spawn_downlink(
         &self,
@@ -1868,6 +1889,7 @@ where
     }
 }
 
+#[derive(Debug)]
 enum OpenDownlinkResult {
     Success(ByteWriter, ByteReader),
     Failed(DownlinkRuntimeError, RetryStrategy),

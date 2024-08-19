@@ -30,7 +30,7 @@ use swimos_api::{
         AgentConfig, AgentContext, AgentTask, DownlinkKind, HttpLaneRequestChannel, LaneConfig,
         StoreKind, WarpLaneKind,
     },
-    error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError},
+    error::{AgentRuntimeError, DownlinkFailureReason, DownlinkRuntimeError, OpenStoreError},
 };
 use swimos_model::Text;
 use swimos_utilities::{
@@ -92,12 +92,32 @@ impl DlTestContext {
             ad_hoc_channel: Arc::new(Mutex::new((ad_hoc_reader, Some(ad_hoc_writer)))),
         }
     }
+
+    fn with_errors(
+        expected_address: Address<Text>,
+        expected_kind: DownlinkKind,
+        errors: Vec<DownlinkRuntimeError>,
+        io: Option<(ByteWriter, ByteReader)>,
+    ) -> Self {
+        let (ad_hoc_writer, ad_hoc_reader) = byte_channel(BUFFER_SIZE);
+        DlTestContext {
+            expected_address,
+            expected_kind,
+            responses: Arc::new(Mutex::new(DownlinkResponses::new(errors, io))),
+            ad_hoc_channel: Arc::new(Mutex::new((ad_hoc_reader, Some(ad_hoc_writer)))),
+        }
+    }
 }
 
 impl AgentContext for DlTestContext {
     fn ad_hoc_commands(&self) -> BoxFuture<'static, Result<ByteWriter, DownlinkRuntimeError>> {
         let DlTestContext { ad_hoc_channel, .. } = self;
-        ready(Ok(ad_hoc_channel.lock().1.take().expect("Reader taken twice."))).boxed()
+        ready(Ok(ad_hoc_channel
+            .lock()
+            .1
+            .take()
+            .expect("Reader taken twice.")))
+        .boxed()
     }
 
     fn add_lane(
@@ -126,7 +146,7 @@ impl AgentContext for DlTestContext {
         assert_eq!(addr, expected_address.borrow_parts());
         assert_eq!(kind, *expected_kind);
         let result = responses.lock().pop();
-        ready(result).boxed()
+        async move { result }.boxed()
     }
 
     fn add_store(
@@ -146,6 +166,7 @@ impl AgentContext for DlTestContext {
 }
 
 struct TestContext {
+    _tx: mpsc::UnboundedSender<DlResult>,
     rx: mpsc::UnboundedReceiver<DlResult>,
 }
 
@@ -163,6 +184,7 @@ async fn init_agent(context: Box<DlTestContext>) -> (AgentTask, TestContext) {
     let address = addr();
 
     let (tx, rx) = mpsc::unbounded_channel();
+    let tx_cpy = tx.clone();
 
     let model =
         AgentModel::<EmptyAgent, StartDownlinkLifecycle>::from_fn(EmptyAgent::default, move || {
@@ -173,7 +195,7 @@ async fn init_agent(context: Box<DlTestContext>) -> (AgentTask, TestContext) {
         .initialize_agent(make_uri(), HashMap::new(), config(), context)
         .await
         .expect("Initialization failed.");
-    (task, TestContext { rx })
+    (task, TestContext { rx, _tx: tx_cpy })
 }
 
 type DlResult = Result<(), DownlinkRuntimeError>;
@@ -207,11 +229,151 @@ async fn immediately_successful_downlink() {
 
         let agent_context = DlTestContext::new(addr(), DownlinkKind::Value, (out_tx, in_rx));
 
-        let (agent_task, TestContext { mut rx }) = init_agent(Box::new(agent_context)).await;
+        let (agent_task, TestContext { mut rx, _tx }) = init_agent(Box::new(agent_context)).await;
 
         let check = async move {
             let result = rx.recv().await.expect("Result expected.");
             assert!(result.is_ok());
+        };
+
+        let (result, _) = join(agent_task, check).await;
+        assert!(result.is_ok());
+    })
+    .await
+    .expect("Test timed out.");
+}
+
+#[tokio::test]
+async fn immediate_fatal_error_downlink() {
+    tokio::time::timeout(TEST_TIMEOUT, async {
+        let agent_context = DlTestContext::with_errors(
+            addr(),
+            DownlinkKind::Value,
+            vec![DownlinkRuntimeError::DownlinkConnectionFailed(
+                DownlinkFailureReason::InvalidUrl,
+            )],
+            None,
+        );
+
+        let (agent_task, TestContext { mut rx, _tx }) = init_agent(Box::new(agent_context)).await;
+
+        let check = async move {
+            let result = rx.recv().await.expect("Result expected.");
+
+            assert!(matches!(
+                result,
+                Err(DownlinkRuntimeError::DownlinkConnectionFailed(
+                    DownlinkFailureReason::InvalidUrl
+                ))
+            ));
+        };
+
+        let (result, _) = join(agent_task, check).await;
+        assert!(result.is_ok());
+    })
+    .await
+    .expect("Test timed out.");
+}
+
+#[tokio::test]
+async fn error_recovery_open_downlink() {
+    tokio::time::timeout(TEST_TIMEOUT, async {
+        let (_in_tx, in_rx) = byte_channel(BUFFER_SIZE);
+        let (out_tx, _out_rx) = byte_channel(BUFFER_SIZE);
+
+        let agent_context = DlTestContext::with_errors(
+            addr(),
+            DownlinkKind::Value,
+            vec![DownlinkRuntimeError::DownlinkConnectionFailed(
+                DownlinkFailureReason::DownlinkStopped,
+            )],
+            Some((out_tx, in_rx)),
+        );
+
+        let (agent_task, TestContext { mut rx, _tx }) = init_agent(Box::new(agent_context)).await;
+
+        let check = async move {
+            let result = rx.recv().await.expect("Result expected.");
+
+            assert!(result.is_ok());
+        };
+
+        let (result, _) = join(agent_task, check).await;
+        assert!(result.is_ok());
+    })
+    .await
+    .expect("Test timed out.");
+}
+
+#[tokio::test]
+async fn eventual_fatal_error_downlink() {
+    tokio::time::timeout(TEST_TIMEOUT, async {
+        let agent_context = DlTestContext::with_errors(
+            addr(),
+            DownlinkKind::Value,
+            vec![
+                DownlinkRuntimeError::DownlinkConnectionFailed(
+                    DownlinkFailureReason::DownlinkStopped,
+                ),
+                DownlinkRuntimeError::DownlinkConnectionFailed(DownlinkFailureReason::InvalidUrl),
+            ],
+            None,
+        );
+
+        let (agent_task, TestContext { mut rx, _tx }) = init_agent(Box::new(agent_context)).await;
+
+        let check = async move {
+            let result = rx.recv().await.expect("Result expected.");
+
+            assert!(matches!(
+                result,
+                Err(DownlinkRuntimeError::DownlinkConnectionFailed(
+                    DownlinkFailureReason::InvalidUrl
+                ))
+            ));
+        };
+
+        let (result, _) = join(agent_task, check).await;
+        assert!(result.is_ok());
+    })
+    .await
+    .expect("Test timed out.");
+}
+
+#[tokio::test]
+async fn exhaust_open_downlink_retries() {
+    tokio::time::timeout(TEST_TIMEOUT, async {
+        let (_in_tx, in_rx) = byte_channel(BUFFER_SIZE);
+        let (out_tx, _out_rx) = byte_channel(BUFFER_SIZE);
+
+        let agent_context = DlTestContext::with_errors(
+            addr(),
+            DownlinkKind::Value,
+            vec![
+                DownlinkRuntimeError::DownlinkConnectionFailed(
+                    DownlinkFailureReason::DownlinkStopped,
+                ),
+                DownlinkRuntimeError::DownlinkConnectionFailed(
+                    DownlinkFailureReason::DownlinkStopped,
+                ),
+                DownlinkRuntimeError::DownlinkConnectionFailed(
+                    DownlinkFailureReason::DownlinkStopped,
+                ),
+            ],
+            Some((out_tx, in_rx)),
+        );
+
+        let (agent_task, TestContext { mut rx, _tx }) = init_agent(Box::new(agent_context)).await;
+
+        let check = async move {
+            let result = rx.recv().await.expect("Result expected.");
+
+            assert!(matches!(
+                result,
+                Err(DownlinkRuntimeError::DownlinkConnectionFailed(
+                    DownlinkFailureReason::DownlinkStopped
+                ))
+            ));
         };
 
         let (result, _) = join(agent_task, check).await;
