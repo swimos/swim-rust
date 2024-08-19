@@ -34,11 +34,7 @@ use swimos_agent::{
     },
     AgentMetadata,
 };
-use swimos_api::{
-    address::Address,
-    agent::AgentConfig,
-    error::DynamicRegistrationError,
-};
+use swimos_api::{address::Address, agent::AgentConfig, error::DynamicRegistrationError};
 use swimos_connector::ConnectorAgent;
 use swimos_model::{Item, Text, Value};
 use swimos_recon::print_recon_compact;

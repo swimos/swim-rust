@@ -30,11 +30,7 @@ use swimos_agent::{
     },
     AgentMetadata,
 };
-use swimos_api::{
-    address::Address,
-    agent::WarpLaneKind,
-    error::DynamicRegistrationError,
-};
+use swimos_api::{address::Address, agent::WarpLaneKind, error::DynamicRegistrationError};
 use swimos_model::Text;
 use swimos_utilities::trigger;
 use thiserror::Error;
