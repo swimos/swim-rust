@@ -13,6 +13,7 @@ binaries for their corresponding client applications. Each directory contains de
 - [http_lane](http_lane): Application demonstrating HTTP Lanes.
 - [join_map](join_map): Application demonstrating Join Map Lanes.
 - [join_value](join_value): Application demonstrating Join Value Lanes.
+- [kafka_connector](kafka_connector): Application demonstrating consuming data from Apache Kafka.
 - [local_downlink](local_downlink): Application demonstrating Downlinks.
 - [map_downlink](map_downlink): Application demonstrating Map Downlinks.
 - [map_lane](map_lane): Application demonstrating Map Lanes.
