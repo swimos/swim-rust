@@ -644,7 +644,7 @@ where
             .collect();
 
         let suspended = FuturesUnordered::new();
-        let downlink_channels = RefCell::new(vec![]);
+        let downlink_requests = RefCell::new(vec![]);
         let mut dynamic_lanes = RefCell::new(vec![]);
         let mut join_lane_init = HashMap::new();
         let mut ad_hoc_buffer = BytesMut::new();
@@ -752,7 +752,7 @@ where
         lifecycle.initialize(
             &mut ActionContext::new(
                 &suspended,
-                &downlink_channels,
+                &downlink_requests,
                 &dynamic_lanes,
                 &mut join_lane_init,
                 &mut ad_hoc_buffer,
@@ -811,7 +811,7 @@ where
         match run_handler(
             &mut ActionContext::new(
                 &suspended,
-                &downlink_channels,
+                &downlink_requests,
                 &dynamic_lanes,
                 &mut join_lane_init,
                 &mut ad_hoc_buffer,
@@ -836,7 +836,7 @@ where
         match run_handler(
             &mut ActionContext::new(
                 &suspended,
-                &downlink_channels,
+                &downlink_requests,
                 &dynamic_lanes,
                 &mut join_lane_init,
                 &mut ad_hoc_buffer,
@@ -865,6 +865,7 @@ where
             store_io,
             http_lane_rxs,
             suspended,
+            downlink_requests: downlink_requests.into_inner(),
             ad_hoc_buffer,
             join_lane_init,
         };
@@ -1027,6 +1028,7 @@ struct AgentTask<ItemModel, Lifecycle> {
     store_io: HashMap<Text, ByteWriter>,
     http_lane_rxs: HashMap<Text, mpsc::Receiver<HttpLaneRequest>>,
     suspended: FuturesUnordered<HandlerFuture<ItemModel>>,
+    downlink_requests: Vec<DownlinkSpawnRequest<ItemModel>>,
     join_lane_init: HashMap<u64, BoxJoinLaneInit<'static, ItemModel>>,
     ad_hoc_buffer: BytesMut,
 }
@@ -1057,6 +1059,7 @@ where
             store_io,
             http_lane_rxs,
             mut suspended,
+            downlink_requests,
             mut join_lane_init,
             mut ad_hoc_buffer,
         } = self;
@@ -1082,11 +1085,17 @@ where
 
         let mut cmd_send_fut = pin!(OptionFuture::from(None));
 
-        // Start waiting on downlinks from the init phase.
-        //for channel in downlink_channels {
-        //    let dl = HostedDownlink::new(channel);
-        //    downlinks.push(Either::Left(dl.wait_on_downlink()));
-        //}
+        // Start opening downlinks from the init phase.
+        for request in downlink_requests {
+            let fut = open_new_downlink(
+                &*context,
+                &request.path,
+                request.kind,
+                config.keep_linked_retry,
+                None,
+            );
+            downlinks.push(DownlinkFuture::Opening(Some(request), fut));
+        }
 
         for ((name, kind), (tx, rx)) in lane_io {
             if kind.map_like() {
