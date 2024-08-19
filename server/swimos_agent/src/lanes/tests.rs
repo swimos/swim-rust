@@ -23,7 +23,7 @@ use std::{
 use parking_lot::Mutex;
 use swimos_api::{
     address::Address,
-    agent::{AgentConfig, DownlinkKind, WarpLaneKind},
+    agent::{AgentConfig, WarpLaneKind},
     error::{DynamicRegistrationError, LaneSpawnError},
 };
 use swimos_model::Text;
@@ -63,7 +63,6 @@ impl DownlinkSpawner<TestAgent> for TestSpawner {
     fn spawn_downlink(
         &self,
         _path: Address<Text>,
-        _kind: DownlinkKind,
         _make_channel: BoxDownlinkChannelFactory<TestAgent>,
         _on_done: DownlinkSpawnOnDone<TestAgent>,
     ) {

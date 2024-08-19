@@ -24,7 +24,7 @@ use static_assertions::assert_obj_safe;
 use swimos_agent_protocol::{encoding::ad_hoc::AdHocCommandEncoder, AdHocCommand};
 use swimos_api::{
     address::Address,
-    agent::{DownlinkKind, WarpLaneKind},
+    agent::WarpLaneKind,
     error::{AgentRuntimeError, DownlinkRuntimeError, DynamicRegistrationError, LaneSpawnError},
 };
 use swimos_form::{read::RecognizerReadable, write::StructuralWritable};
@@ -70,11 +70,17 @@ pub use handler_fn::{
     MapUpdateFn, RequestFn0, RequestFn1, TakeFn, UpdateBorrowFn, UpdateFn,
 };
 
+/// Instances of this trait allow [`HandlerAction`]s to request new downlinks to be opened in the agent.
 pub trait DownlinkSpawner<Context> {
+    /// Request a new downlink be opened in the agent task.
+    ///
+    /// # Arguments
+    /// * `path` - The address of the lane to open a downlink to.
+    /// * `make_channel` - Factory to create the downlink channel.
+    /// * `on_done` - A callback that will create an event handler to be run when the connection completes (or fails).
     fn spawn_downlink(
         &self,
         path: Address<Text>,
-        kind: DownlinkKind,
         make_channel: BoxDownlinkChannelFactory<Context>,
         on_done: DownlinkSpawnOnDone<Context>,
     );
@@ -168,7 +174,6 @@ impl<'a, Context> ActionContext<'a, Context> {
     ///
     /// # Arguments
     /// * `path` - The address of the remote lane.
-    /// * `kind` - The required kind of the downlink.
     /// * `make_channel` - A closure that will create the task that will run within the agent runtime to handle the
     /// downlink lifecycle.
     /// * `on_done` - A callback that will be executed when the downlink has started (or failed to start).
@@ -176,7 +181,6 @@ impl<'a, Context> ActionContext<'a, Context> {
     pub(crate) fn start_downlink<F, OnDone, H>(
         &self,
         path: Address<Text>,
-        kind: DownlinkKind,
         make_channel: F,
         on_done: OnDone,
     ) where
@@ -191,7 +195,7 @@ impl<'a, Context> ActionContext<'a, Context> {
         };
         let handler: DownlinkSpawnOnDone<Context> = Box::new(on_done_boxed);
         self.downlink
-            .spawn_downlink(path, kind, Box::new(make_channel), handler)
+            .spawn_downlink(path, Box::new(make_channel), handler)
     }
 
     /// Attempt to attach a new lane to the agent runtime.

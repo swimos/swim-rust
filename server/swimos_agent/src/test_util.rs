@@ -128,13 +128,12 @@ impl<Agent> DownlinkSpawner<Agent> for TestDownlinkContext<Agent> {
     fn spawn_downlink(
         &self,
         path: Address<Text>,
-        kind: DownlinkKind,
         make_channel: BoxDownlinkChannelFactory<Agent>,
         on_done: DownlinkSpawnOnDone<Agent>,
     ) {
         self.push_dl(DownlinkSpawnRequest {
             path,
-            kind,
+            kind: make_channel.kind(),
             make_channel,
             on_done,
         });

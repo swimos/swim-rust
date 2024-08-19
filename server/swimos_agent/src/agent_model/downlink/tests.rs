@@ -19,7 +19,7 @@ use futures::{stream::FuturesUnordered, StreamExt};
 use parking_lot::Mutex;
 use swimos_api::{
     address::Address,
-    agent::{AgentConfig, DownlinkKind, WarpLaneKind},
+    agent::{AgentConfig, WarpLaneKind},
     error::DynamicRegistrationError,
 };
 use swimos_model::Text;
@@ -61,7 +61,6 @@ impl DownlinkSpawner<TestAgent> for TestSpawner {
     fn spawn_downlink(
         &self,
         path: Address<Text>,
-        kind: DownlinkKind,
         make_channel: BoxDownlinkChannelFactory<TestAgent>,
         on_done: DownlinkSpawnOnDone<TestAgent>,
     ) {
@@ -69,7 +68,7 @@ impl DownlinkSpawner<TestAgent> for TestSpawner {
         assert!(guard.downlink.is_none());
         guard.downlink = Some(DownlinkSpawnRequest {
             path,
-            kind,
+            kind: make_channel.kind(),
             make_channel,
             on_done,
         });

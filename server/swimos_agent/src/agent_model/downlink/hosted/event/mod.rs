@@ -129,6 +129,14 @@ where
     ) -> BoxDownlinkChannel<Context> {
         (*self).create(context, tx, rx)
     }
+
+    fn kind(&self) -> DownlinkKind {
+        if self.map_events {
+            DownlinkKind::MapEvent
+        } else {
+            DownlinkKind::Event
+        }
+    }
 }
 
 /// An implementation of [`DownlinkChannel`] to allow an event downlink to be driven by an agent

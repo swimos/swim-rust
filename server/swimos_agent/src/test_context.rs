@@ -48,7 +48,6 @@ impl<Context> DownlinkSpawner<Context> for NoDownlinks {
     fn spawn_downlink(
         &self,
         _path: Address<Text>,
-        _kind: DownlinkKind,
         _make_channel: BoxDownlinkChannelFactory<Context>,
         _on_done: DownlinkSpawnOnDone<Context>,
     ) {

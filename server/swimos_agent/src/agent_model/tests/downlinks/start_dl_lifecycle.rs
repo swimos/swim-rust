@@ -107,12 +107,7 @@ impl HandlerAction<EmptyAgent> for StartDl {
     ) -> StepResult<Self::Completion> {
         let StartDl { address, on_done } = self;
         if let Some(on_done) = on_done.take() {
-            action_context.start_downlink(
-                address.clone(),
-                DownlinkKind::Value,
-                TestFac(address.clone()),
-                on_done,
-            );
+            action_context.start_downlink(address.clone(), TestFac(address.clone()), on_done);
             StepResult::done(())
         } else {
             StepResult::after_done()
@@ -173,5 +168,9 @@ impl DownlinkChannelFactory<EmptyAgent> for TestFac {
         rx: ByteReader,
     ) -> BoxDownlinkChannel<EmptyAgent> {
         (*self).create(context, tx, rx)
+    }
+
+    fn kind(&self) -> DownlinkKind {
+        DownlinkKind::Value
     }
 }

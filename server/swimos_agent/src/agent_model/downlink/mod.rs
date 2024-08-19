@@ -139,7 +139,7 @@ where
                 ValueDownlinkFactory::new(path.clone(), lifecycle, state, config, stop_rx, rx);
             let handle = ValueDownlinkHandle::new(path.clone(), tx, stop_tx, fac.dl_state());
 
-            action_context.start_downlink(path, DownlinkKind::Value, fac, |result| {
+            action_context.start_downlink(path, fac, |result| {
                 if let Err(err) = result {
                     error!(error = %err, "Registering value downlink failed.");
                 }
@@ -181,12 +181,7 @@ where
             let fac =
                 EventDownlinkFactory::new(address.clone(), lifecycle, config, stop_rx, *map_events);
             let handle = EventDownlinkHandle::new(address.clone(), stop_tx, fac.dl_state());
-            let kind = if *map_events {
-                DownlinkKind::MapEvent
-            } else {
-                DownlinkKind::Event
-            };
-            action_context.start_downlink(address, kind, fac, |result| {
+            action_context.start_downlink(address, fac, |result| {
                 if let Err(err) = result {
                     error!(error = %err, "Registering event downlink failed.");
                 }
@@ -224,7 +219,7 @@ where
             let fac = MapDownlinkFactory::new(address.clone(), lifecycle, config, stop_rx, rx);
             let handle = MapDownlinkHandle::new(address.clone(), tx, stop_tx, fac.dl_state());
 
-            action_context.start_downlink(address, DownlinkKind::Map, fac, |result| {
+            action_context.start_downlink(address, fac, |result| {
                 if let Err(err) = result {
                     error!(error = %err, "Registering map downlink failed.");
                 }
@@ -308,7 +303,15 @@ pub trait DownlinkChannel<Context> {
 /// specific type of any opened downlinks, it views them through this interface.
 pub type BoxDownlinkChannel<Context> = Box<dyn DownlinkChannel<Context> + Send>;
 
+/// A downlink channel factory creates a particular type of downlink (value, map, etc.) attached to
+/// the IO channels that are provided.
 pub trait DownlinkChannelFactory<Context> {
+    /// Create a new new downlink.
+    ///
+    /// # Arguments
+    /// * `context` - The agent context to which the downlink will belong.
+    /// * `tx` - The output channel for the downlink (this may be dropped).
+    /// * `rx` - The input channel for the downlink.
     fn create(
         self,
         context: &Context,
@@ -316,6 +319,15 @@ pub trait DownlinkChannelFactory<Context> {
         rx: ByteReader,
     ) -> BoxDownlinkChannel<Context>;
 
+    /// The kind of the downlink that is created.
+    fn kind(&self) -> DownlinkKind;
+
+    /// Create a new new downlink from a boxed instances of the factory.
+    ///
+    /// # Arguments
+    /// * `context` - The agent context to which the downlink will belong.
+    /// * `tx` - The output channel for the downlink (this may be dropped).
+    /// * `rx` - The input channel for the downlink.
     fn create_box(
         self: Box<Self>,
         context: &Context,
@@ -324,5 +336,6 @@ pub trait DownlinkChannelFactory<Context> {
     ) -> BoxDownlinkChannel<Context>;
 }
 
+/// An opaque downlink channel factory that can be called by dynamic dispatch.
 pub type BoxDownlinkChannelFactory<Context> =
     Box<dyn DownlinkChannelFactory<Context> + Send + 'static>;

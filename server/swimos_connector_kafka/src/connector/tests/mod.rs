@@ -36,7 +36,7 @@ use swimos_agent::{
 };
 use swimos_api::{
     address::Address,
-    agent::{AgentConfig, DownlinkKind},
+    agent::AgentConfig,
     error::DynamicRegistrationError,
 };
 use swimos_connector::ConnectorAgent;
@@ -90,7 +90,6 @@ impl DownlinkSpawner<ConnectorAgent> for TestSpawner {
     fn spawn_downlink(
         &self,
         _path: Address<Text>,
-        _kind: DownlinkKind,
         _make_channel: BoxDownlinkChannelFactory<ConnectorAgent>,
         _on_done: DownlinkSpawnOnDone<ConnectorAgent>,
     ) {

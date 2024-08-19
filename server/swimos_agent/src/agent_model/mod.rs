@@ -1781,6 +1781,7 @@ impl<Context> LaneSpawner<Context> for RefCell<Vec<LaneSpawnRequest<Context>>> {
     }
 }
 
+/// A request to open a new downlink in the agent task.
 struct DownlinkSpawnRequest<Context> {
     path: Address<Text>,
     kind: DownlinkKind,
@@ -1803,13 +1804,12 @@ impl<Context> DownlinkSpawner<Context> for RefCell<Vec<DownlinkSpawnRequest<Cont
     fn spawn_downlink(
         &self,
         path: Address<Text>,
-        kind: DownlinkKind,
         make_channel: BoxDownlinkChannelFactory<Context>,
         on_done: DownlinkSpawnOnDone<Context>,
     ) {
         self.borrow_mut().push(DownlinkSpawnRequest {
             path,
-            kind,
+            kind: make_channel.kind(),
             make_channel,
             on_done,
         })
@@ -1823,19 +1823,19 @@ where
     fn spawn_downlink(
         &self,
         path: Address<Text>,
-        kind: DownlinkKind,
         make_channel: BoxDownlinkChannelFactory<Context>,
         on_done: DownlinkSpawnOnDone<Context>,
     ) {
         (*self)(DownlinkSpawnRequest {
             path,
-            kind,
+            kind: make_channel.kind(),
             make_channel,
             on_done,
         })
     }
 }
 
+/// Unifies events for opening new downlinks and polling existing downlinks for activity.
 enum DownlinksEvent<Context> {
     Opened {
         request: DownlinkSpawnRequest<Context>,
@@ -1847,6 +1847,7 @@ enum DownlinksEvent<Context> {
     },
 }
 
+/// A future that either opens a new downlink or waits on activity from an open downlink.
 #[pin_project(project = DownlinkFutureProj)]
 enum DownlinkFuture<Context, F1, F2, F3> {
     Opening(Option<DownlinkSpawnRequest<Context>>, #[pin] F1),
@@ -1889,10 +1890,14 @@ where
     }
 }
 
+/// The outcome of attempting to open a new downlink.
 #[derive(Debug)]
 enum OpenDownlinkResult {
+    /// The downlink was opened successfully.
     Success(ByteWriter, ByteReader),
+    /// Attempting to open the downlink failed with an error.
     Failed(DownlinkRuntimeError, RetryStrategy),
+    /// The retry strategy used for retrying the downlink became exhausted.
     RetriesExpired(DownlinkRuntimeError),
 }
 

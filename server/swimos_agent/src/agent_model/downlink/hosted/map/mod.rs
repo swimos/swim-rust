@@ -324,6 +324,10 @@ where
     ) -> BoxDownlinkChannel<Context> {
         (*self).create(context, tx, rx)
     }
+
+    fn kind(&self) -> DownlinkKind {
+        DownlinkKind::Map
+    }
 }
 
 type Writes<K, V> = OutputWriter<MapWriteStream<K, V>>;

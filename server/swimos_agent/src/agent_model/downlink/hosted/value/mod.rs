@@ -171,6 +171,10 @@ where
     ) -> BoxDownlinkChannel<Context> {
         (*self).create(context, tx, rx)
     }
+
+    fn kind(&self) -> DownlinkKind {
+        DownlinkKind::Value
+    }
 }
 
 type Writes<T> = OutputWriter<ValueWriteStream<T>>;

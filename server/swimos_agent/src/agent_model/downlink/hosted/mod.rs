@@ -175,10 +175,7 @@ mod test_support {
 
     use bytes::BytesMut;
 
-    use swimos_api::{
-        address::Address,
-        agent::{AgentConfig, DownlinkKind},
-    };
+    use swimos_api::{address::Address, agent::AgentConfig};
     use swimos_model::Text;
     use swimos_utilities::routing::RouteUri;
 
@@ -204,7 +201,6 @@ mod test_support {
         fn spawn_downlink(
             &self,
             _path: Address<Text>,
-            _kind: DownlinkKind,
             _make_channel: BoxDownlinkChannelFactory<FakeAgent>,
             _on_done: DownlinkSpawnOnDone<FakeAgent>,
         ) {

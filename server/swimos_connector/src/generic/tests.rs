@@ -30,7 +30,6 @@ use swimos_agent::{
 use swimos_agent_protocol::encoding::lane::{MapLaneResponseDecoder, ValueLaneResponseDecoder};
 use swimos_agent_protocol::{LaneResponse, MapMessage, MapOperation};
 use swimos_api::address::Address;
-use swimos_api::agent::DownlinkKind;
 use swimos_api::{
     agent::{StoreKind, WarpLaneKind},
     error::DynamicRegistrationError,
@@ -394,7 +393,6 @@ impl DownlinkSpawner<ConnectorAgent> for NoSpawn {
     fn spawn_downlink(
         &self,
         _path: Address<Text>,
-        _kind: DownlinkKind,
         _make_channel: BoxDownlinkChannelFactory<ConnectorAgent>,
         _on_done: DownlinkSpawnOnDone<ConnectorAgent>,
     ) {
