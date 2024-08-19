@@ -1,0 +1,30 @@
+@kafka {
+    properties: {
+        "group.id": rust-consumer-test,
+        "message.timeout.ms": "5000",
+        "bootstrap.servers": "datagen.nstream.cloud:9092",
+        "auto.offset.reset": smallest
+    },
+    log_level: @Debug,
+    value_lanes: {
+        @ValueLaneSpec {
+            name: latest_key,
+            selector: "$key",
+            required: true
+        }
+    },
+    map_lanes: {
+        @MapLaneSpec {
+            name: times,
+            key_selector: "$payload.ranLatest.mean_ul_sinr",
+            value_selector: "$payload.ranLatest.recorded_time",
+            remove_when_no_value: false,
+            required: true
+        }
+    },
+    key_deserializer: @Int32(@LittleEndian),
+    payload_deserializer: @Json,
+    topics: {
+        cellular-integer-json
+    }
+}

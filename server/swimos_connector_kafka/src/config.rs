@@ -27,7 +27,7 @@ use crate::{
 };
 
 /// Configuration parameters for the Kafka connector.
-#[derive(Clone, Debug, Form)]
+#[derive(Clone, Debug, Form, PartialEq, Eq)]
 #[form(tag = "kafka")]
 pub struct KafkaConnectorConfiguration {
     /// Properties to configure the Kafka consumer.
@@ -49,7 +49,7 @@ pub struct KafkaConnectorConfiguration {
 }
 
 /// Specification of a value lane for the Kafka connector.
-#[derive(Clone, Debug, Form)]
+#[derive(Clone, Debug, Form, PartialEq, Eq)]
 pub struct ValueLaneSpec {
     /// A name to use for the lane. If not specified, the connector will attempt to infer one from the selector.
     pub name: Option<String>,
@@ -76,7 +76,7 @@ impl ValueLaneSpec {
 }
 
 /// Specification of a value lane for the Kafka connector.
-#[derive(Clone, Debug, Form)]
+#[derive(Clone, Debug, Form, PartialEq, Eq)]
 pub struct MapLaneSpec {
     /// The name of the lane.
     pub name: String,
@@ -119,7 +119,7 @@ impl MapLaneSpec {
 }
 
 /// Supported deserialization formats to use to interpret a component of a Kafka message.
-#[derive(Clone, Form, Debug, Default)]
+#[derive(Clone, Form, Debug, Default, PartialEq, Eq)]
 pub enum DeserializationFormat {
     #[default]
     Bytes,
