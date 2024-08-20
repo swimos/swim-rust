@@ -21,7 +21,10 @@ use swimos_api::{
     agent::{
         AgentContext, DownlinkKind, HttpLaneRequestChannel, LaneConfig, StoreKind, WarpLaneKind,
     },
-    error::{AgentRuntimeError, DownlinkRuntimeError, DynamicRegistrationError, OpenStoreError},
+    error::{
+        AgentRuntimeError, CommanderRegistrationError, DownlinkRuntimeError,
+        DynamicRegistrationError, OpenStoreError,
+    },
 };
 use swimos_model::Text;
 use swimos_utilities::byte_channel::{ByteReader, ByteWriter};
@@ -88,7 +91,7 @@ impl<Context> Spawner<Context> for NoSpawn {
 }
 
 impl AgentContext for DummyAgentContext {
-    fn ad_hoc_commands(&self) -> BoxFuture<'static, Result<ByteWriter, DownlinkRuntimeError>> {
+    fn command_channel(&self) -> BoxFuture<'static, Result<ByteWriter, DownlinkRuntimeError>> {
         panic!("Dummy context used.");
     }
 
@@ -123,6 +126,15 @@ impl AgentContext for DummyAgentContext {
         &self,
         _name: &str,
     ) -> BoxFuture<'static, Result<HttpLaneRequestChannel, AgentRuntimeError>> {
+        panic!("Dummy context used.");
+    }
+
+    fn register_command_endpoint(
+        &self,
+        _host: Option<&str>,
+        _node: &str,
+        _lane: &str,
+    ) -> BoxFuture<'static, Result<u16, CommanderRegistrationError>> {
         panic!("Dummy context used.");
     }
 }

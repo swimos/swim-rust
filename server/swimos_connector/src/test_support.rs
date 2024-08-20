@@ -20,15 +20,26 @@ use swimos_api::agent::{
     AgentConfig, AgentContext, DownlinkKind, HttpLaneRequestChannel, LaneConfig, StoreKind,
     WarpLaneKind,
 };
-use swimos_api::error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError};
+use swimos_api::error::{
+    AgentRuntimeError, CommanderRegistrationError, DownlinkRuntimeError, OpenStoreError,
+};
 use swimos_utilities::byte_channel::{ByteReader, ByteWriter};
 use swimos_utilities::routing::RouteUri;
 
 pub struct TestContext;
 
 impl AgentContext for TestContext {
-    fn ad_hoc_commands(&self) -> BoxFuture<'static, Result<ByteWriter, DownlinkRuntimeError>> {
+    fn command_channel(&self) -> BoxFuture<'static, Result<ByteWriter, DownlinkRuntimeError>> {
         panic!("Ad hoc commands not supported.");
+    }
+
+    fn register_command_endpoint(
+        &self,
+        _host: Option<&str>,
+        _node: &str,
+        _lane: &str,
+    ) -> BoxFuture<'static, Result<u16, CommanderRegistrationError>> {
+        panic!("Commands not supported.");
     }
 
     fn add_lane(

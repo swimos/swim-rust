@@ -23,8 +23,8 @@ use swimos_api::{
         LaneConfig, LaneKind, StoreKind, WarpLaneKind,
     },
     error::{
-        AgentInitError, AgentRuntimeError, AgentTaskError, DownlinkRuntimeError, OpenStoreError,
-        StoreError,
+        AgentInitError, AgentRuntimeError, AgentTaskError, CommanderRegistrationError,
+        DownlinkFailureReason, DownlinkRuntimeError, OpenStoreError, StoreError,
     },
     persistence::NodePersistence,
 };
@@ -55,8 +55,8 @@ use self::{
     reporting::{UplinkReportReader, UplinkReporter},
     store::{StoreInitError, StorePersistence},
     task::{
-        AdHocChannelRequest, AgentInitTask, AgentRuntimeTask, HttpLaneRuntimeSpec, InitTaskConfig,
-        LaneRuntimeSpec, LinksTaskConfig, NodeDescriptor, StoreRuntimeSpec,
+        AgentInitTask, AgentRuntimeTask, CommandChannelRequest, HttpLaneRuntimeSpec,
+        InitTaskConfig, LaneRuntimeSpec, LinksTaskConfig, NodeDescriptor, StoreRuntimeSpec,
     },
 };
 
@@ -68,7 +68,7 @@ mod task;
 #[cfg(test)]
 mod tests;
 
-use task::AgentRuntimeRequest;
+use task::{AgentRuntimeRequest, CommanderRegistrationRequest};
 use tracing::{error, info_span, Instrument};
 
 /// A message type that can be sent to the agent runtime to request a link to one of its lanes.
@@ -187,12 +187,12 @@ impl AgentRuntimeContext {
 }
 
 impl AgentContext for AgentRuntimeContext {
-    fn ad_hoc_commands(&self) -> BoxFuture<'static, Result<ByteWriter, DownlinkRuntimeError>> {
+    fn command_channel(&self) -> BoxFuture<'static, Result<ByteWriter, DownlinkRuntimeError>> {
         let sender = self.tx.clone();
         async move {
             let (tx, rx) = oneshot::channel();
             sender
-                .send(AgentRuntimeRequest::AdHoc(AdHocChannelRequest::new(tx)))
+                .send(AgentRuntimeRequest::Command(CommandChannelRequest::new(tx)))
                 .await?;
             rx.await?
         }
@@ -236,7 +236,7 @@ impl AgentContext for AgentRuntimeContext {
                 Ok(r) => r,
                 Err(_) => {
                     return Err(DownlinkRuntimeError::DownlinkConnectionFailed(
-                        swimos_api::error::DownlinkFailureReason::InvalidUrl,
+                        DownlinkFailureReason::InvalidUrl,
                     ))
                 }
             };
@@ -288,6 +288,32 @@ impl AgentContext for AgentRuntimeContext {
                 .send(AgentRuntimeRequest::AddHttpLane(HttpLaneRuntimeSpec::new(
                     name, tx,
                 )))
+                .await?;
+            rx.await?
+        }
+        .boxed()
+    }
+
+    fn register_command_endpoint(
+        &self,
+        host: Option<&str>,
+        node: &str,
+        lane: &str,
+    ) -> BoxFuture<'static, Result<u16, CommanderRegistrationError>> {
+        let remote_result = host.map(|h| h.parse::<SchemeHostPort>()).transpose();
+        let node = Text::new(node);
+        let lane = Text::new(lane);
+        let sender = self.tx.clone();
+        async move {
+            let (tx, rx) = oneshot::channel();
+            let remote = match remote_result {
+                Ok(r) => r,
+                Err(_) => return Err(CommanderRegistrationError::InvalidUrl),
+            };
+            sender
+                .send(AgentRuntimeRequest::CommanderRegistration(
+                    CommanderRegistrationRequest::new(remote, RelativeAddress::new(node, lane), tx),
+                ))
                 .await?;
             rx.await?
         }

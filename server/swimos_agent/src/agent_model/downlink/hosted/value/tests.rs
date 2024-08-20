@@ -34,7 +34,7 @@ use swimos_agent_protocol::encoding::downlink::{
     DownlinkNotificationEncoder, DownlinkOperationDecoder,
 };
 use swimos_agent_protocol::{DownlinkNotification, DownlinkOperation};
-use swimos_api::address::Address;
+use swimos_api::{address::Address, error::CommanderRegistrationError};
 use swimos_form::read::RecognizerReadable;
 use swimos_model::Text;
 use swimos_recon::{print_recon_compact, WithLenRecognizerDecoder};
@@ -1275,8 +1275,17 @@ impl DlTestContext {
 }
 
 impl AgentContext for DlTestContext {
-    fn ad_hoc_commands(&self) -> BoxFuture<'static, Result<ByteWriter, DownlinkRuntimeError>> {
+    fn command_channel(&self) -> BoxFuture<'static, Result<ByteWriter, DownlinkRuntimeError>> {
         panic!("Unexpected call.");
+    }
+
+    fn register_command_endpoint(
+        &self,
+        _host: Option<&str>,
+        _node: &str,
+        _lane: &str,
+    ) -> BoxFuture<'static, Result<u16, CommanderRegistrationError>> {
+        panic!("Unexpected call");
     }
 
     fn add_lane(

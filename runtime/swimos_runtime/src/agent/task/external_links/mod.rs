@@ -24,7 +24,7 @@ use swimos_agent_protocol::encoding::ad_hoc::RawAdHocCommandDecoder;
 use swimos_agent_protocol::AdHocCommand;
 use swimos_api::{
     address::{Address, RelativeAddress},
-    error::{AgentRuntimeError, DownlinkRuntimeError},
+    error::{AgentRuntimeError, CommanderRegistrationError, DownlinkRuntimeError},
 };
 use swimos_messages::protocol::{RawRequestMessageEncoder, RequestMessage};
 use swimos_model::Text;
@@ -49,7 +49,7 @@ use crate::{
     Io,
 };
 
-use super::{AdHocChannelRequest, ExternalLinkRequest};
+use super::{CommandChannelRequest, CommanderRegistrationRequest, ExternalLinkRequest};
 
 #[cfg(test)]
 mod tests;
@@ -357,6 +357,7 @@ pub async fn external_links_task<F: ReportFailed>(
         timeout_delay,
     } = config;
     let mut pending = FuturesUnordered::new();
+    let mut commander_ids = CommanderIds::default();
 
     loop {
         let event = if let Some(rx) = reader.as_mut() {
@@ -409,7 +410,7 @@ pub async fn external_links_task<F: ReportFailed>(
         };
 
         match event {
-            LinksTaskEvent::Request(ExternalLinkRequest::AdHoc(AdHocChannelRequest {
+            LinksTaskEvent::Request(ExternalLinkRequest::Command(CommandChannelRequest {
                 promise,
             })) => {
                 let (tx, rx) = byte_channel(buffer_size);
@@ -418,6 +419,24 @@ pub async fn external_links_task<F: ReportFailed>(
                     reader = Some(FramedRead::new(rx, Default::default()));
                 } else {
                     debug!(identity = %identity, "The agent dropped its request for an ad hoc command channel before it was completed.");
+                }
+            }
+            LinksTaskEvent::Request(ExternalLinkRequest::CommanderRegistration(
+                CommanderRegistrationRequest {
+                    remote,
+                    address,
+                    promise,
+                },
+            )) => {
+                trace!(identify = %identity, remote = ?remote, address = %address, "Handling a commander endpoint registration request for an agent.");
+                let key = if let Some(host) = remote {
+                    CommanderKey::Remote(host)
+                } else {
+                    CommanderKey::Local(address)
+                };
+                let id_result = commander_ids.id_for(key);
+                if promise.send(id_result).is_err() {
+                    debug!("A request for a commander ID was dropped.");
                 }
             }
             LinksTaskEvent::Request(ExternalLinkRequest::Downlink(req)) => {
@@ -433,7 +452,7 @@ pub async fn external_links_task<F: ReportFailed>(
                 command,
                 overwrite_permitted,
             }) => {
-                trace!(identify = % identity, address = %address, overwrite_permitted, "Handling an ad hoc command for an agent.");
+                trace!(identify = %identity, address = %address, overwrite_permitted, "Handling an ad hoc command for an agent.");
                 let Address { host, node, lane } = &address;
                 let key = match host.as_ref().map(|h| h.as_ref().parse::<SchemeHostPort>()) {
                     Some(Ok(shp)) => CommanderKey::Remote(shp),
@@ -666,5 +685,38 @@ async fn try_open_downlink(
         result,
         request,
         retry,
+    }
+}
+
+#[derive(Default, Debug)]
+struct CommanderIds {
+    next_commander_id: u16,
+    commander_ids: HashMap<CommanderKey, u16>,
+    commander_keys: HashMap<u16, CommanderKey>,
+}
+
+impl CommanderIds {
+    fn id_for(&mut self, key: CommanderKey) -> Result<u16, CommanderRegistrationError> {
+        let CommanderIds {
+            next_commander_id,
+            commander_ids,
+            commander_keys,
+        } = self;
+        match commander_ids.entry(key) {
+            Entry::Occupied(entry) => Ok(*entry.get()),
+            Entry::Vacant(entry) => {
+                let id = *next_commander_id;
+                *next_commander_id = next_commander_id
+                    .checked_add(1)
+                    .ok_or(CommanderRegistrationError::CommanderIdOverflow)?;
+                commander_keys.insert(id, entry.key().clone());
+                entry.insert(id);
+                Ok(id)
+            }
+        }
+    }
+
+    fn key_for(&self, id: u16) -> Option<&CommanderKey> {
+        self.commander_keys.get(&id)
     }
 }

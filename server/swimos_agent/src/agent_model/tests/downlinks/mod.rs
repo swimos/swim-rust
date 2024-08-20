@@ -30,7 +30,10 @@ use swimos_api::{
         AgentConfig, AgentContext, AgentTask, DownlinkKind, HttpLaneRequestChannel, LaneConfig,
         StoreKind, WarpLaneKind,
     },
-    error::{AgentRuntimeError, DownlinkFailureReason, DownlinkRuntimeError, OpenStoreError},
+    error::{
+        AgentRuntimeError, CommanderRegistrationError, DownlinkFailureReason, DownlinkRuntimeError,
+        OpenStoreError,
+    },
 };
 use swimos_model::Text;
 use swimos_utilities::{
@@ -110,7 +113,7 @@ impl DlTestContext {
 }
 
 impl AgentContext for DlTestContext {
-    fn ad_hoc_commands(&self) -> BoxFuture<'static, Result<ByteWriter, DownlinkRuntimeError>> {
+    fn command_channel(&self) -> BoxFuture<'static, Result<ByteWriter, DownlinkRuntimeError>> {
         let DlTestContext { ad_hoc_channel, .. } = self;
         ready(Ok(ad_hoc_channel
             .lock()
@@ -118,6 +121,15 @@ impl AgentContext for DlTestContext {
             .take()
             .expect("Reader taken twice.")))
         .boxed()
+    }
+
+    fn register_command_endpoint(
+        &self,
+        _host: Option<&str>,
+        _node: &str,
+        _lane: &str,
+    ) -> BoxFuture<'static, Result<u16, CommanderRegistrationError>> {
+        panic!("Unexpected call");
     }
 
     fn add_lane(

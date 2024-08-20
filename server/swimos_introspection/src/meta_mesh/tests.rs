@@ -28,7 +28,9 @@ use swimos_agent_protocol::{LaneRequest, LaneResponse, MapOperation};
 use swimos_api::agent::{
     AgentContext, DownlinkKind, HttpLaneRequestChannel, LaneConfig, StoreKind, WarpLaneKind,
 };
-use swimos_api::error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError};
+use swimos_api::error::{
+    AgentRuntimeError, CommanderRegistrationError, DownlinkRuntimeError, OpenStoreError,
+};
 use swimos_form::read::RecognizerReadable;
 use swimos_model::{Text, Timestamp};
 use swimos_runtime::agent::reporting::UplinkReporter;
@@ -71,8 +73,17 @@ impl AgentContext for MockAgentContext {
         panic!("Unexpected add store invocation")
     }
 
-    fn ad_hoc_commands(&self) -> BoxFuture<'static, Result<ByteWriter, DownlinkRuntimeError>> {
+    fn command_channel(&self) -> BoxFuture<'static, Result<ByteWriter, DownlinkRuntimeError>> {
         panic!("Unexpected ad hoc commands invocation")
+    }
+
+    fn register_command_endpoint(
+        &self,
+        _host: Option<&str>,
+        _node: &str,
+        _lane: &str,
+    ) -> BoxFuture<'static, Result<u16, CommanderRegistrationError>> {
+        panic!("Unexpected command endpoint registration.");
     }
 
     fn add_http_lane(

@@ -1075,7 +1075,7 @@ where
             external_item_ids_rev.insert(*id, name);
         }
 
-        let mut cmd_writer = if let Ok(cmd_tx) = context.ad_hoc_commands().await {
+        let mut cmd_writer = if let Ok(cmd_tx) = context.command_channel().await {
             Some(CommandWriter::new(cmd_tx))
         } else {
             return Err(AgentTaskError::OutputFailed(std::io::Error::from(

@@ -16,7 +16,7 @@ use std::{collections::HashMap, num::NonZeroUsize, sync::Arc, time::Duration};
 
 use crate::{
     agent::{
-        task::{external_links, AdHocChannelRequest, ExternalLinkRequest},
+        task::{external_links, CommandChannelRequest, ExternalLinkRequest},
         CommanderKey, CommanderRequest, DownlinkRequest, LinkRequest,
     },
     downlink::DownlinkOptions,
@@ -119,7 +119,7 @@ async fn clean_shutdown_no_registration() {
 async fn register(chan_tx: &mpsc::Sender<ExternalLinkRequest>) -> ByteWriter {
     let (tx, rx) = oneshot::channel();
     assert!(chan_tx
-        .send(ExternalLinkRequest::AdHoc(AdHocChannelRequest::new(tx)))
+        .send(ExternalLinkRequest::Command(CommandChannelRequest::new(tx)))
         .await
         .is_ok());
     rx.await

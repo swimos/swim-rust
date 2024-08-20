@@ -52,7 +52,9 @@ use swimos_api::address::RelativeAddress;
 use swimos_api::agent::{
     HttpLaneRequest, HttpLaneRequestChannel, HttpResponseSender, LaneConfig, StoreConfig,
 };
-use swimos_api::error::{DownlinkRuntimeError, OpenStoreError, StoreError};
+use swimos_api::error::{
+    CommanderRegistrationError, DownlinkRuntimeError, OpenStoreError, StoreError,
+};
 use swimos_api::persistence::StoreDisabled;
 use swimos_api::{
     agent::{StoreKind, UplinkKind, WarpLaneKind},
@@ -62,6 +64,7 @@ use swimos_api::{
 use swimos_messages::protocol::{Operation, RawRequestMessageDecoder, RequestMessage};
 use swimos_model::Text;
 use swimos_recon::parser::MessageExtractError;
+use swimos_remote::SchemeHostPort;
 use swimos_utilities::byte_channel::{ByteReader, ByteWriter};
 use swimos_utilities::encoding::BytesStr;
 use swimos_utilities::future::{immediate_or_join, StopAfterError};
@@ -154,27 +157,54 @@ impl StoreRuntimeSpec {
 }
 
 #[derive(Debug)]
-pub struct AdHocChannelRequest {
+pub struct CommandChannelRequest {
     pub promise: oneshot::Sender<Result<ByteWriter, DownlinkRuntimeError>>,
 }
 
-impl AdHocChannelRequest {
+impl CommandChannelRequest {
     pub fn new(promise: oneshot::Sender<Result<ByteWriter, DownlinkRuntimeError>>) -> Self {
-        AdHocChannelRequest { promise }
+        CommandChannelRequest { promise }
+    }
+}
+
+#[derive(Debug)]
+pub struct CommanderRegistrationRequest {
+    /// An explicit host for the agent, if defined.
+    pub remote: Option<SchemeHostPort>,
+    /// The node URI and name of the lane.
+    pub address: RelativeAddress<Text>,
+    /// Promise to satisfy with the result.
+    pub promise: oneshot::Sender<Result<u16, CommanderRegistrationError>>,
+}
+
+impl CommanderRegistrationRequest {
+    pub fn new(
+        remote: Option<SchemeHostPort>,
+        address: RelativeAddress<Text>,
+        promise: oneshot::Sender<Result<u16, CommanderRegistrationError>>,
+    ) -> Self {
+        CommanderRegistrationRequest {
+            remote,
+            address,
+            promise,
+        }
     }
 }
 
 #[derive(Debug)]
 pub enum ExternalLinkRequest {
-    AdHoc(AdHocChannelRequest),
+    Command(CommandChannelRequest),
+    CommanderRegistration(CommanderRegistrationRequest),
     Downlink(DownlinkRequest),
 }
 
 /// Type for requests that can be sent to the agent runtime task by an agent implementation.
 #[derive(Debug)]
 pub enum AgentRuntimeRequest {
-    /// Attempt to open a channel for ad-hoc commands.
-    AdHoc(AdHocChannelRequest),
+    /// Attempt to open a channel for direct commands.
+    Command(CommandChannelRequest),
+    /// Attempt to register a command channel endpoint.
+    CommanderRegistration(CommanderRegistrationRequest),
     /// Attempt to open a new lane for the agent.
     AddLane(LaneRuntimeSpec),
     /// Attempt to open a new lane for the agent.
@@ -643,8 +673,9 @@ async fn attachment_task<F>(
                                 AgentRuntimeRequest::AddLane(req) => write_tx.send(WriteTaskMessage::Lane(req)).await.is_ok(),
                                 AgentRuntimeRequest::AddHttpLane(req) => http_tx.send(req).await.is_ok(),
                                 AgentRuntimeRequest::AddStore(req) => write_tx.send(WriteTaskMessage::Store(req)).await.is_ok(),
-                                AgentRuntimeRequest::AdHoc(request) => ext_link_tx.send(ExternalLinkRequest::AdHoc(request)).await.is_ok(),
+                                AgentRuntimeRequest::Command(request) => ext_link_tx.send(ExternalLinkRequest::Command(request)).await.is_ok(),
                                 AgentRuntimeRequest::OpenDownlink(req) => ext_link_tx.send(ExternalLinkRequest::Downlink(req)).await.is_ok(),
+                                AgentRuntimeRequest::CommanderRegistration(req) => ext_link_tx.send(ExternalLinkRequest::CommanderRegistration(req)).await.is_ok(),
                             };
                             if !succeeded {
                                 break;

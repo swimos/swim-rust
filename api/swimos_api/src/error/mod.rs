@@ -103,6 +103,28 @@ pub enum AgentRuntimeError {
     Terminated,
 }
 
+#[derive(Error, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CommanderRegistrationError {
+    #[error(transparent)]
+    RuntimeError(#[from] AgentRuntimeError),
+    #[error("The specified remote URL was not valid.")]
+    InvalidUrl,
+    #[error("Too many commander IDs were requested for the agent.")]
+    CommanderIdOverflow,
+}
+
+impl<T> From<mpsc::error::SendError<T>> for CommanderRegistrationError {
+    fn from(_: mpsc::error::SendError<T>) -> Self {
+        CommanderRegistrationError::RuntimeError(AgentRuntimeError::Terminated)
+    }
+}
+
+impl From<oneshot::error::RecvError> for CommanderRegistrationError {
+    fn from(_: oneshot::error::RecvError) -> Self {
+        CommanderRegistrationError::RuntimeError(AgentRuntimeError::Terminated)
+    }
+}
+
 /// Error type for the operation of spawning a new downlink on the runtime.
 #[derive(Error, Debug, Clone)]
 pub enum DownlinkRuntimeError {

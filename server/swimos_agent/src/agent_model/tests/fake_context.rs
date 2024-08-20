@@ -20,12 +20,11 @@ use futures::{
 };
 use parking_lot::Mutex;
 use swimos_api::{
-    agent::DownlinkKind,
     agent::{
-        AgentContext, HttpLaneRequest, HttpLaneRequestChannel, LaneConfig, StoreKind, UplinkKind,
-        WarpLaneKind,
+        AgentContext, DownlinkKind, HttpLaneRequest, HttpLaneRequestChannel, LaneConfig, StoreKind,
+        UplinkKind, WarpLaneKind,
     },
-    error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError},
+    error::{AgentRuntimeError, CommanderRegistrationError, DownlinkRuntimeError, OpenStoreError},
 };
 use swimos_utilities::{
     byte_channel::{byte_channel, ByteReader, ByteWriter},
@@ -102,7 +101,7 @@ const CHAN_SIZE: NonZeroUsize = non_zero_usize!(8);
 const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
 
 impl AgentContext for TestAgentContext {
-    fn ad_hoc_commands(&self) -> BoxFuture<'static, Result<ByteWriter, DownlinkRuntimeError>> {
+    fn command_channel(&self) -> BoxFuture<'static, Result<ByteWriter, DownlinkRuntimeError>> {
         let mut guard = self.inner.lock();
         let (tx, rx) = byte_channel(BUFFER_SIZE);
         if let Some(sender) = guard.ad_hoc_consumer.take() {
@@ -111,6 +110,15 @@ impl AgentContext for TestAgentContext {
             guard.ad_hoc_rx = Some(rx);
         }
         ready(Ok(tx)).boxed()
+    }
+
+    fn register_command_endpoint(
+        &self,
+        _host: Option<&str>,
+        _node: &str,
+        _lane: &str,
+    ) -> BoxFuture<'static, Result<u16, CommanderRegistrationError>> {
+        panic!("Unexpected call");
     }
 
     fn add_lane(

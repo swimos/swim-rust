@@ -482,15 +482,16 @@ where
                 } => store_endpoints.push(store),
             },
             Either::Right(request) => match request {
-                AgentRuntimeRequest::AdHoc(req) => {
+                AgentRuntimeRequest::Command(req) => {
                     if ext_link_tx
-                        .send(ExternalLinkRequest::AdHoc(req))
+                        .send(ExternalLinkRequest::Command(req))
                         .await
                         .is_err()
                     {
                         break Err(AgentExecError::FailedDownlinkRequest);
                     }
                 }
+                AgentRuntimeRequest::CommanderRegistration(req) => todo!(),
                 AgentRuntimeRequest::AddLane(LaneRuntimeSpec {
                     name,
                     kind,
