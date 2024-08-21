@@ -20,8 +20,8 @@ use std::{
 
 use bytes::{BufMut, BytesMut};
 use futures::{stream::FuturesUnordered, Future, StreamExt};
-use swimos_agent_protocol::encoding::ad_hoc::RawAdHocCommandDecoder;
-use swimos_agent_protocol::AdHocCommand;
+use swimos_agent_protocol::{encoding::ad_hoc::RawAdHocCommandDecoder, CommandMessageTarget};
+use swimos_agent_protocol::CommandMessage;
 use swimos_api::{
     address::{Address, RelativeAddress},
     error::{AgentRuntimeError, CommanderRegistrationError, DownlinkRuntimeError},
@@ -274,7 +274,7 @@ type AdHocReader = FramedRead<ByteReader, RawAdHocCommandDecoder<BytesStr>>;
 #[derive(Debug)]
 enum LinksTaskEvent {
     Request(ExternalLinkRequest),
-    Command(AdHocCommand<BytesStr, BytesMut>),
+    Command(CommandMessage<BytesStr, BytesMut>),
     NewChannel(
         CommanderKey,
         Result<Result<ByteWriter, DownlinkRuntimeError>, oneshot::error::RecvError>,
@@ -447,8 +447,15 @@ pub async fn external_links_task<F: ReportFailed>(
                     retry_strategy,
                 )));
             }
-            LinksTaskEvent::Command(AdHocCommand {
-                address,
+            LinksTaskEvent::Command(CommandMessage {
+                target: CommandMessageTarget::Registered(id),
+                command,
+                overwrite_permitted,
+            }) => {
+                todo!()
+            }
+            LinksTaskEvent::Command(CommandMessage {
+                target: CommandMessageTarget::Addressed(address),
                 command,
                 overwrite_permitted,
             }) => {

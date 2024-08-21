@@ -21,7 +21,7 @@ use std::{
 use bytes::BytesMut;
 use frunk::{coproduct::CNil, Coproduct};
 use static_assertions::assert_obj_safe;
-use swimos_agent_protocol::{encoding::ad_hoc::AdHocCommandEncoder, AdHocCommand};
+use swimos_agent_protocol::{encoding::ad_hoc::CommandMessageEncoder, CommandMessage};
 use swimos_api::{
     address::Address,
     agent::WarpLaneKind,
@@ -238,8 +238,8 @@ impl<'a, Context> ActionContext<'a, Context> {
         T: StructuralWritable,
     {
         let ActionContext { ad_hoc_buffer, .. } = self;
-        let mut encoder = AdHocCommandEncoder::default();
-        let cmd = AdHocCommand::new(address, command, overwrite_permitted);
+        let mut encoder = CommandMessageEncoder::default();
+        let cmd = CommandMessage::ad_hoc(address, command, overwrite_permitted);
         encoder
             .encode(cmd, ad_hoc_buffer)
             .expect("Encoding should be infallible.")

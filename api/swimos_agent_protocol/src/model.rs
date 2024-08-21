@@ -146,15 +146,41 @@ impl<T> From<StoreResponse<T>> for LaneResponse<T> {
     }
 }
 
-/// Message type for agents to send ad hoc commands to the runtime.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct AdHocCommand<S, T> {
-    pub address: Address<S>,
+pub enum CommandMessageTarget<S> {
+    Addressed(Address<S>),
+    Registered(u16),
+}
+
+impl PartialEq<CommandMessageTarget<&str>> for CommandMessageTarget<Text> {
+    fn eq(&self, other: &CommandMessageTarget<&str>) -> bool {
+        match (self, other) {
+            (CommandMessageTarget::Registered(id1), CommandMessageTarget::Registered(id2)) => id1 == id2,
+            (CommandMessageTarget::Addressed(addr1), CommandMessageTarget::Addressed(addr2)) => addr1 == addr2,
+            _ => false,
+        }
+    }
+}
+
+impl PartialEq<CommandMessageTarget<&str>> for CommandMessageTarget<BytesStr> {
+    fn eq(&self, other: &CommandMessageTarget<&str>) -> bool {
+        match (self, other) {
+            (CommandMessageTarget::Registered(id1), CommandMessageTarget::Registered(id2)) => id1 == id2,
+            (CommandMessageTarget::Addressed(addr1), CommandMessageTarget::Addressed(addr2)) => addr1 == addr2,
+            _ => false,
+        }
+    }
+}
+
+/// Message type for agents to send commands to the runtime.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct CommandMessage<S, T> {
+    pub target: CommandMessageTarget<S>,
     pub command: T,
     pub overwrite_permitted: bool,
 }
 
-impl<S, T> AdHocCommand<S, T> {
+impl<S, T> CommandMessage<S, T> {
     /// # Arguments
     /// * `address` - The target lane for the command.
     /// * `command` - The body of the command message.
@@ -162,9 +188,17 @@ impl<S, T> AdHocCommand<S, T> {
     ///   If this is true, the command maybe be overwritten by a subsequent command to the same target (and so
     ///   will never be sent). If false, the command will be queued instead. This is a user specifiable parameter
     ///   in the API.
-    pub fn new(address: Address<S>, command: T, overwrite_permitted: bool) -> Self {
-        AdHocCommand {
-            address,
+    pub fn ad_hoc(address: Address<S>, command: T, overwrite_permitted: bool) -> Self {
+        CommandMessage {
+            target: CommandMessageTarget::Addressed(address),
+            command,
+            overwrite_permitted,
+        }
+    }
+
+    pub fn new(target: CommandMessageTarget<S>, command: T, overwrite_permitted: bool) -> Self {
+        CommandMessage {
+            target,
             command,
             overwrite_permitted,
         }
@@ -181,23 +215,23 @@ impl<K, V> From<MapOperation<K, V>> for MapMessage<K, V> {
     }
 }
 
-impl<T1, T2> PartialEq<AdHocCommand<&str, T1>> for AdHocCommand<Text, T2>
+impl<T1, T2> PartialEq<CommandMessage<&str, T1>> for CommandMessage<Text, T2>
 where
     T2: PartialEq<T1>,
 {
-    fn eq(&self, other: &AdHocCommand<&str, T1>) -> bool {
-        self.address == other.address
+    fn eq(&self, other: &CommandMessage<&str, T1>) -> bool {
+        self.target == other.target
             && self.command == other.command
             && self.overwrite_permitted == other.overwrite_permitted
     }
 }
 
-impl<T1, T2> PartialEq<AdHocCommand<&str, T1>> for AdHocCommand<BytesStr, T2>
+impl<T1, T2> PartialEq<CommandMessage<&str, T1>> for CommandMessage<BytesStr, T2>
 where
     T2: PartialEq<T1>,
 {
-    fn eq(&self, other: &AdHocCommand<&str, T1>) -> bool {
-        self.address == other.address
+    fn eq(&self, other: &CommandMessage<&str, T1>) -> bool {
+        self.target == other.target
             && self.command == other.command
             && self.overwrite_permitted == other.overwrite_permitted
     }

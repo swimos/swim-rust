@@ -31,7 +31,7 @@ mod store;
 mod model;
 
 pub use model::{
-    AdHocCommand, DownlinkNotification, DownlinkOperation, LaneRequest, LaneResponse,
+    CommandMessage, CommandMessageTarget, DownlinkNotification, DownlinkOperation, LaneRequest, LaneResponse,
     MapLaneResponse, MapMessage, MapOperation, MapStoreResponse, StoreInitMessage,
     StoreInitialized, StoreResponse,
 };
@@ -102,8 +102,8 @@ pub mod encoding {
     /// command to an arbitrary lane endpoint.
     pub mod ad_hoc {
         pub use crate::ad_hoc::{
-            AdHocCommandDecoder, AdHocCommandEncoder, RawAdHocCommandDecoder,
-            RawAdHocCommandEncoder,
+            AdHocCommandDecoder, CommandMessageEncoder, RawAdHocCommandDecoder,
+            RawCommandMessageEncoder,
         };
     }
 

@@ -29,8 +29,8 @@ use futures::{
     Future, SinkExt, Stream, StreamExt, TryStreamExt,
 };
 use rand::Rng;
-use swimos_agent_protocol::encoding::ad_hoc::AdHocCommandEncoder;
-use swimos_agent_protocol::AdHocCommand;
+use swimos_agent_protocol::encoding::ad_hoc::CommandMessageEncoder;
+use swimos_agent_protocol::CommandMessage;
 use swimos_api::{
     address::{Address, RelativeAddress},
     agent::DownlinkKind,
@@ -168,7 +168,7 @@ async fn replace_channel() {
     }
 }
 
-type CommandSender = FramedWrite<ByteWriter, AdHocCommandEncoder>;
+type CommandSender = FramedWrite<ByteWriter, CommandMessageEncoder>;
 
 const ADDRS: &[(Option<&str>, &str, &str)] = &[
     (Some("ws://localhost:8080"), "/node", "lane"),
@@ -192,7 +192,7 @@ where
 {
     let (host, node, lane) = &ADDRS[target];
     let addr = Address::new(*host, node, lane);
-    let cmd = AdHocCommand::new(addr, value, overwrite_permitted);
+    let cmd = CommandMessage::ad_hoc(addr, value, overwrite_permitted);
     assert!(tx.send(cmd).await.is_ok());
 }
 

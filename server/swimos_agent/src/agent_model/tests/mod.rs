@@ -23,7 +23,7 @@ use futures::{
 use parking_lot::Mutex;
 use std::{collections::HashMap, io::ErrorKind, sync::Arc, time::Duration};
 use swimos_agent_protocol::{
-    encoding::ad_hoc::AdHocCommandDecoder, AdHocCommand, MapMessage, MapOperation,
+    encoding::ad_hoc::AdHocCommandDecoder, CommandMessage, MapMessage, MapOperation,
 };
 use swimos_api::{
     address::Address,
@@ -1188,7 +1188,7 @@ async fn trigger_ad_hoc_command() {
 
         //... and then issue an outgoing command.
 
-        let expected = AdHocCommand::new(
+        let expected = CommandMessage::ad_hoc(
             Address::new(
                 Some(BytesStr::from_static_str(AD_HOC_HOST)),
                 BytesStr::from_static_str(AD_HOC_NODE),

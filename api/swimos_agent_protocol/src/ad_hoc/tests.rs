@@ -16,13 +16,16 @@ use bytes::BytesMut;
 use swimos_api::address::Address;
 use tokio_util::codec::{Decoder, Encoder};
 
-use crate::ad_hoc::{RawAdHocCommandDecoder, RawAdHocCommandEncoder};
+use crate::{
+    ad_hoc::{RawAdHocCommandDecoder, RawCommandMessageEncoder},
+    CommandMessageTarget,
+};
 
-use super::AdHocCommand;
+use super::CommandMessage;
 
-fn round_trip(message: AdHocCommand<&str, &[u8]>) -> AdHocCommand<String, BytesMut> {
+fn round_trip(message: CommandMessage<&str, &[u8]>) -> CommandMessage<String, BytesMut> {
     let mut buffer = BytesMut::new();
-    let mut encoder = RawAdHocCommandEncoder::default();
+    let mut encoder = RawCommandMessageEncoder::default();
     let mut decoder = RawAdHocCommandDecoder::<String>::default();
 
     assert!(encoder.encode(message, &mut buffer).is_ok());
@@ -38,14 +41,14 @@ fn round_trip(message: AdHocCommand<&str, &[u8]>) -> AdHocCommand<String, BytesM
 }
 
 fn round_trip2(
-    message1: AdHocCommand<&str, &[u8]>,
-    message2: AdHocCommand<&str, &[u8]>,
+    message1: CommandMessage<&str, &[u8]>,
+    message2: CommandMessage<&str, &[u8]>,
 ) -> (
-    AdHocCommand<String, BytesMut>,
-    AdHocCommand<String, BytesMut>,
+    CommandMessage<String, BytesMut>,
+    CommandMessage<String, BytesMut>,
 ) {
     let mut buffer = BytesMut::new();
-    let mut encoder = RawAdHocCommandEncoder::default();
+    let mut encoder = RawCommandMessageEncoder::default();
     let mut decoder = RawAdHocCommandDecoder::<String>::default();
 
     assert!(encoder.encode(message1, &mut buffer).is_ok());
@@ -69,19 +72,23 @@ fn round_trip2(
     (first, second)
 }
 
-fn header_len(msg: &AdHocCommand<&str, &[u8]>) -> usize {
-    let Address { host, node, lane } = &msg.address;
-    let n = node.len() + lane.len();
-    if let Some(h) = host {
-        n + super::MAX_REQUIRED + h.len()
-    } else {
-        n + super::MIN_REQUIRED
+fn header_len(msg: &CommandMessage<&str, &[u8]>) -> usize {
+    match &msg.target {
+        CommandMessageTarget::Addressed(Address { host, node, lane }) => {
+            let n = node.len() + lane.len();
+            if let Some(h) = host {
+                n + super::MAX_REQUIRED + h.len()
+            } else {
+                n + super::MIN_REQUIRED
+            }
+        }
+        CommandMessageTarget::Registered(_) => todo!(),
     }
 }
 
-fn round_trip_partial(message: AdHocCommand<&str, &[u8]>) -> AdHocCommand<String, BytesMut> {
+fn round_trip_partial(message: CommandMessage<&str, &[u8]>) -> CommandMessage<String, BytesMut> {
     let mut buffer = BytesMut::new();
-    let mut encoder = RawAdHocCommandEncoder::default();
+    let mut encoder = RawCommandMessageEncoder::default();
     let mut decoder = RawAdHocCommandDecoder::<String>::default();
 
     let header_len = header_len(&message);
@@ -105,15 +112,24 @@ fn round_trip_partial(message: AdHocCommand<&str, &[u8]>) -> AdHocCommand<String
     }
 }
 
+fn extract_address(target: CommandMessageTarget<String>) -> Address<String> {
+    match target {
+        CommandMessageTarget::Addressed(addr) => addr,
+        CommandMessageTarget::Registered(_) => panic!("Not addressed."),
+    }
+}
+
 #[test]
 fn round_trip_with_host_with_ow() {
     let addr = Address::new(Some("ws://localhost:8080"), "/node", "lane");
-    let msg = AdHocCommand::<_, &[u8]>::new(addr, &[1, 2, 3], true);
-    let AdHocCommand {
-        address: Address { host, node, lane },
+    let msg = CommandMessage::<_, &[u8]>::ad_hoc(addr, &[1, 2, 3], true);
+    let CommandMessage {
+        target,
         command,
         overwrite_permitted,
     } = round_trip(msg);
+
+    let Address { host, node, lane } = extract_address(target);
 
     assert_eq!(host, Some("ws://localhost:8080".to_string()));
     assert_eq!(node, "/node");
@@ -125,12 +141,14 @@ fn round_trip_with_host_with_ow() {
 #[test]
 fn round_trip_with_host_no_ow() {
     let addr = Address::new(Some("ws://localhost:8080"), "/node", "lane");
-    let msg = AdHocCommand::<_, &[u8]>::new(addr, &[1, 2, 3], false);
-    let AdHocCommand {
-        address: Address { host, node, lane },
+    let msg = CommandMessage::<_, &[u8]>::ad_hoc(addr, &[1, 2, 3], false);
+    let CommandMessage {
+        target,
         command,
         overwrite_permitted,
     } = round_trip(msg);
+
+    let Address { host, node, lane } = extract_address(target);
 
     assert_eq!(host, Some("ws://localhost:8080".to_string()));
     assert_eq!(node, "/node");
@@ -142,12 +160,14 @@ fn round_trip_with_host_no_ow() {
 #[test]
 fn round_trip_with_host_partial_with_ow() {
     let addr = Address::new(Some("ws://localhost:8080"), "/node", "lane");
-    let msg = AdHocCommand::<_, &[u8]>::new(addr, &[1, 2, 3], true);
-    let AdHocCommand {
-        address: Address { host, node, lane },
+    let msg = CommandMessage::<_, &[u8]>::ad_hoc(addr, &[1, 2, 3], true);
+    let CommandMessage {
+        target,
         command,
         overwrite_permitted,
     } = round_trip_partial(msg);
+
+    let Address { host, node, lane } = extract_address(target);
 
     assert_eq!(host, Some("ws://localhost:8080".to_string()));
     assert_eq!(node, "/node");
@@ -159,12 +179,14 @@ fn round_trip_with_host_partial_with_ow() {
 #[test]
 fn round_trip_with_host_partial_no_ow() {
     let addr = Address::new(Some("ws://localhost:8080"), "/node", "lane");
-    let msg = AdHocCommand::<_, &[u8]>::new(addr, &[1, 2, 3], false);
-    let AdHocCommand {
-        address: Address { host, node, lane },
+    let msg = CommandMessage::<_, &[u8]>::ad_hoc(addr, &[1, 2, 3], false);
+    let CommandMessage {
+        target,
         command,
         overwrite_permitted,
     } = round_trip_partial(msg);
+
+    let Address { host, node, lane } = extract_address(target);
 
     assert_eq!(host, Some("ws://localhost:8080".to_string()));
     assert_eq!(node, "/node");
@@ -176,12 +198,14 @@ fn round_trip_with_host_partial_no_ow() {
 #[test]
 fn round_trip_no_host_with_ow() {
     let addr = Address::new(None, "/node", "lane");
-    let msg = AdHocCommand::<_, &[u8]>::new(addr, &[1, 2, 3], true);
-    let AdHocCommand {
-        address: Address { host, node, lane },
+    let msg = CommandMessage::<_, &[u8]>::ad_hoc(addr, &[1, 2, 3], true);
+    let CommandMessage {
+        target,
         command,
         overwrite_permitted,
     } = round_trip(msg);
+
+    let Address { host, node, lane } = extract_address(target);
 
     assert!(host.is_none());
     assert_eq!(node, "/node");
@@ -193,12 +217,14 @@ fn round_trip_no_host_with_ow() {
 #[test]
 fn round_trip_no_host_no_ow() {
     let addr = Address::new(None, "/node", "lane");
-    let msg = AdHocCommand::<_, &[u8]>::new(addr, &[1, 2, 3], false);
-    let AdHocCommand {
-        address: Address { host, node, lane },
+    let msg = CommandMessage::<_, &[u8]>::ad_hoc(addr, &[1, 2, 3], false);
+    let CommandMessage {
+        target,
         command,
         overwrite_permitted,
     } = round_trip(msg);
+
+    let Address { host, node, lane } = extract_address(target);
 
     assert!(host.is_none());
     assert_eq!(node, "/node");
@@ -210,12 +236,14 @@ fn round_trip_no_host_no_ow() {
 #[test]
 fn round_trip_no_host_partial_with_ow() {
     let addr = Address::new(None, "/node", "lane");
-    let msg = AdHocCommand::<_, &[u8]>::new(addr, &[1, 2, 3], true);
-    let AdHocCommand {
-        address: Address { host, node, lane },
+    let msg = CommandMessage::<_, &[u8]>::ad_hoc(addr, &[1, 2, 3], true);
+    let CommandMessage {
+        target,
         command,
         overwrite_permitted,
     } = round_trip_partial(msg);
+
+    let Address { host, node, lane } = extract_address(target);
 
     assert!(host.is_none());
     assert_eq!(node, "/node");
@@ -227,12 +255,14 @@ fn round_trip_no_host_partial_with_ow() {
 #[test]
 fn round_trip_no_host_partial_no_ow() {
     let addr = Address::new(None, "/node", "lane");
-    let msg = AdHocCommand::<_, &[u8]>::new(addr, &[1, 2, 3], false);
-    let AdHocCommand {
-        address: Address { host, node, lane },
+    let msg = CommandMessage::<_, &[u8]>::ad_hoc(addr, &[1, 2, 3], false);
+    let CommandMessage {
+        target,
         command,
         overwrite_permitted,
     } = round_trip_partial(msg);
+
+    let Address { host, node, lane } = extract_address(target);
 
     assert!(host.is_none());
     assert_eq!(node, "/node");
@@ -244,28 +274,34 @@ fn round_trip_no_host_partial_no_ow() {
 #[test]
 fn round_trip_two_messages() {
     let addr1 = Address::new(Some("ws://localhost:8080"), "/first_node", "lane1");
-    let msg1 = AdHocCommand::<_, &[u8]>::new(addr1, &[1, 2, 3], true);
+    let msg1 = CommandMessage::<_, &[u8]>::ad_hoc(addr1, &[1, 2, 3], true);
 
     let addr2 = Address::new(None, "/second_node", "lane2");
-    let msg2 = AdHocCommand::<_, &[u8]>::new(addr2, &[4, 5, 6, 7, 8], false);
+    let msg2 = CommandMessage::<_, &[u8]>::ad_hoc(addr2, &[4, 5, 6, 7, 8], false);
     let (first, second) = round_trip2(msg1, msg2);
 
-    let AdHocCommand {
-        address: Address { host, node, lane },
+    let CommandMessage {
+        target,
         command,
         overwrite_permitted,
     } = first;
+
+    let Address { host, node, lane } = extract_address(target);
+
     assert_eq!(host, Some("ws://localhost:8080".to_string()));
     assert_eq!(node, "/first_node");
     assert_eq!(lane, "lane1");
     assert_eq!(command.as_ref(), &[1, 2, 3]);
     assert!(overwrite_permitted);
 
-    let AdHocCommand {
-        address: Address { host, node, lane },
+    let CommandMessage {
+        target,
         command,
         overwrite_permitted,
     } = second;
+
+    let Address { host, node, lane } = extract_address(target);
+
     assert!(host.is_none());
     assert_eq!(node, "/second_node");
     assert_eq!(lane, "lane2");

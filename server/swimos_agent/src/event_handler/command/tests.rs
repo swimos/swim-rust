@@ -16,7 +16,7 @@ use std::collections::HashMap;
 
 use bytes::BytesMut;
 use swimos_agent_protocol::encoding::ad_hoc::AdHocCommandDecoder;
-use swimos_agent_protocol::AdHocCommand;
+use swimos_agent_protocol::CommandMessage;
 use swimos_api::{address::Address, agent::AgentConfig};
 use swimos_utilities::{encoding::BytesStr, routing::RouteUri};
 use tokio_util::codec::Decoder;
@@ -68,7 +68,7 @@ fn write_command_to_buffer() {
         }
     }
     let msg = decode_message(&mut ad_hoc_buffer);
-    assert_eq!(msg, AdHocCommand::new(address, command, true));
+    assert_eq!(msg, CommandMessage::ad_hoc(address, command, true));
     {
         let mut action_context = dummy_context(&mut join_lane_init, &mut ad_hoc_buffer);
         let result = handler.step(&mut action_context, meta, &FakeAgent);
@@ -79,7 +79,7 @@ fn write_command_to_buffer() {
     }
 }
 
-fn decode_message(buffer: &mut BytesMut) -> AdHocCommand<BytesStr, i32> {
+fn decode_message(buffer: &mut BytesMut) -> CommandMessage<BytesStr, i32> {
     let mut decoder = AdHocCommandDecoder::<BytesStr, i32>::default();
     let cmd = decoder
         .decode(buffer)
