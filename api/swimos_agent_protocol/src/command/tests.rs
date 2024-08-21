@@ -17,7 +17,7 @@ use swimos_api::address::Address;
 use tokio_util::codec::{Decoder, Encoder};
 
 use crate::{
-    ad_hoc::{RawAdHocCommandDecoder, RawCommandMessageEncoder},
+    command::{RawAdHocCommandDecoder, RawCommandMessageEncoder},
     CommandMessageTarget,
 };
 
@@ -75,14 +75,14 @@ fn round_trip2(
 fn header_len(msg: &CommandMessage<&str, &[u8]>) -> usize {
     match &msg.target {
         CommandMessageTarget::Addressed(Address { host, node, lane }) => {
-            let n = node.len() + lane.len();
+            let n = super::FLAGS_LEN + node.len() + lane.len();
             if let Some(h) = host {
                 n + super::MAX_REQUIRED + h.len()
             } else {
                 n + super::MIN_REQUIRED
             }
         }
-        CommandMessageTarget::Registered(_) => todo!(),
+        CommandMessageTarget::Registered(_) => super::FLAGS_LEN + super::ID_LEN,
     }
 }
 
@@ -116,6 +116,13 @@ fn extract_address(target: CommandMessageTarget<String>) -> Address<String> {
     match target {
         CommandMessageTarget::Addressed(addr) => addr,
         CommandMessageTarget::Registered(_) => panic!("Not addressed."),
+    }
+}
+
+fn extract_id(target: CommandMessageTarget<String>) -> u16 {
+    match target {
+        CommandMessageTarget::Addressed(_) =>  panic!("Not registered."),
+        CommandMessageTarget::Registered(id) => id,
     }
 }
 
@@ -307,4 +314,68 @@ fn round_trip_two_messages() {
     assert_eq!(lane, "lane2");
     assert_eq!(command.as_ref(), &[4, 5, 6, 7, 8]);
     assert!(!overwrite_permitted);
+}
+
+#[test]
+fn round_trip_registered_no_ow() {
+    let msg = CommandMessage::<_, &[u8]>::new(CommandMessageTarget::Registered(653), &[1, 2, 3], false);
+    let CommandMessage {
+        target,
+        command,
+        overwrite_permitted,
+    } = round_trip(msg);
+
+    let id = extract_id(target);
+
+    assert_eq!(id, 653);
+    assert_eq!(command.as_ref(), &[1, 2, 3]);
+    assert!(!overwrite_permitted);
+}
+
+#[test]
+fn round_trip_registered_with_ow() {
+    let msg = CommandMessage::<_, &[u8]>::new(CommandMessageTarget::Registered(187), &[1, 2, 3], true);
+    let CommandMessage {
+        target,
+        command,
+        overwrite_permitted,
+    } = round_trip(msg);
+
+    let id = extract_id(target);
+
+    assert_eq!(id, 187);
+    assert_eq!(command.as_ref(), &[1, 2, 3]);
+    assert!(overwrite_permitted);
+}
+
+#[test]
+fn round_trip_registered_partial_no_ow() {
+    let msg = CommandMessage::<_, &[u8]>::new(CommandMessageTarget::Registered(653), &[1, 2, 3], false);
+    let CommandMessage {
+        target,
+        command,
+        overwrite_permitted,
+    } = round_trip_partial(msg);
+
+    let id = extract_id(target);
+
+    assert_eq!(id, 653);
+    assert_eq!(command.as_ref(), &[1, 2, 3]);
+    assert!(!overwrite_permitted);
+}
+
+#[test]
+fn round_trip_registered_partial_with_ow() {
+    let msg = CommandMessage::<_, &[u8]>::new(CommandMessageTarget::Registered(187), &[1, 2, 3], true);
+    let CommandMessage {
+        target,
+        command,
+        overwrite_permitted,
+    } = round_trip_partial(msg);
+
+    let id = extract_id(target);
+
+    assert_eq!(id, 187);
+    assert_eq!(command.as_ref(), &[1, 2, 3]);
+    assert!(overwrite_permitted);
 }

@@ -22,7 +22,7 @@
 //! of the message. Otherwise, the body should be any type that can be serialized to Recon, using the
 //! [`swimos_form::Form`] trait.
 
-mod ad_hoc;
+mod command;
 mod downlink;
 mod lane;
 mod map;
@@ -101,7 +101,7 @@ pub mod encoding {
     /// [`crate::AdHocCommand`] messages are sent by agents to the runtime to instruct it to send an ad hoc
     /// command to an arbitrary lane endpoint.
     pub mod ad_hoc {
-        pub use crate::ad_hoc::{
+        pub use crate::command::{
             AdHocCommandDecoder, CommandMessageEncoder, RawAdHocCommandDecoder,
             RawCommandMessageEncoder,
         };
