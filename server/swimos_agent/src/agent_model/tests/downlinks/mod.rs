@@ -46,7 +46,7 @@ use tokio::sync::mpsc;
 use crate::{
     agent_lifecycle::HandlerContext,
     agent_model::AgentModel,
-    event_handler::{EventHandler, HandlerActionExt},
+    event_handler::{BoxEventHandler, HandlerActionExt},
 };
 
 use super::make_uri;
@@ -211,7 +211,7 @@ async fn init_agent(context: Box<DlTestContext>) -> (AgentTask, TestContext) {
 }
 
 type DlResult = Result<(), DownlinkRuntimeError>;
-type BoxEh = Box<dyn EventHandler<EmptyAgent> + Send + 'static>;
+type BoxEh = BoxEventHandler<'static, EmptyAgent>;
 
 fn on_done(tx: mpsc::UnboundedSender<DlResult>) -> impl FnOnce(DlResult) -> BoxEh + Send + 'static {
     move |result: DlResult| {

@@ -18,10 +18,7 @@ use swimos_api::address::Address;
 use swimos_model::Text;
 
 use crate::{
-    event_handler::{
-        ActionContext, EventHandler, HandlerAction, HandlerActionExt, LocalBoxEventHandler,
-        StepResult, UnitHandler,
-    },
+    event_handler::{ActionContext, EventHandler, HandlerAction, StepResult},
     AgentMetadata,
 };
 
@@ -39,48 +36,45 @@ impl<Context> Commander<Context> {
     }
 }
 
-type OnDone<Context> =
-    Box<dyn FnOnce(Commander<Context>) -> LocalBoxEventHandler<'static, Context> + Send + 'static>;
-
-pub struct RegisterCommander<Context> {
+struct RegisterCommanderInner<OnDone> {
     address: Address<Text>,
-    on_done: Option<OnDone<Context>>,
+    on_done: OnDone,
 }
 
-impl<Context> RegisterCommander<Context> {
-    pub fn new(address: Address<Text>, on_done: OnDone<Context>) -> Self {
+pub struct RegisterCommander<OnDone> {
+    inner: Option<RegisterCommanderInner<OnDone>>,
+}
+
+impl<OnDone> RegisterCommander<OnDone> {
+    pub fn new(address: Address<Text>, on_done: OnDone) -> Self {
         RegisterCommander {
-            address: address,
-            on_done: Some(on_done),
+            inner: Some(RegisterCommanderInner { address, on_done }),
         }
     }
 }
 
-impl<Context> HandlerAction<Context> for RegisterCommander<Context> {
+impl<Context, OnDone, H> HandlerAction<Context> for RegisterCommander<OnDone>
+where
+    OnDone: FnOnce(Commander<Context>) -> H + Send + 'static,
+    H: EventHandler<Context> + Send + 'static,
+{
     type Completion = ();
 
     fn step(
         &mut self,
         action_context: &mut ActionContext<Context>,
-        meta: AgentMetadata,
-        context: &Context,
+        _meta: AgentMetadata,
+        _context: &Context,
     ) -> StepResult<Self::Completion> {
-        todo!()
+        let RegisterCommander { inner } = self;
+        if let Some(RegisterCommanderInner { address, on_done }) = inner.take() {
+            action_context.register_commander(address, |id: u16| {
+                let commander = Commander::new(id);
+                on_done(commander)
+            });
+            StepResult::done(())
+        } else {
+            StepResult::after_done()
+        }
     }
-}
-
-pub fn register_commander<Context, F, H>(
-    address: Address<Text>,
-    on_done: F,
-) -> impl EventHandler<Context>
-where
-    F: FnOnce(Commander<Context>) -> H + Send + 'static,
-    H: EventHandler<Context> + 'static,
-{
-    let on_done_boxed: OnDone<Context> = Box::new(move |commander: Commander<Context>| {
-        let handler: LocalBoxEventHandler<'static, Context> = on_done(commander).boxed_local();
-        handler
-    });
-
-    UnitHandler::default()
 }

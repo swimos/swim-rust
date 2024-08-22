@@ -29,7 +29,7 @@ use swimos_utilities::{
 use crate::{
     agent_model::downlink::{BoxDownlinkChannel, BoxDownlinkChannelFactory},
     event_handler::{
-        CommanderSpawnOnDone, DownlinkSpawnOnDone, EventHandler, LaneSpawnOnDone, LaneSpawner,
+        BoxEventHandler, CommanderSpawnOnDone, DownlinkSpawnOnDone, LaneSpawnOnDone, LaneSpawner,
         LinkSpawner,
     },
 };
@@ -89,7 +89,7 @@ impl<Agent> TestDownlinkContext<Agent> {
         guard.requests.push(request);
     }
 
-    pub fn handle_dl_requests(&self, agent: &Agent) -> Vec<Box<dyn EventHandler<Agent> + Send>> {
+    pub fn handle_dl_requests(&self, agent: &Agent) -> Vec<BoxEventHandler<'static, Agent>> {
         let mut handlers = vec![];
         let mut guard = self.inner.lock();
         let TestDlContextInner {

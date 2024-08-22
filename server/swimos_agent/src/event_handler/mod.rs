@@ -88,7 +88,7 @@ pub trait LinkSpawner<Context> {
     fn register_commander(&self, path: Address<Text>, on_done: CommanderSpawnOnDone<Context>);
 }
 
-type SpawnHandler<Context> = Box<dyn EventHandler<Context> + Send + 'static>;
+type SpawnHandler<Context> = BoxHandlerAction<'static, Context, ()>;
 
 #[doc(hidden)]
 pub type LaneSpawnOnDone<Context> =
@@ -202,6 +202,18 @@ impl<'a, Context> ActionContext<'a, Context> {
         let handler: DownlinkSpawnOnDone<Context> = Box::new(on_done_boxed);
         self.downlink
             .spawn_downlink(path, Box::new(make_channel), handler)
+    }
+
+    pub(crate) fn register_commander<OnDone, H>(&self, path: Address<Text>, on_done: OnDone)
+    where
+        OnDone: FnOnce(u16) -> H + Send + 'static,
+        H: EventHandler<Context> + Send + 'static,
+    {
+        let on_done_boxed: CommanderSpawnOnDone<Context> = Box::new(move |id: u16| {
+            let handler: BoxEventHandler<'static, Context> = on_done(id).boxed();
+            handler
+        });
+        self.downlink.register_commander(path, on_done_boxed);
     }
 
     /// Attempt to attach a new lane to the agent runtime.
