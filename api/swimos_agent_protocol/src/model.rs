@@ -146,9 +146,12 @@ impl<T> From<StoreResponse<T>> for LaneResponse<T> {
     }
 }
 
+/// Target endpoint for a command message.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CommandMessageTarget<S> {
+    /// Explicit address for an ad hoc message.
     Addressed(Address<S>),
+    /// ID of a registered point to point connection.
     Registered(u16),
 }
 

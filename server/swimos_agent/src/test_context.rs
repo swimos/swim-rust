@@ -32,8 +32,9 @@ use swimos_utilities::byte_channel::{ByteReader, ByteWriter};
 use crate::{
     agent_model::downlink::BoxDownlinkChannelFactory,
     event_handler::{
-        ActionContext, BoxJoinLaneInit, DownlinkSpawnOnDone, DownlinkSpawner, EventHandler,
-        HandlerAction, HandlerFuture, LaneSpawnOnDone, LaneSpawner, Spawner, StepResult,
+        ActionContext, BoxJoinLaneInit, CommanderSpawnOnDone, DownlinkSpawnOnDone, EventHandler,
+        HandlerAction, HandlerFuture, LaneSpawnOnDone, LaneSpawner, LinkSpawner, Spawner,
+        StepResult,
     },
     meta::AgentMetadata,
     test_util::TestDownlinkContext,
@@ -47,7 +48,7 @@ const NO_SPAWN: NoSpawn = NoSpawn;
 pub const NO_DYN_LANES: NoDynamicLanes = NoDynamicLanes;
 pub const NO_DOWNLINKS: NoDownlinks = NoDownlinks;
 
-impl<Context> DownlinkSpawner<Context> for NoDownlinks {
+impl<Context> LinkSpawner<Context> for NoDownlinks {
     fn spawn_downlink(
         &self,
         _path: Address<Text>,
@@ -55,6 +56,10 @@ impl<Context> DownlinkSpawner<Context> for NoDownlinks {
         _on_done: DownlinkSpawnOnDone<Context>,
     ) {
         panic!("Opening downlinks not supported.")
+    }
+
+    fn register_commander(&self, _path: Address<Text>, _on_done: CommanderSpawnOnDone<Context>) {
+        panic!("Registering commanders not supported.");
     }
 }
 

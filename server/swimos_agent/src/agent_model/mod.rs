@@ -35,7 +35,8 @@ use swimos_agent_protocol::{LaneRequest, MapMessage};
 use swimos_api::agent::DownlinkKind;
 use swimos_api::agent::{HttpLaneRequest, LaneConfig, RawHttpLaneResponse};
 use swimos_api::error::{
-    DownlinkRuntimeError, DynamicRegistrationError, LaneSpawnError, OpenStoreError,
+    CommanderRegistrationError, DownlinkRuntimeError, DynamicRegistrationError, LaneSpawnError,
+    OpenStoreError,
 };
 use swimos_api::{
     address::Address,
@@ -56,8 +57,9 @@ use uuid::Uuid;
 use crate::agent_lifecycle::item_event::ItemEvent;
 use crate::agent_model::io::LaneReadEvent;
 use crate::event_handler::{
-    ActionContext, BoxJoinLaneInit, DownlinkSpawnOnDone, DownlinkSpawner, HandlerFuture,
-    LaneSpawnOnDone, LaneSpawner, LocalBoxEventHandler, ModificationFlags, Sequentially,
+    ActionContext, BoxJoinLaneInit, CommanderSpawnOnDone, DownlinkSpawnOnDone, HandlerFuture,
+    LaneSpawnOnDone, LaneSpawner, LinkSpawner, LocalBoxEventHandler, ModificationFlags,
+    Sequentially,
 };
 use crate::{
     agent_lifecycle::AgentLifecycle,
@@ -425,8 +427,8 @@ enum TaskEvent<ItemModel> {
     SuspendedComplete {
         handler: LocalBoxEventHandler<'static, ItemModel>,
     },
-    DownlinkReady {
-        downlink_event: DownlinksEvent<ItemModel>,
+    LinksEvent {
+        downlink_event: LinksEvent<ItemModel>,
     },
     ValueRequest {
         id: u64,
@@ -644,7 +646,7 @@ where
             .collect();
 
         let suspended = FuturesUnordered::new();
-        let downlink_requests = RefCell::new(vec![]);
+        let link_requests = RefCell::new(LinkRequestCollector::default());
         let mut dynamic_lanes = RefCell::new(vec![]);
         let mut join_lane_init = HashMap::new();
         let mut ad_hoc_buffer = BytesMut::new();
@@ -752,7 +754,7 @@ where
         lifecycle.initialize(
             &mut ActionContext::new(
                 &suspended,
-                &downlink_requests,
+                &link_requests,
                 &dynamic_lanes,
                 &mut join_lane_init,
                 &mut ad_hoc_buffer,
@@ -811,7 +813,7 @@ where
         match run_handler(
             &mut ActionContext::new(
                 &suspended,
-                &downlink_requests,
+                &link_requests,
                 &dynamic_lanes,
                 &mut join_lane_init,
                 &mut ad_hoc_buffer,
@@ -836,7 +838,7 @@ where
         match run_handler(
             &mut ActionContext::new(
                 &suspended,
-                &downlink_requests,
+                &link_requests,
                 &dynamic_lanes,
                 &mut join_lane_init,
                 &mut ad_hoc_buffer,
@@ -865,7 +867,7 @@ where
             store_io,
             http_lane_rxs,
             suspended,
-            downlink_requests: downlink_requests.into_inner(),
+            link_requests: link_requests.into_inner(),
             ad_hoc_buffer,
             join_lane_init,
         };
@@ -1028,7 +1030,7 @@ struct AgentTask<ItemModel, Lifecycle> {
     store_io: HashMap<Text, ByteWriter>,
     http_lane_rxs: HashMap<Text, mpsc::Receiver<HttpLaneRequest>>,
     suspended: FuturesUnordered<HandlerFuture<ItemModel>>,
-    downlink_requests: Vec<DownlinkSpawnRequest<ItemModel>>,
+    link_requests: LinkRequestCollector<ItemModel>,
     join_lane_init: HashMap<u64, BoxJoinLaneInit<'static, ItemModel>>,
     ad_hoc_buffer: BytesMut,
 }
@@ -1059,7 +1061,11 @@ where
             store_io,
             http_lane_rxs,
             mut suspended,
-            downlink_requests,
+            link_requests:
+                LinkRequestCollector {
+                    downlinks: downlink_requests,
+                    commanders: commander_requests,
+                },
             mut join_lane_init,
             mut ad_hoc_buffer,
         } = self;
@@ -1068,7 +1074,7 @@ where
         let mut lane_readers = SelectAll::new();
         let mut item_writers = HashMap::new();
         let mut pending_writes = FuturesUnordered::new();
-        let mut downlinks = FuturesUnordered::new();
+        let mut link_futures = FuturesUnordered::new();
         let mut external_item_ids_rev = HashMap::new();
 
         for (name, id) in external_item_ids.iter() {
@@ -1094,7 +1100,20 @@ where
                 config.keep_linked_retry,
                 None,
             );
-            downlinks.push(DownlinkFuture::Opening(Some(request), fut));
+            link_futures.push(LinkFuture::Opening(Some(request), fut));
+        }
+        // Request commanders from the init phase.
+        for request in commander_requests {
+            let CommanderRequest {
+                path: Address { host, node, lane },
+                ..
+            } = &request;
+            let fut = context.register_command_endpoint(
+                host.as_ref().map(|h| h.as_str()),
+                node.as_str(),
+                lane.as_str(),
+            );
+            link_futures.push(LinkFuture::Registering(Some(request), fut));
         }
 
         for ((name, kind), (tx, rx)) in lane_io {
@@ -1137,8 +1156,8 @@ where
                     maybe_suspended = suspended.next(), if !suspended.is_empty() => {
                         maybe_suspended.map(|handler| TaskEvent::SuspendedComplete { handler })
                     }
-                    maybe_downlink = downlinks.next(), if !downlinks.is_empty() => {
-                        maybe_downlink.map(|downlink_event| TaskEvent::DownlinkReady { downlink_event })
+                    maybe_downlink = link_futures.next(), if !link_futures.is_empty() => {
+                        maybe_downlink.map(|downlink_event| TaskEvent::LinksEvent { downlink_event })
                     }
                     maybe_req = lane_readers.next(), if !lane_readers.is_empty() => {
                         maybe_req.map(|req| {
@@ -1196,8 +1215,21 @@ where
                     config.keep_linked_retry,
                     None,
                 );
-                downlinks.push(DownlinkFuture::Opening(Some(request), fut));
+                link_futures.push(LinkFuture::Opening(Some(request), fut));
             };
+            let add_commander = |request: CommanderRequest<ItemModel>| {
+                let CommanderRequest {
+                    path: Address { host, node, lane },
+                    ..
+                } = &request;
+                let fut = context.register_command_endpoint(
+                    host.as_ref().map(|h| h.as_str()),
+                    node.as_str(),
+                    lane.as_str(),
+                );
+                link_futures.push(LinkFuture::Registering(Some(request), fut));
+            };
+            let add_link = (add_downlink, add_commander);
             let add_lane = NoDynLanes;
 
             // Calling run_handler is very verbose so is pulled out into this macro to make the code easier to read.
@@ -1206,7 +1238,7 @@ where
                     match run_handler(
                         &mut ActionContext::new(
                             &suspended,
-                            &add_downlink,
+                            &add_link,
                             &add_lane,
                             &mut join_lane_init,
                             &mut ad_hoc_buffer,
@@ -1249,8 +1281,8 @@ where
                 TaskEvent::SuspendedComplete { handler } => {
                     exec_handler!(handler);
                 }
-                TaskEvent::DownlinkReady {
-                    downlink_event: DownlinksEvent::Opened { request, result },
+                TaskEvent::LinksEvent {
+                    downlink_event: LinksEvent::Opened { request, result },
                 } => match result {
                     OpenDownlinkResult::Success(tx, rx) => {
                         let DownlinkSpawnRequest {
@@ -1260,7 +1292,7 @@ where
                         } = request;
                         let channel = make_channel.create_box(&item_model, tx, rx);
                         let downlink = HostedDownlink::new(channel);
-                        downlinks.push(DownlinkFuture::Running(downlink.wait_on_downlink()));
+                        link_futures.push(LinkFuture::Running(downlink.wait_on_downlink()));
                         let handler = on_done(Ok(()));
                         exec_handler!(handler);
                     }
@@ -1284,7 +1316,7 @@ where
                                 retry,
                                 Some(error),
                             );
-                            downlinks.push(DownlinkFuture::Opening(Some(request), fut));
+                            link_futures.push(LinkFuture::Opening(Some(request), fut));
                         }
                     }
                     OpenDownlinkResult::RetriesExpired(error) => {
@@ -1299,29 +1331,50 @@ where
                         exec_handler!(handler);
                     }
                 },
-                TaskEvent::DownlinkReady {
+                TaskEvent::LinksEvent {
                     downlink_event:
-                        DownlinksEvent::Event {
+                        LinksEvent::Registered {
+                            request: CommanderRequest { path, on_done },
+                            result: Ok(id),
+                        },
+                } => {
+                    debug!(path = %path, id, "A command channel was successfully registered.");
+                    let handler = on_done(id);
+                    exec_handler!(handler);
+                }
+                TaskEvent::LinksEvent {
+                    downlink_event:
+                        LinksEvent::Registered {
+                            result: Err(error), ..
+                        },
+                } => {
+                    error!(error = %error, "Attempting to register a command channel failed.");
+                    // This implies either the runtime has stopped or integer overflow which is not-recoverable.
+                    break Err(AgentTaskError::CommanderRegistrationFailed);
+                }
+                TaskEvent::LinksEvent {
+                    downlink_event:
+                        LinksEvent::Event {
                             mut downlink,
                             event,
                             ..
                         },
                 } => match event {
                     HostedDownlinkEvent::Written => {
-                        downlinks.push(DownlinkFuture::Running(downlink.wait_on_downlink()))
+                        link_futures.push(LinkFuture::Running(downlink.wait_on_downlink()))
                     }
                     HostedDownlinkEvent::WriterFailed(err) => {
                         error!(error = %err, "A downlink hosted by the agent failed.");
                         debug!(address = %downlink.address(), kind = ?downlink.kind(), "Attempting to reconnect downlink.");
-                        downlinks.push(DownlinkFuture::Reconnecting(downlink.reconnect(
+                        link_futures.push(LinkFuture::Reconnecting(downlink.reconnect(
                             &*context,
                             config.keep_linked_retry,
                             true,
                         )));
                     }
                     HostedDownlinkEvent::WriterTerminated => {
-                        info!("A downlink hosted by the agent stopped writing output.");
-                        downlinks.push(DownlinkFuture::Running(downlink.wait_on_downlink()));
+                        debug!("A downlink hosted by the agent stopped writing output.");
+                        link_futures.push(LinkFuture::Running(downlink.wait_on_downlink()));
                     }
                     HostedDownlinkEvent::HandlerReady { failed } => {
                         if let Some(handler) = downlink.next_event(&item_model) {
@@ -1330,31 +1383,31 @@ where
                         if failed {
                             error!("Reading from a downlink failed.");
                             debug!(address = %downlink.address(), kind = ?downlink.kind(), "Attempting to reconnect downlink.");
-                            downlinks.push(DownlinkFuture::Reconnecting(downlink.reconnect(
+                            link_futures.push(LinkFuture::Reconnecting(downlink.reconnect(
                                 &*context,
                                 config.keep_linked_retry,
                                 true,
                             )));
                         } else {
-                            downlinks.push(DownlinkFuture::Running(downlink.wait_on_downlink()));
+                            link_futures.push(LinkFuture::Running(downlink.wait_on_downlink()));
                         }
                     }
                     HostedDownlinkEvent::ReconnectSucceeded(reconnect) => {
                         reconnect.connect(&mut downlink, &item_model);
-                        downlinks.push(DownlinkFuture::Running(downlink.wait_on_downlink()));
+                        link_futures.push(LinkFuture::Running(downlink.wait_on_downlink()));
                     }
                     HostedDownlinkEvent::ReconnectFailed { error, retry } => {
                         if error.is_fatal() {
                             error!(error = %error, address = %downlink.address(), kind = ?downlink.kind(), "Attempting to reconnect a downlink failed with a fatal error.");
                         } else {
                             error!(error = %error, address = %downlink.address(), kind = ?downlink.kind(), "Attempting to reconnect a downlink failed; attempting again.");
-                            downlinks.push(DownlinkFuture::Reconnecting(
+                            link_futures.push(LinkFuture::Reconnecting(
                                 downlink.reconnect(&*context, retry, false),
                             ));
                         }
                     }
                     HostedDownlinkEvent::Stopped => {
-                        downlinks.push(DownlinkFuture::Reconnecting(downlink.reconnect(
+                        link_futures.push(LinkFuture::Reconnecting(downlink.reconnect(
                             &*context,
                             config.keep_linked_retry,
                             true,
@@ -1364,7 +1417,7 @@ where
                         if retries_expired {
                             error!(address = %downlink.address(), kind = ?downlink.kind(), "A downlink stopped and could not be restarted.");
                         } else {
-                            info!(address = %downlink.address(), kind = ?downlink.kind(), "A downlink stopped and was removed.");
+                            debug!(address = %downlink.address(), kind = ?downlink.kind(), "A downlink stopped and was removed.");
                         }
                     }
                 },
@@ -1378,7 +1431,7 @@ where
                                 let result = run_handler(
                                     &mut ActionContext::new(
                                         &suspended,
-                                        &add_downlink,
+                                        &add_link,
                                         &add_lane,
                                         &mut join_lane_init,
                                         &mut ad_hoc_buffer,
@@ -1399,7 +1452,7 @@ where
                                         break Err(AgentTaskError::UserCodeError(Box::new(e)));
                                     }
                                     Err(error) => {
-                                        info!(
+                                        debug!(
                                             error = %error,
                                             "Incoming frame was rejected by the item."
                                         );
@@ -1431,7 +1484,7 @@ where
                                 let result = run_handler(
                                     &mut ActionContext::new(
                                         &suspended,
-                                        &add_downlink,
+                                        &add_link,
                                         &add_lane,
                                         &mut join_lane_init,
                                         &mut ad_hoc_buffer,
@@ -1452,7 +1505,7 @@ where
                                         break Err(AgentTaskError::UserCodeError(Box::new(e)));
                                     }
                                     Err(error) => {
-                                        info!(
+                                        debug!(
                                             error = %error,
                                             "Incoming frame was rejected by the item."
                                         );
@@ -1528,7 +1581,7 @@ where
         }?;
         // Try to run the `on_stop` handler before we stop.
         let on_stop_handler = lifecycle.on_stop();
-        let discard = |_| {};
+        let discard = (|_| {}, |_| {});
         let add_lane = NoDynLanes;
         match run_handler(
             &mut ActionContext::new(
@@ -1800,43 +1853,8 @@ impl<Context> std::fmt::Debug for DownlinkSpawnRequest<Context> {
     }
 }
 
-impl<Context> DownlinkSpawner<Context> for RefCell<Vec<DownlinkSpawnRequest<Context>>> {
-    fn spawn_downlink(
-        &self,
-        path: Address<Text>,
-        make_channel: BoxDownlinkChannelFactory<Context>,
-        on_done: DownlinkSpawnOnDone<Context>,
-    ) {
-        self.borrow_mut().push(DownlinkSpawnRequest {
-            path,
-            kind: make_channel.kind(),
-            make_channel,
-            on_done,
-        })
-    }
-}
-
-impl<Context, F> DownlinkSpawner<Context> for F
-where
-    F: Fn(DownlinkSpawnRequest<Context>),
-{
-    fn spawn_downlink(
-        &self,
-        path: Address<Text>,
-        make_channel: BoxDownlinkChannelFactory<Context>,
-        on_done: DownlinkSpawnOnDone<Context>,
-    ) {
-        (*self)(DownlinkSpawnRequest {
-            path,
-            kind: make_channel.kind(),
-            make_channel,
-            on_done,
-        })
-    }
-}
-
-/// Unifies events for opening new downlinks and polling existing downlinks for activity.
-enum DownlinksEvent<Context> {
+/// Unifies events for opening new downlinks, registering commanders and polling existing downlinks for activity.
+enum LinksEvent<Context> {
     Opened {
         request: DownlinkSpawnRequest<Context>,
         result: OpenDownlinkResult,
@@ -1845,45 +1863,58 @@ enum DownlinksEvent<Context> {
         downlink: HostedDownlink<Context>,
         event: HostedDownlinkEvent,
     },
+    Registered {
+        request: CommanderRequest<Context>,
+        result: Result<u16, CommanderRegistrationError>,
+    },
 }
 
-/// A future that either opens a new downlink or waits on activity from an open downlink.
-#[pin_project(project = DownlinkFutureProj)]
-enum DownlinkFuture<Context, F1, F2, F3> {
+/// A future that either opens a new downlink, registers a commander or waits on activity from an open downlink.
+#[pin_project(project = LinkFutureProj)]
+enum LinkFuture<Context, F1, F2, F3, F4> {
     Opening(Option<DownlinkSpawnRequest<Context>>, #[pin] F1),
     Running(#[pin] F2),
     Reconnecting(#[pin] F3),
+    Registering(Option<CommanderRequest<Context>>, #[pin] F4),
 }
 
-impl<Context, F1, F2, F3> Future for DownlinkFuture<Context, F1, F2, F3>
+impl<Context, F1, F2, F3, F4> Future for LinkFuture<Context, F1, F2, F3, F4>
 where
     F1: Future<Output = OpenDownlinkResult>,
     F2: Future<Output = (HostedDownlink<Context>, HostedDownlinkEvent)>,
     F3: Future<Output = (HostedDownlink<Context>, HostedDownlinkEvent)>,
+    F4: Future<Output = Result<u16, CommanderRegistrationError>>,
 {
-    type Output = DownlinksEvent<Context>;
+    type Output = LinksEvent<Context>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<Self::Output> {
         match self.project() {
-            DownlinkFutureProj::Opening(request, fut) => {
+            LinkFutureProj::Opening(request, fut) => {
                 let result = ready!(fut.poll(cx));
-                Poll::Ready(DownlinksEvent::Opened {
+                Poll::Ready(LinksEvent::Opened {
                     request: request.take().expect("Polled twice."),
                     result,
                 })
             }
-            DownlinkFutureProj::Running(fut) => {
+            LinkFutureProj::Running(fut) => {
                 let (dl, ev) = ready!(fut.poll(cx));
-                Poll::Ready(DownlinksEvent::Event {
+                Poll::Ready(LinksEvent::Event {
                     downlink: dl,
                     event: ev,
                 })
             }
-            DownlinkFutureProj::Reconnecting(fut) => {
+            LinkFutureProj::Reconnecting(fut) => {
                 let (dl, ev) = ready!(fut.poll(cx));
-                Poll::Ready(DownlinksEvent::Event {
+                Poll::Ready(LinksEvent::Event {
                     downlink: dl,
                     event: ev,
+                })
+            }
+            LinkFutureProj::Registering(request, fut) => {
+                let result = ready!(fut.poll(cx));
+                Poll::Ready(LinksEvent::Registered {
+                    request: request.take().expect("Polled twice."),
+                    result,
                 })
             }
         }
@@ -1937,5 +1968,88 @@ async fn open_with_retry(
     match open_fut.await {
         Ok((tx, rx)) => OpenDownlinkResult::Success(tx, rx),
         Err(err) => OpenDownlinkResult::Failed(err, retry),
+    }
+}
+
+struct CommanderRequest<Context> {
+    path: Address<Text>,
+    on_done: CommanderSpawnOnDone<Context>,
+}
+
+impl<Context> std::fmt::Debug for CommanderRequest<Context> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CommanderRequest")
+            .field("path", &self.path)
+            .field("on_done", &"...")
+            .finish()
+    }
+}
+
+struct LinkRequestCollector<Context> {
+    downlinks: Vec<DownlinkSpawnRequest<Context>>,
+    commanders: Vec<CommanderRequest<Context>>,
+}
+
+impl<Context> Default for LinkRequestCollector<Context> {
+    fn default() -> Self {
+        Self {
+            downlinks: Default::default(),
+            commanders: Default::default(),
+        }
+    }
+}
+
+impl<Context> std::fmt::Debug for LinkRequestCollector<Context> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LinkRequestCollector")
+            .field("downlinks", &self.downlinks)
+            .field("commanders", &self.commanders)
+            .finish()
+    }
+}
+
+impl<Context> LinkSpawner<Context> for RefCell<LinkRequestCollector<Context>> {
+    fn spawn_downlink(
+        &self,
+        path: Address<Text>,
+        make_channel: BoxDownlinkChannelFactory<Context>,
+        on_done: DownlinkSpawnOnDone<Context>,
+    ) {
+        self.borrow_mut().downlinks.push(DownlinkSpawnRequest {
+            path,
+            kind: make_channel.kind(),
+            make_channel,
+            on_done,
+        })
+    }
+
+    fn register_commander(&self, path: Address<Text>, on_done: CommanderSpawnOnDone<Context>) {
+        self.borrow_mut()
+            .commanders
+            .push(CommanderRequest { path, on_done })
+    }
+}
+
+impl<Context, F1, F2> LinkSpawner<Context> for (F1, F2)
+where
+    F1: Fn(DownlinkSpawnRequest<Context>),
+    F2: Fn(CommanderRequest<Context>),
+{
+    fn spawn_downlink(
+        &self,
+        path: Address<Text>,
+        make_channel: BoxDownlinkChannelFactory<Context>,
+        on_done: DownlinkSpawnOnDone<Context>,
+    ) {
+        (self.0)(DownlinkSpawnRequest {
+            path,
+            kind: make_channel.kind(),
+            make_channel,
+            on_done,
+        })
+    }
+
+    fn register_commander(&self, path: Address<Text>, on_done: CommanderSpawnOnDone<Context>) {
+        (self.1)(CommanderRequest { path, on_done })
     }
 }

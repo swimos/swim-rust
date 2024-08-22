@@ -29,16 +29,16 @@ use swimos_api::{
 use swimos_model::Text;
 use swimos_utilities::routing::RouteUri;
 
-use crate::lanes::OpenLane;
 use crate::{
     agent_lifecycle::HandlerContext,
     agent_model::downlink::BoxDownlinkChannelFactory,
     event_handler::{
-        ActionContext, DownlinkSpawnOnDone, DownlinkSpawner, HandlerAction, HandlerFuture,
-        LaneSpawnOnDone, LaneSpawner, Spawner, StepResult,
+        ActionContext, DownlinkSpawnOnDone, HandlerAction, HandlerFuture, LaneSpawnOnDone,
+        LaneSpawner, LinkSpawner, Spawner, StepResult,
     },
     AgentMetadata,
 };
+use crate::{event_handler::CommanderSpawnOnDone, lanes::OpenLane};
 
 pub struct TestAgent;
 
@@ -59,7 +59,7 @@ impl Spawner<TestAgent> for TestSpawner {
     }
 }
 
-impl DownlinkSpawner<TestAgent> for TestSpawner {
+impl LinkSpawner<TestAgent> for TestSpawner {
     fn spawn_downlink(
         &self,
         _path: Address<Text>,
@@ -67,6 +67,10 @@ impl DownlinkSpawner<TestAgent> for TestSpawner {
         _on_done: DownlinkSpawnOnDone<TestAgent>,
     ) {
         panic!("Opening downlinks not supported.");
+    }
+
+    fn register_commander(&self, _path: Address<Text>, _on_done: CommanderSpawnOnDone<TestAgent>) {
+        panic!("Registering commanders not supported.");
     }
 }
 

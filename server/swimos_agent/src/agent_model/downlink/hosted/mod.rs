@@ -182,7 +182,7 @@ mod test_support {
     use crate::{
         agent_model::downlink::BoxDownlinkChannelFactory,
         event_handler::{
-            ActionContext, DownlinkSpawnOnDone, DownlinkSpawner, HandlerFuture,
+            ActionContext, CommanderSpawnOnDone, DownlinkSpawnOnDone, HandlerFuture, LinkSpawner,
             LocalBoxEventHandler, Spawner, StepResult,
         },
         meta::AgentMetadata,
@@ -197,7 +197,7 @@ mod test_support {
         }
     }
 
-    impl<FakeAgent> DownlinkSpawner<FakeAgent> for NoSpawn {
+    impl<FakeAgent> LinkSpawner<FakeAgent> for NoSpawn {
         fn spawn_downlink(
             &self,
             _path: Address<Text>,
@@ -205,6 +205,14 @@ mod test_support {
             _on_done: DownlinkSpawnOnDone<FakeAgent>,
         ) {
             panic!("Opening downlinks not supported.");
+        }
+
+        fn register_commander(
+            &self,
+            _path: Address<Text>,
+            _on_done: CommanderSpawnOnDone<FakeAgent>,
+        ) {
+            panic!("Registering commanders not supported.");
         }
     }
 

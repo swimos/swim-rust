@@ -18,8 +18,8 @@ use std::fmt::Write;
 use bytes::BytesMut;
 use swimos_agent::agent_model::downlink::BoxDownlinkChannelFactory;
 use swimos_agent::event_handler::{
-    ActionContext, DownlinkSpawner, HandlerFuture, LaneSpawnOnDone, LaneSpawner, Spawner,
-    StepResult,
+    ActionContext, LinkSpawner, HandlerFuture, LaneSpawnOnDone, LaneSpawner, Spawner,
+    StepResult, CommanderSpawnOnDone
 };
 use swimos_agent::lanes::LaneItem;
 use swimos_agent::{
@@ -389,7 +389,7 @@ impl Spawner<ConnectorAgent> for NoSpawn {
     }
 }
 
-impl DownlinkSpawner<ConnectorAgent> for NoSpawn {
+impl LinkSpawner<ConnectorAgent> for NoSpawn {
     fn spawn_downlink(
         &self,
         _path: Address<Text>,
@@ -397,6 +397,10 @@ impl DownlinkSpawner<ConnectorAgent> for NoSpawn {
         _on_done: DownlinkSpawnOnDone<ConnectorAgent>,
     ) {
         panic!("Spawning downlinks not supported.");
+    }
+    
+    fn register_commander(&self, _path: Address<Text>, _on_done: CommanderSpawnOnDone<ConnectorAgent>) {
+        panic!("Registering commanders not supported.");
     }
 }
 

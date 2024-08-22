@@ -30,8 +30,8 @@ use crate::{
     config::{MapDownlinkConfig, SimpleDownlinkConfig},
     downlink_lifecycle::{StatefulMapDownlinkLifecycle, StatefulValueDownlinkLifecycle},
     event_handler::{
-        ActionContext, BoxJoinLaneInit, DownlinkSpawnOnDone, DownlinkSpawner, HandlerAction,
-        HandlerFuture, LaneSpawnOnDone, LaneSpawner, Spawner, StepResult,
+        ActionContext, BoxJoinLaneInit, CommanderSpawnOnDone, DownlinkSpawnOnDone, HandlerAction,
+        HandlerFuture, LaneSpawnOnDone, LaneSpawner, LinkSpawner, Spawner, StepResult,
     },
     meta::AgentMetadata,
 };
@@ -57,7 +57,7 @@ impl Spawner<TestAgent> for TestSpawner {
     }
 }
 
-impl DownlinkSpawner<TestAgent> for TestSpawner {
+impl LinkSpawner<TestAgent> for TestSpawner {
     fn spawn_downlink(
         &self,
         path: Address<Text>,
@@ -72,6 +72,10 @@ impl DownlinkSpawner<TestAgent> for TestSpawner {
             make_channel,
             on_done,
         });
+    }
+
+    fn register_commander(&self, _path: Address<Text>, _on_done: CommanderSpawnOnDone<TestAgent>) {
+        panic!("Registering commanders not supported.");
     }
 }
 

@@ -70,8 +70,8 @@ pub use handler_fn::{
     MapUpdateFn, RequestFn0, RequestFn1, TakeFn, UpdateBorrowFn, UpdateFn,
 };
 
-/// Instances of this trait allow [`HandlerAction`]s to request new downlinks to be opened in the agent.
-pub trait DownlinkSpawner<Context> {
+/// Instances of this trait allow [`HandlerAction`]s to request new downlinks and commanders to be opened in the agent.
+pub trait LinkSpawner<Context> {
     /// Request a new downlink be opened in the agent task.
     ///
     /// # Arguments
@@ -84,6 +84,8 @@ pub trait DownlinkSpawner<Context> {
         make_channel: BoxDownlinkChannelFactory<Context>,
         on_done: DownlinkSpawnOnDone<Context>,
     );
+
+    fn register_commander(&self, path: Address<Text>, on_done: CommanderSpawnOnDone<Context>);
 }
 
 type SpawnHandler<Context> = Box<dyn EventHandler<Context> + Send + 'static>;
@@ -95,6 +97,10 @@ pub type LaneSpawnOnDone<Context> =
 #[doc(hidden)]
 pub type DownlinkSpawnOnDone<Context> =
     Box<dyn FnOnce(Result<(), DownlinkRuntimeError>) -> SpawnHandler<Context> + Send + 'static>;
+
+#[doc(hidden)]
+pub type CommanderSpawnOnDone<Context> =
+    Box<dyn FnOnce(u16) -> SpawnHandler<Context> + Send + 'static>;
 
 /// Trait for contexts that can spawn a new lane into the agent task.
 pub trait LaneSpawner<Context> {
@@ -117,7 +123,7 @@ pub trait LaneSpawner<Context> {
 /// implementations and so can only be used from this crate.
 pub struct ActionContext<'a, Context> {
     spawner: &'a dyn Spawner<Context>,
-    downlink: &'a dyn DownlinkSpawner<Context>,
+    downlink: &'a dyn LinkSpawner<Context>,
     lanes: &'a dyn LaneSpawner<Context>,
     join_lane_init: &'a mut HashMap<u64, BoxJoinLaneInit<'static, Context>>,
     ad_hoc_buffer: &'a mut BytesMut,
@@ -132,7 +138,7 @@ impl<'a, Context> Spawner<Context> for ActionContext<'a, Context> {
 impl<'a, Context> ActionContext<'a, Context> {
     pub fn new(
         spawner: &'a dyn Spawner<Context>,
-        downlink: &'a dyn DownlinkSpawner<Context>,
+        downlink: &'a dyn LinkSpawner<Context>,
         lanes: &'a dyn LaneSpawner<Context>,
         join_lane_init: &'a mut HashMap<u64, BoxJoinLaneInit<'static, Context>>,
         ad_hoc_buffer: &'a mut BytesMut,

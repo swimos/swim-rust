@@ -29,7 +29,8 @@ use swimos_utilities::{
 use crate::{
     agent_model::downlink::{BoxDownlinkChannel, BoxDownlinkChannelFactory},
     event_handler::{
-        DownlinkSpawnOnDone, DownlinkSpawner, EventHandler, LaneSpawnOnDone, LaneSpawner,
+        CommanderSpawnOnDone, DownlinkSpawnOnDone, EventHandler, LaneSpawnOnDone, LaneSpawner,
+        LinkSpawner,
     },
 };
 
@@ -124,7 +125,7 @@ impl<Agent> TestDownlinkContext<Agent> {
     }
 }
 
-impl<Agent> DownlinkSpawner<Agent> for TestDownlinkContext<Agent> {
+impl<Agent> LinkSpawner<Agent> for TestDownlinkContext<Agent> {
     fn spawn_downlink(
         &self,
         path: Address<Text>,
@@ -137,6 +138,10 @@ impl<Agent> DownlinkSpawner<Agent> for TestDownlinkContext<Agent> {
             make_channel,
             on_done,
         });
+    }
+
+    fn register_commander(&self, _path: Address<Text>, _on_done: CommanderSpawnOnDone<Agent>) {
+        panic!("Registering commanders not supported.");
     }
 }
 

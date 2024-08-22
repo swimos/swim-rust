@@ -20,8 +20,8 @@ use std::collections::HashMap;
 use std::{convert::Infallible, sync::Arc};
 use swimos_agent::agent_model::downlink::BoxDownlinkChannelFactory;
 use swimos_agent::event_handler::{
-    ActionContext, DownlinkSpawnOnDone, DownlinkSpawner, EventHandler, HandlerAction,
-    HandlerFuture, LaneSpawnOnDone, LaneSpawner, Spawner, StepResult,
+    ActionContext, DownlinkSpawnOnDone, LinkSpawner, EventHandler, HandlerAction,
+    HandlerFuture, LaneSpawnOnDone, LaneSpawner, Spawner, StepResult, CommanderSpawnOnDone
 };
 use swimos_agent::AgentMetadata;
 use swimos_api::address::Address;
@@ -102,7 +102,7 @@ impl Spawner<ConnectorAgent> for TestSpawner {
     }
 }
 
-impl DownlinkSpawner<ConnectorAgent> for TestSpawner {
+impl LinkSpawner<ConnectorAgent> for TestSpawner {
     fn spawn_downlink(
         &self,
         _path: Address<Text>,
@@ -110,6 +110,10 @@ impl DownlinkSpawner<ConnectorAgent> for TestSpawner {
         _on_done: DownlinkSpawnOnDone<ConnectorAgent>,
     ) {
         panic!("Spawning downlinks not supported.");
+    }
+
+    fn register_commander(&self, _path: Address<Text>, _on_done: CommanderSpawnOnDone<ConnectorAgent>) {
+        panic!("Registering commanders not supported.");
     }
 }
 
