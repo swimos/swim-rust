@@ -26,7 +26,7 @@ use swimos_agent::{
 };
 use swimos_utilities::trigger;
 
-use crate::{connector::suspend_connector, error::ConnectorInitError, Connector, ConnectorAgent};
+use crate::{connector::suspend_connector, error::ConnectorInitError, Connector};
 
 /// An [agent lifecycle](swimos_agent::agent_lifecycle::AgentLifecycle) implementation that serves as an adapter for
 /// a [connector](Connector).
@@ -39,26 +39,27 @@ impl<C> ConnectorLifecycle<C> {
     }
 }
 
-impl<C> OnInit<ConnectorAgent> for ConnectorLifecycle<C>
+impl<A, C> OnInit<A> for ConnectorLifecycle<C>
 where
-    C: Connector + Send,
+    C: Connector<A> + Send,
 {
     fn initialize(
         &self,
-        _action_context: &mut ActionContext<ConnectorAgent>,
+        _action_context: &mut ActionContext<A>,
         _meta: AgentMetadata,
-        _context: &ConnectorAgent,
+        _context: &A,
     ) {
     }
 }
 
-impl<C> OnStart<ConnectorAgent> for ConnectorLifecycle<C>
+impl<A, C> OnStart<A> for ConnectorLifecycle<C>
 where
-    C: Connector + Send,
+    C: Connector<A> + Send,
+    A: 'static,
 {
-    fn on_start(&self) -> impl EventHandler<ConnectorAgent> + '_ {
+    fn on_start(&self) -> impl EventHandler<A> + '_ {
         let ConnectorLifecycle(connector) = self;
-        let handler_context: HandlerContext<ConnectorAgent> = HandlerContext::default();
+        let handler_context: HandlerContext<A> = HandlerContext::default();
         let (tx, rx) = trigger::trigger();
         let suspend = handler_context
             .effect(|| connector.create_stream())
@@ -75,18 +76,18 @@ where
     }
 }
 
-impl<C> OnStop<ConnectorAgent> for ConnectorLifecycle<C>
+impl<A, C> OnStop<A> for ConnectorLifecycle<C>
 where
-    C: Connector + Send,
+    C: Connector<A> + Send,
 {
-    fn on_stop(&self) -> impl EventHandler<ConnectorAgent> + '_ {
+    fn on_stop(&self) -> impl EventHandler<A> + '_ {
         self.0.on_stop()
     }
 }
 
-impl<C> ItemEvent<ConnectorAgent> for ConnectorLifecycle<C>
+impl<A, C> ItemEvent<A> for ConnectorLifecycle<C>
 where
-    C: Connector,
+    C: Connector<A>,
 {
     type ItemEventHandler<'a> = UnitHandler
     where
@@ -94,7 +95,7 @@ where
 
     fn item_event<'a>(
         &'a self,
-        _context: &ConnectorAgent,
+        _context: &A,
         _item_name: &str,
     ) -> Option<Self::ItemEventHandler<'a>> {
         None

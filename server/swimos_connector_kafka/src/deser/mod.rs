@@ -32,9 +32,8 @@ use swimos_form::Form;
 use swimos_model::{Blob, Value};
 use swimos_recon::parser::{parse_recognize, AsyncParseError};
 
+use swimos_connector::DeserializationError;
 use uuid::Uuid;
-
-use crate::error::DeserializationError;
 
 /// An uninterpreted view of the components of a Kafka message.
 pub struct MessageView<'a> {

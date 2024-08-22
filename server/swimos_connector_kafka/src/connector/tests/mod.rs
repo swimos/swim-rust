@@ -44,7 +44,7 @@ use swimos_api::{
     },
     error::{AgentRuntimeError, DownlinkRuntimeError, DynamicRegistrationError, OpenStoreError},
 };
-use swimos_connector::ConnectorAgent;
+use swimos_connector::{Deferred, DeserializationError, GenericConnectorAgent};
 use swimos_model::{Item, Value};
 use swimos_recon::print_recon_compact;
 use swimos_utilities::{
@@ -57,9 +57,9 @@ use tokio::time::timeout;
 use crate::{
     connector::{InvalidLanes, MessageSelector},
     deser::{MessageDeserializer, MessageView, ReconDeserializer},
-    error::{DeserializationError, LaneSelectorError},
+    error::LaneSelectorError,
     selector::{
-        BasicSelector, ChainSelector, Deferred, LaneSelector, MapLaneSelector, SlotSelector,
+        BasicSelector, ChainSelector, LaneSelector, MapLaneSelector, SlotSelector,
         ValueLaneSelector,
     },
     MapLaneSpec, ValueLaneSpec,
@@ -70,7 +70,7 @@ use super::Lanes;
 struct LaneRequest {
     name: String,
     is_map: bool,
-    on_done: LaneSpawnOnDone<ConnectorAgent>,
+    on_done: LaneSpawnOnDone<GenericConnectorAgent>,
 }
 
 impl std::fmt::Debug for LaneRequest {
@@ -127,31 +127,31 @@ impl AgentContext for TestContext {
 
 #[derive(Default, Debug)]
 struct TestSpawner {
-    suspended: FuturesUnordered<HandlerFuture<ConnectorAgent>>,
+    suspended: FuturesUnordered<HandlerFuture<GenericConnectorAgent>>,
     lane_requests: RefCell<Vec<LaneRequest>>,
 }
 
-impl Spawner<ConnectorAgent> for TestSpawner {
-    fn spawn_suspend(&self, fut: HandlerFuture<ConnectorAgent>) {
+impl Spawner<GenericConnectorAgent> for TestSpawner {
+    fn spawn_suspend(&self, fut: HandlerFuture<GenericConnectorAgent>) {
         self.suspended.push(fut);
     }
 }
 
-impl DownlinkSpawner<ConnectorAgent> for TestSpawner {
+impl DownlinkSpawner<GenericConnectorAgent> for TestSpawner {
     fn spawn_downlink(
         &self,
-        _dl_channel: BoxDownlinkChannel<ConnectorAgent>,
+        _dl_channel: BoxDownlinkChannel<GenericConnectorAgent>,
     ) -> Result<(), DownlinkRuntimeError> {
         panic!("Opening downlinks not supported.");
     }
 }
 
-impl LaneSpawner<ConnectorAgent> for TestSpawner {
+impl LaneSpawner<GenericConnectorAgent> for TestSpawner {
     fn spawn_warp_lane(
         &self,
         name: &str,
         kind: WarpLaneKind,
-        on_done: LaneSpawnOnDone<ConnectorAgent>,
+        on_done: LaneSpawnOnDone<GenericConnectorAgent>,
     ) -> Result<(), DynamicRegistrationError> {
         let is_map = match kind {
             WarpLaneKind::Map => true,
@@ -181,8 +181,8 @@ fn make_meta<'a>(
     AgentMetadata::new(uri, route_params, &CONFIG)
 }
 
-async fn run_handler_with_futures<H: EventHandler<ConnectorAgent>>(
-    agent: &ConnectorAgent,
+async fn run_handler_with_futures<H: EventHandler<GenericConnectorAgent>>(
+    agent: &GenericConnectorAgent,
     handler: H,
 ) -> HashSet<u64> {
     let mut spawner = TestSpawner::default();
@@ -227,8 +227,8 @@ async fn run_handler_with_futures<H: EventHandler<ConnectorAgent>>(
     modified
 }
 
-fn run_handler<H: EventHandler<ConnectorAgent>>(
-    agent: &ConnectorAgent,
+fn run_handler<H: EventHandler<GenericConnectorAgent>>(
+    agent: &GenericConnectorAgent,
     spawner: &TestSpawner,
     mut handler: H,
 ) -> HashSet<u64> {
@@ -339,7 +339,7 @@ async fn open_lanes() {
     let (tx, rx) = trigger::trigger();
 
     let handler = lanes.open_lanes(tx);
-    let agent = ConnectorAgent::default();
+    let agent = GenericConnectorAgent::default();
 
     let handler_task = run_handler_with_futures(&agent, handler);
 
@@ -357,8 +357,8 @@ async fn open_lanes() {
     assert_eq!(agent.map_lanes(), expected_map_lanes);
 }
 
-fn setup_agent() -> (ConnectorAgent, HashMap<String, u64>) {
-    let agent = ConnectorAgent::default();
+fn setup_agent() -> (GenericConnectorAgent, HashMap<String, u64>) {
+    let agent = GenericConnectorAgent::default();
     let mut ids = HashMap::new();
     let id1 = agent
         .register_dynamic_item(
@@ -394,8 +394,14 @@ impl From<Value> for TestDeferred {
 }
 
 impl Deferred for TestDeferred {
+    type Out = Value;
+
     fn get(&mut self) -> Result<&Value, DeserializationError> {
         Ok(&self.value)
+    }
+
+    fn take(self) -> Result<Self::Out, DeserializationError> {
+        Ok(self.value.clone())
     }
 }
 

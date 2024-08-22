@@ -45,23 +45,23 @@ use tracing::{error, info};
 type GenericValueLane = ValueLane<Value>;
 type GenericMapLane = MapLane<Value, Value>;
 
-/// A generic agent type to be used by implementations of [`crate::Connector`]. By default, a [`ConnectorAgent`] does
+/// A generic agent type to be used by implementations of [`crate::Connector`]. By default, a [`GenericConnectorAgent`] does
 /// not define any lanes or stores and these most be opened dynamically by the agent lifecycle (which is determined by
 /// the [`crate::Connector`] implementation). Only value and map lanes are supported and an attempt to open any other
 /// kind of lane or store will result in the agent terminating with an error.
 #[derive(Default, Debug)]
-pub struct ConnectorAgent {
+pub struct GenericConnectorAgent {
     id_counter: Cell<u64>,
     value_lanes: RefCell<HashMap<String, GenericValueLane>>,
     map_lanes: RefCell<HashMap<String, GenericMapLane>>,
 }
 
-type ValueHandler = DecodeAndSelectSet<ConnectorAgent, Value, ValueLaneSelectorFn>;
-type MapHandler = DecodeAndSelectApply<ConnectorAgent, Value, Value, MapLaneSelectorFn>;
-type ValueSync = ValueLaneSelectSync<ConnectorAgent, Value, ValueLaneSelectorFn>;
-type MapSync = MapLaneSelectSync<ConnectorAgent, Value, Value, MapLaneSelectorFn>;
+type ValueHandler = DecodeAndSelectSet<GenericConnectorAgent, Value, ValueLaneSelectorFn>;
+type MapHandler = DecodeAndSelectApply<GenericConnectorAgent, Value, Value, MapLaneSelectorFn>;
+type ValueSync = ValueLaneSelectSync<GenericConnectorAgent, Value, ValueLaneSelectorFn>;
+type MapSync = MapLaneSelectSync<GenericConnectorAgent, Value, Value, MapLaneSelectorFn>;
 
-impl ConnectorAgent {
+impl GenericConnectorAgent {
     /// Get a set of the names of the value lanes that have been registered.
     pub fn value_lanes(&self) -> HashSet<String> {
         self.value_lanes.borrow().keys().cloned().collect()
@@ -122,7 +122,7 @@ impl<'a, L> Deref for LaneRef<'a, L> {
     }
 }
 
-impl AgentSpec for ConnectorAgent {
+impl AgentSpec for GenericConnectorAgent {
     type ValCommandHandler = ValueHandler;
 
     type MapCommandHandler = MapHandler;
@@ -292,7 +292,7 @@ impl<'a, L> Selector for LaneSelector<'a, L> {
     }
 }
 
-/// An implementation of [`SelectorFn`] that will attempt to select a [`ValueLane`] from a [`ConnectorAgent`].
+/// An implementation of [`SelectorFn`] that will attempt to select a [`ValueLane`] from a [`GenericConnectorAgent`].
 #[derive(Debug)]
 pub struct ValueLaneSelectorFn {
     name: String,
@@ -306,17 +306,20 @@ impl ValueLaneSelectorFn {
     }
 }
 
-impl SelectorFn<ConnectorAgent> for ValueLaneSelectorFn {
+impl SelectorFn<GenericConnectorAgent> for ValueLaneSelectorFn {
     type Target = GenericValueLane;
 
-    fn selector(self, context: &ConnectorAgent) -> impl Selector<Target = Self::Target> + '_ {
-        let ConnectorAgent { value_lanes, .. } = context;
+    fn selector(
+        self,
+        context: &GenericConnectorAgent,
+    ) -> impl Selector<Target = Self::Target> + '_ {
+        let GenericConnectorAgent { value_lanes, .. } = context;
         let map = value_lanes.borrow();
         LaneSelector::new(map, self.name)
     }
 }
 
-/// An implementation of [`SelectorFn`] that will attempt to select a [`MapLane`] from a [`ConnectorAgent`].
+/// An implementation of [`SelectorFn`] that will attempt to select a [`MapLane`] from a [`GenericConnectorAgent`].
 #[derive(Debug)]
 pub struct MapLaneSelectorFn {
     name: String,
@@ -330,11 +333,14 @@ impl MapLaneSelectorFn {
     }
 }
 
-impl SelectorFn<ConnectorAgent> for MapLaneSelectorFn {
+impl SelectorFn<GenericConnectorAgent> for MapLaneSelectorFn {
     type Target = GenericMapLane;
 
-    fn selector(self, context: &ConnectorAgent) -> impl Selector<Target = Self::Target> + '_ {
-        let ConnectorAgent { map_lanes, .. } = context;
+    fn selector(
+        self,
+        context: &GenericConnectorAgent,
+    ) -> impl Selector<Target = Self::Target> + '_ {
+        let GenericConnectorAgent { map_lanes, .. } = context;
         let map = map_lanes.borrow();
         LaneSelector::new(map, self.name)
     }

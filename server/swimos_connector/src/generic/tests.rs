@@ -40,13 +40,13 @@ use tokio_util::codec::Decoder;
 use uuid::Uuid;
 
 use crate::test_support::{make_meta, make_uri, TestContext};
-use crate::ConnectorAgent;
+use crate::GenericConnectorAgent;
 
 use super::{GenericMapLane, GenericValueLane};
 
 #[test]
 fn register_value_lane() {
-    let agent = ConnectorAgent::default();
+    let agent = GenericConnectorAgent::default();
     let descriptor = ItemDescriptor::WarpLane {
         kind: WarpLaneKind::Value,
         flags: ItemFlags::TRANSIENT,
@@ -61,7 +61,7 @@ fn register_value_lane() {
 
 #[test]
 fn register_map_lane() {
-    let agent = ConnectorAgent::default();
+    let agent = GenericConnectorAgent::default();
     let descriptor = ItemDescriptor::WarpLane {
         kind: WarpLaneKind::Map,
         flags: ItemFlags::TRANSIENT,
@@ -76,7 +76,7 @@ fn register_map_lane() {
 
 #[test]
 fn register_multiple_lanes() {
-    let agent = ConnectorAgent::default();
+    let agent = GenericConnectorAgent::default();
     let descriptor1 = ItemDescriptor::WarpLane {
         kind: WarpLaneKind::Value,
         flags: ItemFlags::TRANSIENT,
@@ -150,7 +150,7 @@ fn unsupported_lane_registrations() {
     ];
 
     for kind in bad_warp {
-        let agent = ConnectorAgent::default();
+        let agent = GenericConnectorAgent::default();
         let descriptor = ItemDescriptor::WarpLane {
             kind,
             flags: ItemFlags::TRANSIENT,
@@ -164,7 +164,7 @@ fn unsupported_lane_registrations() {
     }
 
     for kind in [StoreKind::Value, StoreKind::Map] {
-        let agent = ConnectorAgent::default();
+        let agent = GenericConnectorAgent::default();
         let descriptor = ItemDescriptor::Store {
             kind,
             flags: ItemFlags::empty(),
@@ -177,7 +177,7 @@ fn unsupported_lane_registrations() {
         );
     }
 
-    let agent = ConnectorAgent::default();
+    let agent = GenericConnectorAgent::default();
     let descriptor = ItemDescriptor::Http;
     let result = agent.register_dynamic_item("http", descriptor);
     assert_eq!(result, Err(DynamicRegistrationError::HttpLanesUnsupported));
@@ -185,7 +185,7 @@ fn unsupported_lane_registrations() {
 
 #[test]
 fn duplicate_lane_registrations() {
-    let agent = ConnectorAgent::default();
+    let agent = GenericConnectorAgent::default();
     let value_descriptor = ItemDescriptor::WarpLane {
         kind: WarpLaneKind::Value,
         flags: ItemFlags::TRANSIENT,
@@ -215,7 +215,7 @@ fn duplicate_lane_registrations() {
     );
 }
 
-fn init(agent: &ConnectorAgent) -> (u64, u64) {
+fn init(agent: &GenericConnectorAgent) -> (u64, u64) {
     let value_descriptor = ItemDescriptor::WarpLane {
         kind: WarpLaneKind::Value,
         flags: ItemFlags::TRANSIENT,
@@ -269,13 +269,13 @@ fn from_buffer_map(buffer: &mut BytesMut) -> LaneResponse<MapOperation<Value, Va
         .expect("Incomplete.")
 }
 
-fn with_value_lane(agent: &ConnectorAgent, f: impl FnOnce(&GenericValueLane)) {
+fn with_value_lane(agent: &GenericConnectorAgent, f: impl FnOnce(&GenericValueLane)) {
     let guard = agent.value_lanes.borrow();
     let lane = guard.get("value_lane").expect("Lane not registered.");
     f(lane);
 }
 
-fn with_map_lane(agent: &ConnectorAgent, f: impl FnOnce(&GenericMapLane)) {
+fn with_map_lane(agent: &GenericConnectorAgent, f: impl FnOnce(&GenericMapLane)) {
     let guard = agent.map_lanes.borrow();
     let lane = guard.get("map_lane").expect("Lane not registered.");
     f(lane);
@@ -283,7 +283,7 @@ fn with_map_lane(agent: &ConnectorAgent, f: impl FnOnce(&GenericMapLane)) {
 
 #[test]
 fn value_lane_command() {
-    let agent = ConnectorAgent::default();
+    let agent = GenericConnectorAgent::default();
     let (val_id, _) = init(&agent);
     let handler = agent
         .on_value_command("value_lane", to_buffer(Value::from(45)))
@@ -307,7 +307,7 @@ fn value_lane_command() {
 #[test]
 fn value_lane_sync() {
     let sync_id = Uuid::from_u128(7474);
-    let agent = ConnectorAgent::default();
+    let agent = GenericConnectorAgent::default();
     let (val_id, _) = init(&agent);
     let handler = agent.on_sync("value_lane", sync_id).expect("No handler.");
     let ids = run_handler(&agent, handler);
@@ -329,7 +329,7 @@ fn value_lane_sync() {
 
 #[test]
 fn map_lane_command() {
-    let agent = ConnectorAgent::default();
+    let agent = GenericConnectorAgent::default();
     let (_, map_id) = init(&agent);
     let handler = agent
         .on_map_command(
@@ -365,7 +365,7 @@ fn map_lane_command() {
 
 #[test]
 fn map_lane_sync() {
-    let agent = ConnectorAgent::default();
+    let agent = GenericConnectorAgent::default();
     let sync_id = Uuid::from_u128(663883846);
     let (_, map_id) = init(&agent);
     let handler = agent.on_sync("map_lane", sync_id).expect("No handler.");
@@ -383,35 +383,35 @@ fn map_lane_sync() {
 
 struct NoSpawn;
 
-impl Spawner<ConnectorAgent> for NoSpawn {
-    fn spawn_suspend(&self, _fut: HandlerFuture<ConnectorAgent>) {
+impl Spawner<GenericConnectorAgent> for NoSpawn {
+    fn spawn_suspend(&self, _fut: HandlerFuture<GenericConnectorAgent>) {
         panic!("Spawning futures not supported.");
     }
 }
 
-impl DownlinkSpawner<ConnectorAgent> for NoSpawn {
+impl DownlinkSpawner<GenericConnectorAgent> for NoSpawn {
     fn spawn_downlink(
         &self,
-        _dl_channel: BoxDownlinkChannel<ConnectorAgent>,
+        _dl_channel: BoxDownlinkChannel<GenericConnectorAgent>,
     ) -> Result<(), DownlinkRuntimeError> {
         panic!("Spawning downlinks not supported.");
     }
 }
 
-impl LaneSpawner<ConnectorAgent> for NoSpawn {
+impl LaneSpawner<GenericConnectorAgent> for NoSpawn {
     fn spawn_warp_lane(
         &self,
         _name: &str,
         _kind: WarpLaneKind,
-        _on_done: LaneSpawnOnDone<ConnectorAgent>,
+        _on_done: LaneSpawnOnDone<GenericConnectorAgent>,
     ) -> Result<(), DynamicRegistrationError> {
         panic!("Spawning lanes not supported.");
     }
 }
 
-fn run_handler<H>(agent: &ConnectorAgent, mut handler: H) -> HashSet<u64>
+fn run_handler<H>(agent: &GenericConnectorAgent, mut handler: H) -> HashSet<u64>
 where
-    H: EventHandler<ConnectorAgent>,
+    H: EventHandler<GenericConnectorAgent>,
 {
     let uri = make_uri();
     let route_params = HashMap::new();

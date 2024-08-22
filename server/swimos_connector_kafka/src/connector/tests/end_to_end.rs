@@ -17,7 +17,7 @@ use crate::{
     MapLaneSpec, ValueLaneSpec,
 };
 use futures::{future::join, TryStreamExt};
-use swimos_connector::{Connector, ConnectorAgent};
+use swimos_connector::{Connector, GenericConnectorAgent};
 use swimos_utilities::trigger;
 
 use crate::connector::tests::{run_handler, run_handler_with_futures, TestSpawner};
@@ -53,7 +53,7 @@ fn make_config() -> KafkaConnectorConfiguration {
 async fn drive_connector() {
     let config = make_config();
     let connector = KafkaConnector::for_config(config);
-    let agent = ConnectorAgent::default();
+    let agent = GenericConnectorAgent::default();
 
     let (tx, rx) = trigger::trigger();
 

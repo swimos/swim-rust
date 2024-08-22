@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use swimos_connector::DeserializationError;
 use swimos_model::{Attr, Item, Value};
 
 use crate::deser::MessagePart;
-use crate::error::DeserializationError;
 use crate::selector::{
     BadSelector, InvalidLaneSpec, MessageField, SelectorComponent, SelectorDescriptor,
 };
@@ -335,10 +335,16 @@ impl TestDeferred {
 }
 
 impl Deferred for TestDeferred {
+    type Out = Value;
+
     fn get(&mut self) -> Result<&Value, DeserializationError> {
         let TestDeferred { value, called } = self;
         *called = true;
         Ok(value)
+    }
+
+    fn take(self) -> Result<Self::Out, DeserializationError> {
+        Ok(self.value)
     }
 }
 

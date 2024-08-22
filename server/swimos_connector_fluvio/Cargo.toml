@@ -1,0 +1,35 @@
+[package]
+name = "swimos_connector_fluvio"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+description = "SwimOS Connector for Fluvio"
+repository = "https://github.com/swimos/swim-rust/tree/main/server/swimos_connector_fluvio"
+
+[features]
+default = []
+
+[dependencies]
+swimos = { workspace = true, features = ["server", "agent"] }
+swimos_utilities = { workspace = true, features = ["trigger"] }
+futures = { workspace = true }
+swimos_api = { workspace = true }
+swimos_model = { workspace = true }
+swimos_agent = { workspace = true }
+thiserror = { workspace = true }
+swimos_connector = { workspace = true }
+fluvio = { workspace = true }
+
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread"] }
+example-util = { path = "../../example_apps/example_util" }
+rand = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+tracing = { workspace = true }
+serde_json = { workspace = true }
+
+[[example]]
+name = "example"

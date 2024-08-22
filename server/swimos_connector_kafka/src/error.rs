@@ -15,21 +15,21 @@
 use std::num::ParseIntError;
 
 use rdkafka::error::KafkaError;
+use swimos_connector::DeserializationError;
 use thiserror::Error;
-
-/// An error type that boxes any type of error that could be returned by a message deserializer.
-#[derive(Debug, Error)]
-#[error(transparent)]
-pub struct DeserializationError(Box<dyn std::error::Error + Send + 'static>);
-
-impl DeserializationError {
-    pub fn new<E>(error: E) -> Self
-    where
-        E: std::error::Error + Send + 'static,
-    {
-        DeserializationError(Box::new(error))
-    }
-}
+// /// An error type that boxes any type of error that could be returned by a message deserializer.
+// #[derive(Debug, Error)]
+// #[error(transparent)]
+// pub struct DeserializationError(Box<dyn std::error::Error + Send + 'static>);
+//
+// impl DeserializationError {
+//     pub fn new<E>(error: E) -> Self
+//     where
+//         E: std::error::Error + Send + 'static,
+//     {
+//         DeserializationError(Box::new(error))
+//     }
+// }
 
 /// An error type that can be produced when attempting to load a deserializer.
 #[derive(Debug, Error)]
@@ -104,7 +104,8 @@ pub enum BadSelector {
     #[error("Selector components cannot be empty.")]
     EmptyComponent,
     /// The root of a selector must be a valid component of a Kafka message.
-    #[error("Invalid root selector (must be one of '$key' or '$payload' with an optional index or '$topic').")]
+    #[error("Invalid root selector (must be one of '$key' or '$payload' with an optional index or '$topic')."
+    )]
     InvalidRoot,
     /// A component of the descriptor did not describe a valid selector.
     #[error(

@@ -39,46 +39,46 @@ use thiserror::Error;
 
 use crate::{
     test_support::{make_meta, make_uri, TestContext},
-    Connector, ConnectorAgent, ConnectorInitError, ConnectorLifecycle, ConnectorStream,
+    Connector, ConnectorInitError, ConnectorLifecycle, ConnectorStream, GenericConnectorAgent,
 };
 
 #[derive(Default)]
 struct TestSpawner {
-    futures: FuturesUnordered<HandlerFuture<ConnectorAgent>>,
+    futures: FuturesUnordered<HandlerFuture<GenericConnectorAgent>>,
 }
 
-impl Spawner<ConnectorAgent> for TestSpawner {
-    fn spawn_suspend(&self, fut: HandlerFuture<ConnectorAgent>) {
+impl Spawner<GenericConnectorAgent> for TestSpawner {
+    fn spawn_suspend(&self, fut: HandlerFuture<GenericConnectorAgent>) {
         self.futures.push(fut);
     }
 }
 
-impl DownlinkSpawner<ConnectorAgent> for TestSpawner {
+impl DownlinkSpawner<GenericConnectorAgent> for TestSpawner {
     fn spawn_downlink(
         &self,
-        _dl_channel: BoxDownlinkChannel<ConnectorAgent>,
+        _dl_channel: BoxDownlinkChannel<GenericConnectorAgent>,
     ) -> Result<(), DownlinkRuntimeError> {
         panic!("Spawning downlinks not supported.");
     }
 }
 
-impl LaneSpawner<ConnectorAgent> for TestSpawner {
+impl LaneSpawner<GenericConnectorAgent> for TestSpawner {
     fn spawn_warp_lane(
         &self,
         _name: &str,
         _kind: WarpLaneKind,
-        _on_done: LaneSpawnOnDone<ConnectorAgent>,
+        _on_done: LaneSpawnOnDone<GenericConnectorAgent>,
     ) -> Result<(), DynamicRegistrationError> {
         panic!("Spawning lanes not supported.");
     }
 }
 
 async fn run_handle_with_futs<H>(
-    agent: &ConnectorAgent,
+    agent: &GenericConnectorAgent,
     handler: H,
 ) -> Result<(), Box<dyn std::error::Error + Send>>
 where
-    H: EventHandler<ConnectorAgent>,
+    H: EventHandler<GenericConnectorAgent>,
 {
     let mut spawner = TestSpawner::default();
     run_handler(&spawner, agent, handler)?;
@@ -95,11 +95,11 @@ where
 
 fn run_handler<H>(
     spawner: &TestSpawner,
-    agent: &ConnectorAgent,
+    agent: &GenericConnectorAgent,
     mut handler: H,
 ) -> Result<(), Box<dyn std::error::Error + Send>>
 where
-    H: EventHandler<ConnectorAgent>,
+    H: EventHandler<GenericConnectorAgent>,
 {
     let uri = make_uri();
     let route_params = HashMap::new();
@@ -169,24 +169,27 @@ struct TestHandler {
     event: Event,
 }
 
-impl HandlerAction<ConnectorAgent> for TestHandler {
+impl HandlerAction<GenericConnectorAgent> for TestHandler {
     type Completion = ();
 
     fn step(
         &mut self,
-        _action_context: &mut ActionContext<ConnectorAgent>,
+        _action_context: &mut ActionContext<GenericConnectorAgent>,
         _meta: AgentMetadata,
-        _context: &ConnectorAgent,
+        _context: &GenericConnectorAgent,
     ) -> StepResult<Self::Completion> {
         self.events.lock().push(self.event);
         StepResult::done(())
     }
 }
 
-impl Connector for TestConnector {
+impl Connector<GenericConnectorAgent> for TestConnector {
     type StreamError = TestError;
 
-    fn create_stream(&self) -> Result<impl ConnectorStream<Self::StreamError>, Self::StreamError> {
+    fn create_stream(
+        &self,
+    ) -> Result<impl ConnectorStream<GenericConnectorAgent, Self::StreamError>, Self::StreamError>
+    {
         if self.failure == Some(Failure::StreamInit) {
             Err(TestError)
         } else {
@@ -206,7 +209,10 @@ impl Connector for TestConnector {
         }
     }
 
-    fn on_start(&self, init_complete: trigger::Sender) -> impl EventHandler<ConnectorAgent> + '_ {
+    fn on_start(
+        &self,
+        init_complete: trigger::Sender,
+    ) -> impl EventHandler<GenericConnectorAgent> + '_ {
         let drop_trigger = self.failure == Some(Failure::DropTrigger);
         self.make_handler(Event::Start)
             .followed_by(SideEffect::from(move || {
@@ -218,7 +224,7 @@ impl Connector for TestConnector {
             }))
     }
 
-    fn on_stop(&self) -> impl EventHandler<ConnectorAgent> + '_ {
+    fn on_stop(&self) -> impl EventHandler<GenericConnectorAgent> + '_ {
         self.make_handler(Event::Stop)
     }
 }
@@ -228,7 +234,7 @@ async fn connector_lifecycle_start() {
     let connector = TestConnector::default();
     let lifecycle = ConnectorLifecycle::new(connector.clone());
     let handler = lifecycle.on_start();
-    let agent = ConnectorAgent::default();
+    let agent = GenericConnectorAgent::default();
     assert!(run_handle_with_futs(&agent, handler).await.is_ok());
 
     let events = connector.inner.lock().clone();
@@ -249,7 +255,7 @@ async fn connector_lifecycle_stop() {
     let connector = TestConnector::default();
     let lifecycle = ConnectorLifecycle::new(connector.clone());
     let handler = lifecycle.on_stop();
-    let agent = ConnectorAgent::default();
+    let agent = GenericConnectorAgent::default();
     assert!(run_handle_with_futs(&agent, handler).await.is_ok());
 
     let events = connector.inner.lock().clone();
@@ -265,7 +271,7 @@ async fn connector_lifecycle_drop_trigger() {
 
     let lifecycle = ConnectorLifecycle::new(connector.clone());
     let handler = lifecycle.on_start();
-    let agent = ConnectorAgent::default();
+    let agent = GenericConnectorAgent::default();
     let result = run_handle_with_futs(&agent, handler).await;
 
     let err = result.expect_err("Should fail.");
@@ -282,7 +288,7 @@ async fn connector_lifecycle_fail_init() {
 
     let lifecycle = ConnectorLifecycle::new(connector.clone());
     let handler = lifecycle.on_start();
-    let agent = ConnectorAgent::default();
+    let agent = GenericConnectorAgent::default();
     let result = run_handle_with_futs(&agent, handler).await;
 
     let err = result.expect_err("Should fail.");
@@ -298,7 +304,7 @@ async fn connector_lifecycle_fail_stream() {
 
     let lifecycle = ConnectorLifecycle::new(connector.clone());
     let handler = lifecycle.on_start();
-    let agent = ConnectorAgent::default();
+    let agent = GenericConnectorAgent::default();
     let result = run_handle_with_futs(&agent, handler).await;
 
     let err = result.expect_err("Should fail.");

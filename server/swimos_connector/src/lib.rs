@@ -18,10 +18,14 @@ mod generic;
 mod lifecycle;
 mod route;
 
+mod deserialization;
+pub mod simple;
 #[cfg(test)]
 mod test_support;
-pub use connector::{Connector, ConnectorHandler, ConnectorStream};
+
+pub use connector::{Connector, ConnectorStream};
+pub use deserialization::{Computed, Deferred, DeserializationError};
 pub use error::ConnectorInitError;
-pub use generic::{ConnectorAgent, MapLaneSelectorFn, ValueLaneSelectorFn};
+pub use generic::{GenericConnectorAgent, MapLaneSelectorFn, ValueLaneSelectorFn};
 pub use lifecycle::ConnectorLifecycle;
 pub use route::ConnectorModel;

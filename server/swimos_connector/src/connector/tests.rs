@@ -28,7 +28,7 @@ use swimos_api::agent::WarpLaneKind;
 use swimos_api::error::{DownlinkRuntimeError, DynamicRegistrationError};
 
 use crate::test_support::{make_meta, make_uri, TestContext};
-use crate::{ConnectorAgent, ConnectorStream};
+use crate::{ConnectorStream, GenericConnectorAgent};
 
 #[derive(Debug)]
 struct Handler {
@@ -45,21 +45,23 @@ impl Handler {
     }
 }
 
-impl HandlerAction<ConnectorAgent> for Handler {
+impl HandlerAction<GenericConnectorAgent> for Handler {
     type Completion = ();
 
     fn step(
         &mut self,
-        _action_context: &mut ActionContext<ConnectorAgent>,
+        _action_context: &mut ActionContext<GenericConnectorAgent>,
         _meta: AgentMetadata,
-        _context: &ConnectorAgent,
+        _context: &GenericConnectorAgent,
     ) -> StepResult<Self::Completion> {
         self.collector.lock().push(self.n);
         StepResult::done(())
     }
 }
 
-fn make_stream(state: &Arc<Mutex<Vec<usize>>>) -> impl ConnectorStream<Infallible> + 'static {
+fn make_stream(
+    state: &Arc<Mutex<Vec<usize>>>,
+) -> impl ConnectorStream<GenericConnectorAgent, Infallible> + 'static {
     let handlers = vec![
         Ok(Handler::new(state, 1)),
         Ok(Handler::new(state, 2)),
@@ -72,7 +74,7 @@ fn make_stream(state: &Arc<Mutex<Vec<usize>>>) -> impl ConnectorStream<Infallibl
 async fn drive_connector_stream() {
     let state = Arc::new(Mutex::new(vec![]));
     let mut spawner = TestSpawner::default();
-    let agent = ConnectorAgent::default();
+    let agent = GenericConnectorAgent::default();
     let handler = super::suspend_connector(make_stream(&state));
 
     run_handler(&spawner, &agent, handler);
@@ -91,38 +93,38 @@ async fn drive_connector_stream() {
 
 #[derive(Default)]
 struct TestSpawner {
-    futures: FuturesUnordered<HandlerFuture<ConnectorAgent>>,
+    futures: FuturesUnordered<HandlerFuture<GenericConnectorAgent>>,
 }
 
-impl Spawner<ConnectorAgent> for TestSpawner {
-    fn spawn_suspend(&self, fut: HandlerFuture<ConnectorAgent>) {
+impl Spawner<GenericConnectorAgent> for TestSpawner {
+    fn spawn_suspend(&self, fut: HandlerFuture<GenericConnectorAgent>) {
         self.futures.push(fut);
     }
 }
 
-impl DownlinkSpawner<ConnectorAgent> for TestSpawner {
+impl DownlinkSpawner<GenericConnectorAgent> for TestSpawner {
     fn spawn_downlink(
         &self,
-        _dl_channel: BoxDownlinkChannel<ConnectorAgent>,
+        _dl_channel: BoxDownlinkChannel<GenericConnectorAgent>,
     ) -> Result<(), DownlinkRuntimeError> {
         panic!("Spawning downlinks not supported.");
     }
 }
 
-impl LaneSpawner<ConnectorAgent> for TestSpawner {
+impl LaneSpawner<GenericConnectorAgent> for TestSpawner {
     fn spawn_warp_lane(
         &self,
         _name: &str,
         _kind: WarpLaneKind,
-        _on_done: LaneSpawnOnDone<ConnectorAgent>,
+        _on_done: LaneSpawnOnDone<GenericConnectorAgent>,
     ) -> Result<(), DynamicRegistrationError> {
         panic!("Spawning lanes not supported.");
     }
 }
 
-fn run_handler<H>(spawner: &TestSpawner, agent: &ConnectorAgent, mut handler: H)
+fn run_handler<H>(spawner: &TestSpawner, agent: &GenericConnectorAgent, mut handler: H)
 where
-    H: EventHandler<ConnectorAgent>,
+    H: EventHandler<GenericConnectorAgent>,
 {
     let uri = make_uri();
     let route_params = HashMap::new();

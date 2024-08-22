@@ -22,7 +22,7 @@ use futures::{future::join, TryStreamExt};
 use parking_lot::Mutex;
 use rand::{rngs::ThreadRng, Rng};
 use rdkafka::error::KafkaError;
-use swimos_connector::{Connector, ConnectorAgent};
+use swimos_connector::{Connector, GenericConnectorAgent};
 use swimos_model::{Item, Value};
 use swimos_recon::print_recon_compact;
 use swimos_utilities::trigger;
@@ -302,7 +302,7 @@ struct MessageChecker {
 }
 
 impl MessageChecker {
-    fn check_message(&mut self, agent: &mut ConnectorAgent, message: &MockMessage) {
+    fn check_message(&mut self, agent: &mut GenericConnectorAgent, message: &MockMessage) {
         let MessageChecker { expected_map } = self;
         let MockMessage {
             key,
@@ -384,7 +384,7 @@ async fn connector_on_start() {
         let (tx, rx) = trigger::trigger();
         let handler = connector.on_start(tx);
 
-        let agent = ConnectorAgent::default();
+        let agent = GenericConnectorAgent::default();
         let start_task = run_handler_with_futures(&agent, handler);
 
         let (modified, result) = join(start_task, rx).await;
@@ -414,7 +414,7 @@ async fn connector_stream() {
         let (tx, rx) = trigger::trigger();
         let handler = connector.on_start(tx);
 
-        let mut agent = ConnectorAgent::default();
+        let mut agent = GenericConnectorAgent::default();
         let start_task = run_handler_with_futures(&agent, handler);
 
         let (_, result) = join(start_task, rx).await;
@@ -448,7 +448,7 @@ async fn failed_connector_stream_start() {
         let (tx, rx) = trigger::trigger();
         let handler = connector.on_start(tx);
 
-        let agent = ConnectorAgent::default();
+        let agent = GenericConnectorAgent::default();
         let start_task = run_handler_with_futures(&agent, handler);
 
         let (_, result) = join(start_task, rx).await;

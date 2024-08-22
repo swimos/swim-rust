@@ -16,25 +16,29 @@ use std::collections::HashMap;
 
 use futures::future::BoxFuture;
 use swimos_agent::agent_model::AgentModel;
+use swimos_agent::agent_model::AgentSpec;
 use swimos_api::agent::{Agent, AgentConfig, AgentContext, AgentInitResult};
 use swimos_utilities::routing::RouteUri;
 
-use crate::{Connector, ConnectorAgent, ConnectorLifecycle};
+use crate::{Connector, ConnectorLifecycle};
 
 /// A convenience type to register a [connector](Connector) as an agent route.
-pub struct ConnectorModel<C> {
+pub struct ConnectorModel<C, F> {
     connector: C,
+    fac: F,
 }
 
-impl<C> ConnectorModel<C> {
-    pub fn new(connector: C) -> Self {
-        ConnectorModel { connector }
+impl<C, F> ConnectorModel<C, F> {
+    pub fn new(connector: C, fac: F) -> Self {
+        ConnectorModel { connector, fac }
     }
 }
 
-impl<C> Agent for ConnectorModel<C>
+impl<A, C, F> Agent for ConnectorModel<C, F>
 where
-    C: Connector + Clone + Send + Sync + 'static,
+    C: Connector<A> + Clone + Send + Sync + 'static,
+    F: Fn() -> A + Copy + Send + Sync + 'static,
+    A: AgentSpec + 'static,
 {
     fn run(
         &self,
@@ -44,7 +48,7 @@ where
         context: Box<dyn AgentContext + Send>,
     ) -> BoxFuture<'static, AgentInitResult> {
         let lifecycle = ConnectorLifecycle::new(self.connector.clone());
-        let agent_model = AgentModel::new(ConnectorAgent::default, lifecycle);
+        let agent_model = AgentModel::new(self.fac, lifecycle);
         agent_model.run(route, route_params, config, context)
     }
 }

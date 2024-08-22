@@ -20,14 +20,16 @@ use std::{fmt::Debug, sync::OnceLock};
 use frunk::Coprod;
 use regex::Regex;
 use swimos_agent::event_handler::{Discard, HandlerActionExt};
-use swimos_connector::{ConnectorAgent, MapLaneSelectorFn, ValueLaneSelectorFn};
+use swimos_connector::{
+    Deferred, DeserializationError, GenericConnectorAgent, MapLaneSelectorFn, ValueLaneSelectorFn,
+};
 use swimos_model::{Attr, Item, Text, Value};
 use tracing::{error, trace};
 
 use crate::{
     config::{MapLaneSpec, ValueLaneSpec},
     deser::MessagePart,
-    error::{DeserializationError, LaneSelectorError},
+    error::LaneSelectorError,
     BadSelector, InvalidLaneSpec,
 };
 use swimos_agent::lanes::{MapLaneSelectRemove, MapLaneSelectUpdate, ValueLaneSelectSet};
@@ -49,12 +51,12 @@ impl From<MessagePart> for MessageField {
     }
 }
 
-/// A lazy loader fro a component of a Kafka messages. This ensures that deserializers are only run if a selector
-/// refers to a component.
-pub trait Deferred {
-    /// Get the deserialized component (computing it on the first call).
-    fn get(&mut self) -> Result<&Value, DeserializationError>;
-}
+// /// A lazy loader fro a component of a Kafka messages. This ensures that deserializers are only run if a selector
+// /// refers to a component.
+// pub trait Deferred {
+//     /// Get the deserialized component (computing it on the first call).
+//     fn get(&mut self) -> Result<&Value, DeserializationError>;
+// }
 
 /// A selector attempts to choose some sub-component of a [`Value`], matching against a pattern, returning
 /// nothing if the pattern does not match.
@@ -62,36 +64,36 @@ pub trait Selector: Debug {
     /// Attempt to select some sub-component of the provided [`Value`].
     fn select<'a>(&self, value: &'a Value) -> Option<&'a Value>;
 }
-
-/// Canonical implementation of [`Deferred`].
-pub struct Computed<F> {
-    inner: Option<Value>,
-    f: F,
-}
-
-impl<F> Computed<F>
-where
-    F: Fn() -> Result<Value, DeserializationError>,
-{
-    pub fn new(f: F) -> Self {
-        Computed { inner: None, f }
-    }
-}
-
-impl<F> Deferred for Computed<F>
-where
-    F: Fn() -> Result<Value, DeserializationError>,
-{
-    fn get(&mut self) -> Result<&Value, DeserializationError> {
-        let Computed { inner, f } = self;
-        if let Some(v) = inner {
-            Ok(v)
-        } else {
-            *inner = Some(f()?);
-            Ok(inner.as_ref().expect("Should be defined."))
-        }
-    }
-}
+//
+// /// Canonical implementation of [`Deferred`].
+// pub struct Computed<F> {
+//     inner: Option<Value>,
+//     f: F,
+// }
+//
+// impl<F> Computed<F>
+// where
+//     F: Fn() -> Result<Value, DeserializationError>,
+// {
+//     pub fn new(f: F) -> Self {
+//         Computed { inner: None, f }
+//     }
+// }
+//
+// impl<F> Deferred for Computed<F>
+// where
+//     F: Fn() -> Result<Value, DeserializationError>,
+// {
+//     fn get(&mut self) -> Result<&Value, DeserializationError> {
+//         let Computed { inner, f } = self;
+//         if let Some(v) = inner {
+//             Ok(v)
+//         } else {
+//             *inner = Some(f()?);
+//             Ok(inner.as_ref().expect("Should be defined."))
+//         }
+//     }
+// }
 
 /// A lane selector attempts to extract a value from a Kafka message to use as a new value for a value lane
 /// or an update for a map lane.
@@ -129,8 +131,8 @@ impl LaneSelector {
         payload: &'a mut V,
     ) -> Result<Option<&'a Value>, DeserializationError>
     where
-        K: Deferred + 'a,
-        V: Deferred + 'a,
+        K: Deferred<Out = Value> + 'a,
+        V: Deferred<Out = Value> + 'a,
     {
         Ok(match self {
             LaneSelector::Topic => Some(topic),
@@ -592,7 +594,7 @@ impl TryFrom<&MapLaneSpec> for MapLaneSelector {
 }
 
 type GenericValueLaneSet =
-    Discard<Option<ValueLaneSelectSet<ConnectorAgent, Value, ValueLaneSelectorFn>>>;
+    Discard<Option<ValueLaneSelectSet<GenericConnectorAgent, Value, ValueLaneSelectorFn>>>;
 
 impl ValueLaneSelector {
     pub fn name(&self) -> &str {
@@ -606,8 +608,8 @@ impl ValueLaneSelector {
         value: &mut V,
     ) -> Result<GenericValueLaneSet, LaneSelectorError>
     where
-        K: Deferred,
-        V: Deferred,
+        K: Deferred<Out = Value>,
+        V: Deferred<Out = Value>,
     {
         let ValueLaneSelector {
             name,
@@ -634,8 +636,8 @@ impl ValueLaneSelector {
     }
 }
 
-type MapLaneUpdate = MapLaneSelectUpdate<ConnectorAgent, Value, Value, MapLaneSelectorFn>;
-type MapLaneRemove = MapLaneSelectRemove<ConnectorAgent, Value, Value, MapLaneSelectorFn>;
+type MapLaneUpdate = MapLaneSelectUpdate<GenericConnectorAgent, Value, Value, MapLaneSelectorFn>;
+type MapLaneRemove = MapLaneSelectRemove<GenericConnectorAgent, Value, Value, MapLaneSelectorFn>;
 type MapLaneOp = Coprod!(MapLaneUpdate, MapLaneRemove);
 
 type GenericMapLaneOp = Discard<Option<MapLaneOp>>;
@@ -652,8 +654,8 @@ impl MapLaneSelector {
         value: &mut V,
     ) -> Result<GenericMapLaneOp, LaneSelectorError>
     where
-        K: Deferred,
-        V: Deferred,
+        K: Deferred<Out = Value>,
+        V: Deferred<Out = Value>,
     {
         let MapLaneSelector {
             name,
