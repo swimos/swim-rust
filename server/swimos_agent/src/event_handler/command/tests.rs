@@ -15,7 +15,7 @@
 use std::collections::HashMap;
 
 use bytes::BytesMut;
-use swimos_agent_protocol::encoding::ad_hoc::AdHocCommandDecoder;
+use swimos_agent_protocol::encoding::ad_hoc::CommandMessageDecoder;
 use swimos_agent_protocol::CommandMessage;
 use swimos_api::{address::Address, agent::AgentConfig};
 use swimos_utilities::{encoding::BytesStr, routing::RouteUri};
@@ -80,7 +80,7 @@ fn write_command_to_buffer() {
 }
 
 fn decode_message(buffer: &mut BytesMut) -> CommandMessage<BytesStr, i32> {
-    let mut decoder = AdHocCommandDecoder::<BytesStr, i32>::default();
+    let mut decoder = CommandMessageDecoder::<BytesStr, i32>::default();
     let cmd = decoder
         .decode(buffer)
         .expect("Decoding failed.")

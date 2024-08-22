@@ -52,7 +52,7 @@ use tokio_util::codec::{Decoder, FramedRead, FramedWrite};
 use uuid::Uuid;
 
 use super::{
-    external_links_task, AdHocOutput, AdHocSender, LinksTaskConfig, LinksTaskState, PendingWrites,
+    external_links_task, CommandOutput, CmdChannelWriter, LinksTaskConfig, LinksTaskState, PendingWrites,
     ReportFailed,
 };
 
@@ -513,7 +513,7 @@ async fn drop_output_on_timeout() {
 
 #[test]
 fn output_replace_writer_no_data() {
-    let mut output = super::AdHocOutput::new(ID, RetryStrategy::none());
+    let mut output = super::CommandOutput::new(ID, RetryStrategy::none());
     assert!(output.write().is_none());
 
     check_no_data(&mut output);
@@ -522,12 +522,12 @@ fn output_replace_writer_no_data() {
 #[tokio::test]
 async fn output_replace_writer_pending_record() {
     let (tx, rx) = byte_channel::byte_channel(BUFFER_SIZE);
-    let mut output = external_links::AdHocOutput::new(ID, RetryStrategy::none());
+    let mut output = external_links::CommandOutput::new(ID, RetryStrategy::none());
 
-    output.append(RelativeAddress::text("/node", "lane"), b"content", true);
+    output.append(&RelativeAddress::text("/node", "lane"), b"content", true);
     assert!(output.write().is_none());
 
-    let sender = external_links::AdHocSender::new(tx);
+    let sender = external_links::CmdChannelWriter::new(tx);
     output.replace_writer(sender);
 
     let fut = output.write().expect("Writer should be scheduled.");
@@ -550,16 +550,16 @@ async fn output_replace_writer_pending_record() {
     check_no_data(&mut output);
 }
 
-fn check_no_data(output: &mut AdHocOutput) {
+fn check_no_data(output: &mut CommandOutput) {
     let (tx, _rx) = byte_channel::byte_channel(BUFFER_SIZE);
-    let sender = super::AdHocSender::new(tx);
+    let sender = super::CmdChannelWriter::new(tx);
     output.replace_writer(sender);
     assert!(output.write().is_none());
 }
 
 async fn run_write_fut<Fut>(f: Fut, rx: ByteReader) -> Vec<RequestMessage<BytesStr, Bytes>>
 where
-    Fut: Future<Output = Result<AdHocSender, std::io::Error>>,
+    Fut: Future<Output = Result<CmdChannelWriter, std::io::Error>>,
 {
     let write = async move {
         let writer = f.await.expect("Write failed");
@@ -575,14 +575,14 @@ where
 #[tokio::test]
 async fn output_overwrite_record() {
     let (tx, rx) = byte_channel::byte_channel(BUFFER_SIZE);
-    let mut output = external_links::AdHocOutput::new(ID, RetryStrategy::none());
+    let mut output = external_links::CommandOutput::new(ID, RetryStrategy::none());
 
-    output.append(RelativeAddress::text("/node", "lane"), b"content1", true);
+    output.append(&RelativeAddress::text("/node", "lane"), b"content1", true);
     assert!(output.write().is_none());
-    output.append(RelativeAddress::text("/node", "lane"), b"content2", true);
+    output.append(&RelativeAddress::text("/node", "lane"), b"content2", true);
     assert!(output.write().is_none());
 
-    let sender = external_links::AdHocSender::new(tx);
+    let sender = external_links::CmdChannelWriter::new(tx);
     output.replace_writer(sender);
 
     let fut = output.write().expect("Writer should be scheduled.");
@@ -608,16 +608,16 @@ async fn output_overwrite_record() {
 #[tokio::test]
 async fn output_queue_records() {
     let (tx, rx) = byte_channel::byte_channel(BUFFER_SIZE);
-    let mut output = external_links::AdHocOutput::new(ID, RetryStrategy::none());
+    let mut output = external_links::CommandOutput::new(ID, RetryStrategy::none());
 
-    output.append(RelativeAddress::text("/node", "lane"), b"content1", false);
+    output.append(&RelativeAddress::text("/node", "lane"), b"content1", false);
     assert!(output.write().is_none());
-    output.append(RelativeAddress::text("/node", "lane"), b"content2", false);
+    output.append(&RelativeAddress::text("/node", "lane"), b"content2", false);
     assert!(output.write().is_none());
-    output.append(RelativeAddress::text("/node", "lane"), b"content3", false);
+    output.append(&RelativeAddress::text("/node", "lane"), b"content3", false);
     assert!(output.write().is_none());
 
-    let sender = external_links::AdHocSender::new(tx);
+    let sender = external_links::CmdChannelWriter::new(tx);
     output.replace_writer(sender);
 
     let fut = output.write().expect("Writer should be scheduled.");
@@ -676,16 +676,16 @@ async fn output_queue_records() {
 #[tokio::test]
 async fn output_multiple_targets() {
     let (tx, rx) = byte_channel::byte_channel(BUFFER_SIZE);
-    let mut output = external_links::AdHocOutput::new(ID, RetryStrategy::none());
+    let mut output = external_links::CommandOutput::new(ID, RetryStrategy::none());
 
-    output.append(RelativeAddress::text("/node", "lane"), b"content1", true);
+    output.append(&RelativeAddress::text("/node", "lane"), b"content1", true);
     assert!(output.write().is_none());
-    output.append(RelativeAddress::text("/node", "lane2"), b"content2", true);
+    output.append(&RelativeAddress::text("/node", "lane2"), b"content2", true);
     assert!(output.write().is_none());
-    output.append(RelativeAddress::text("/node2", "lane"), b"content3", true);
+    output.append(&RelativeAddress::text("/node2", "lane"), b"content3", true);
     assert!(output.write().is_none());
 
-    let sender = external_links::AdHocSender::new(tx);
+    let sender = external_links::CmdChannelWriter::new(tx);
     output.replace_writer(sender);
 
     let fut = output.write().expect("Writer should be scheduled.");
@@ -746,7 +746,7 @@ async fn output_never_times_out_pending_write() {
     let (tx, _rx) = byte_channel::byte_channel(BUFFER_SIZE);
 
     let timeout = Duration::from_secs(30);
-    let mut output = external_links::AdHocOutput::new(ID, RetryStrategy::none());
+    let mut output = external_links::CommandOutput::new(ID, RetryStrategy::none());
 
     //New output that has never written.
 
@@ -755,10 +755,10 @@ async fn output_never_times_out_pending_write() {
     tokio::time::advance(timeout + Duration::from_secs(1)).await;
     assert!(!output.timed_out(timeout));
 
-    let sender = external_links::AdHocSender::new(tx);
+    let sender = external_links::CmdChannelWriter::new(tx);
     output.replace_writer(sender);
 
-    output.append(RelativeAddress::text("/node", "lane"), b"content", true);
+    output.append(&RelativeAddress::text("/node", "lane"), b"content", true);
 
     //Output with pending write.
 
@@ -776,9 +776,9 @@ async fn output_times_out() {
     let (tx, _rx) = byte_channel::byte_channel(BUFFER_SIZE);
 
     let timeout = Duration::from_secs(30);
-    let mut output = external_links::AdHocOutput::new(ID, RetryStrategy::none());
+    let mut output = external_links::CommandOutput::new(ID, RetryStrategy::none());
 
-    let sender = external_links::AdHocSender::new(tx);
+    let sender = external_links::CmdChannelWriter::new(tx);
     output.replace_writer(sender);
 
     //New output that has never written.
@@ -789,14 +789,14 @@ async fn output_times_out() {
 
     //Output with pending write.
 
-    output.append(RelativeAddress::text("/node", "lane"), b"content", true);
+    output.append(&RelativeAddress::text("/node", "lane"), b"content", true);
     assert!(!output.timed_out(timeout));
 
     let fut = output.write().expect("Write should be staged.");
     drop(fut);
 
     let (tx, _rx) = byte_channel::byte_channel(BUFFER_SIZE);
-    let sender = external_links::AdHocSender::new(tx);
+    let sender = external_links::CmdChannelWriter::new(tx);
     output.replace_writer(sender);
 
     assert!(!output.timed_out(timeout));

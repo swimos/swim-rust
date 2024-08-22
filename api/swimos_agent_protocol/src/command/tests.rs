@@ -17,7 +17,7 @@ use swimos_api::address::Address;
 use tokio_util::codec::{Decoder, Encoder};
 
 use crate::{
-    command::{RawAdHocCommandDecoder, RawCommandMessageEncoder},
+    command::{RawCommandMessageDecoder, RawCommandMessageEncoder},
     CommandMessageTarget,
 };
 
@@ -26,7 +26,7 @@ use super::CommandMessage;
 fn round_trip(message: CommandMessage<&str, &[u8]>) -> CommandMessage<String, BytesMut> {
     let mut buffer = BytesMut::new();
     let mut encoder = RawCommandMessageEncoder::default();
-    let mut decoder = RawAdHocCommandDecoder::<String>::default();
+    let mut decoder = RawCommandMessageDecoder::<String>::default();
 
     assert!(encoder.encode(message, &mut buffer).is_ok());
 
@@ -49,7 +49,7 @@ fn round_trip2(
 ) {
     let mut buffer = BytesMut::new();
     let mut encoder = RawCommandMessageEncoder::default();
-    let mut decoder = RawAdHocCommandDecoder::<String>::default();
+    let mut decoder = RawCommandMessageDecoder::<String>::default();
 
     assert!(encoder.encode(message1, &mut buffer).is_ok());
     assert!(encoder.encode(message2, &mut buffer).is_ok());
@@ -89,7 +89,7 @@ fn header_len(msg: &CommandMessage<&str, &[u8]>) -> usize {
 fn round_trip_partial(message: CommandMessage<&str, &[u8]>) -> CommandMessage<String, BytesMut> {
     let mut buffer = BytesMut::new();
     let mut encoder = RawCommandMessageEncoder::default();
-    let mut decoder = RawAdHocCommandDecoder::<String>::default();
+    let mut decoder = RawCommandMessageDecoder::<String>::default();
 
     let header_len = header_len(&message);
     assert!(encoder.encode(message, &mut buffer).is_ok());

@@ -287,11 +287,11 @@ impl<S: AsRef<str>, T: AsRef<[u8]>> Encoder<CommandMessage<S, T>> for RawCommand
     }
 }
 
-pub struct AdHocCommandDecoder<S, T: RecognizerReadable> {
+pub struct CommandMessageDecoder<S, T: RecognizerReadable> {
     inner: CommandDecoder<S, WithLenRecognizerDecoder<T::Rec>>,
 }
 
-impl<S, T: RecognizerReadable> Default for AdHocCommandDecoder<S, T> {
+impl<S, T: RecognizerReadable> Default for CommandMessageDecoder<S, T> {
     fn default() -> Self {
         Self {
             inner: CommandDecoder {
@@ -302,7 +302,7 @@ impl<S, T: RecognizerReadable> Default for AdHocCommandDecoder<S, T> {
     }
 }
 
-impl<S, T> Decoder for AdHocCommandDecoder<S, T>
+impl<S, T> Decoder for CommandMessageDecoder<S, T>
 where
     S: TryFromUtf8Bytes + Debug,
     T: RecognizerReadable,
@@ -317,11 +317,11 @@ where
 }
 
 #[derive(Debug)]
-pub struct RawAdHocCommandDecoder<S> {
+pub struct RawCommandMessageDecoder<S> {
     inner: CommandDecoder<S, WithLengthBytesCodec>,
 }
 
-impl<S> Default for RawAdHocCommandDecoder<S> {
+impl<S> Default for RawCommandMessageDecoder<S> {
     fn default() -> Self {
         Self {
             inner: Default::default(),
@@ -329,7 +329,7 @@ impl<S> Default for RawAdHocCommandDecoder<S> {
     }
 }
 
-impl<S> Decoder for RawAdHocCommandDecoder<S>
+impl<S> Decoder for RawCommandMessageDecoder<S>
 where
     S: TryFromUtf8Bytes + std::fmt::Debug,
 {

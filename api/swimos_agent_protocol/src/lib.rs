@@ -102,7 +102,7 @@ pub mod encoding {
     /// command to an arbitrary lane endpoint.
     pub mod ad_hoc {
         pub use crate::command::{
-            AdHocCommandDecoder, CommandMessageEncoder, RawAdHocCommandDecoder,
+            CommandMessageDecoder, CommandMessageEncoder, RawCommandMessageDecoder,
             RawCommandMessageEncoder,
         };
     }
