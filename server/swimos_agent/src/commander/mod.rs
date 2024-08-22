@@ -14,7 +14,9 @@
 
 use std::marker::PhantomData;
 
+use swimos_agent_protocol::CommandMessageTarget;
 use swimos_api::address::Address;
+use swimos_form::write::StructuralWritable;
 use swimos_model::Text;
 
 use crate::{
@@ -33,6 +35,20 @@ impl<Context> Commander<Context> {
             _type: PhantomData,
             id,
         }
+    }
+
+    pub fn send<T>(&self, body: T) -> SendCommandById<T>
+    where
+        T: StructuralWritable,
+    {
+        SendCommandById::new(self.id, body, true)
+    }
+
+    pub fn send_queued<T>(&self, body: T) -> SendCommandById<T>
+    where
+        T: StructuralWritable,
+    {
+        SendCommandById::new(self.id, body, false)
     }
 }
 
@@ -72,6 +88,49 @@ where
                 let commander = Commander::new(id);
                 on_done(commander)
             });
+            StepResult::done(())
+        } else {
+            StepResult::after_done()
+        }
+    }
+}
+
+pub struct SendCommandById<T> {
+    id: u16,
+    body: Option<T>,
+    overwrite_permitted: bool,
+}
+
+impl<T> SendCommandById<T> {
+    fn new(id: u16, body: T, overwrite_permitted: bool) -> Self {
+        SendCommandById {
+            id,
+            body: Some(body),
+            overwrite_permitted,
+        }
+    }
+}
+
+impl<T: StructuralWritable, Context> HandlerAction<Context> for SendCommandById<T> {
+    type Completion = ();
+
+    fn step(
+        &mut self,
+        action_context: &mut ActionContext<Context>,
+        _meta: AgentMetadata,
+        _context: &Context,
+    ) -> StepResult<Self::Completion> {
+        let SendCommandById {
+            id,
+            body,
+            overwrite_permitted,
+        } = self;
+        if let Some(body) = body.take() {
+            action_context.send_command::<&str, T>(
+                CommandMessageTarget::Registered(*id),
+                body,
+                *overwrite_permitted,
+            );
             StepResult::done(())
         } else {
             StepResult::after_done()

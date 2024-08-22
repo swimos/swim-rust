@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use futures::FutureExt;
+use swimos_agent_protocol::CommandMessageTarget;
 use swimos_api::{address::Address, agent::WarpLaneKind, error::LaneSpawnError};
 use swimos_model::Text;
 use tokio::sync::mpsc;
@@ -195,7 +196,11 @@ impl HandlerAction<TestAgent> for LifecycleHandler {
                             action_context.spawn_suspend(fut.boxed());
                         } else {
                             let address = Address::new(Some(AD_HOC_HOST), AD_HOC_NODE, AD_HOC_LANE);
-                            action_context.send_command(address, "content", true);
+                            action_context.send_command(
+                                CommandMessageTarget::Addressed(address),
+                                "content",
+                                true,
+                            );
                         }
                     }
                     HTTP_LANE => {

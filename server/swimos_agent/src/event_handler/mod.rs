@@ -21,7 +21,9 @@ use std::{
 use bytes::BytesMut;
 use frunk::{coproduct::CNil, Coproduct};
 use static_assertions::assert_obj_safe;
-use swimos_agent_protocol::{encoding::ad_hoc::CommandMessageEncoder, CommandMessage};
+use swimos_agent_protocol::{
+    encoding::ad_hoc::CommandMessageEncoder, CommandMessage, CommandMessageTarget,
+};
 use swimos_api::{
     address::Address,
     agent::WarpLaneKind,
@@ -238,17 +240,17 @@ impl<'a, Context> ActionContext<'a, Context> {
         self.lanes.spawn_warp_lane(name, kind, Box::new(f))
     }
 
-    /// Send an ad-hoc command message to a remote lane.
+    /// Send a command message to a remote lane.
     ///
     /// # Arguments
-    /// * `address` - The address of the remote lane.
+    /// * `target` - Address or registered ID for the target endpoint.
     /// * `command` - The body of the command message.
     /// * `overwrite_permitted` - Configures back-pressure relief for this message. If true, and the messages has not
     /// been sent before another message is send, it will be overwritten and never sent.
     #[doc(hidden)]
     pub(crate) fn send_command<S, T>(
         &mut self,
-        address: Address<S>,
+        target: CommandMessageTarget<S>,
         command: T,
         overwrite_permitted: bool,
     ) where
@@ -257,7 +259,7 @@ impl<'a, Context> ActionContext<'a, Context> {
     {
         let ActionContext { ad_hoc_buffer, .. } = self;
         let mut encoder = CommandMessageEncoder::default();
-        let cmd = CommandMessage::ad_hoc(address, command, overwrite_permitted);
+        let cmd = CommandMessage::new(target, command, overwrite_permitted);
         encoder
             .encode(cmd, ad_hoc_buffer)
             .expect("Encoding should be infallible.")
