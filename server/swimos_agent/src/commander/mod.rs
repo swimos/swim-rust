@@ -24,6 +24,8 @@ use crate::{
     AgentMetadata,
 };
 
+/// A handler to send multiple command messages to the same lane. This is more efficient than sending
+/// ad hoc messages as it does not need to encode the complete remote address with each message sent.
 pub struct Commander<Context> {
     _type: PhantomData<fn(&Context)>,
     id: u16,
@@ -37,6 +39,12 @@ impl<Context> Commander<Context> {
         }
     }
 
+    /// Send a command message to the lane to which this commander is pointed. If another message
+    /// is sent, to the same lane, from this agent, before that command has been dispatched, it will
+    /// be overwritten and discarded.
+    ///
+    /// # Arguments
+    /// * `body` - The body of the message.
     pub fn send<T>(&self, body: T) -> SendCommandById<T>
     where
         T: StructuralWritable,
@@ -44,6 +52,11 @@ impl<Context> Commander<Context> {
         SendCommandById::new(self.id, body, true)
     }
 
+    /// Send a command message to the lane to which this commander is pointed. If another message
+    /// is sent, to the same lane, from this agent, both messages will be sent.
+    ///
+    /// # Arguments
+    /// * `body` - The body of the message.
     pub fn send_queued<T>(&self, body: T) -> SendCommandById<T>
     where
         T: StructuralWritable,
@@ -52,6 +65,7 @@ impl<Context> Commander<Context> {
     }
 }
 
+#[doc(hidden)]
 pub struct RegisterCommander {
     address: Option<Address<Text>>,
 }
@@ -85,6 +99,8 @@ impl<Context> HandlerAction<Context> for RegisterCommander {
     }
 }
 
+/// A [handler action](HandlerAction) to send a command to a lane that has been registered with
+/// the runtime to be identifiable by an integer ID. Thus is produced by the methods on a [`Commander`].
 pub struct SendCommandById<T> {
     id: u16,
     body: Option<T>,
