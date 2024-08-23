@@ -19,7 +19,7 @@ use bytes::BytesMut;
 use swimos_agent::agent_model::downlink::BoxDownlinkChannelFactory;
 use swimos_agent::event_handler::{
     ActionContext, LinkSpawner, HandlerFuture, LaneSpawnOnDone, LaneSpawner, Spawner,
-    StepResult, CommanderSpawnOnDone
+    StepResult
 };
 use swimos_agent::lanes::LaneItem;
 use swimos_agent::{
@@ -30,6 +30,7 @@ use swimos_agent::{
 use swimos_agent_protocol::encoding::lane::{MapLaneResponseDecoder, ValueLaneResponseDecoder};
 use swimos_agent_protocol::{LaneResponse, MapMessage, MapOperation};
 use swimos_api::address::Address;
+use swimos_api::error::CommanderRegistrationError;
 use swimos_api::{
     agent::{StoreKind, WarpLaneKind},
     error::DynamicRegistrationError,
@@ -399,7 +400,7 @@ impl LinkSpawner<ConnectorAgent> for NoSpawn {
         panic!("Spawning downlinks not supported.");
     }
     
-    fn register_commander(&self, _path: Address<Text>, _on_done: CommanderSpawnOnDone<ConnectorAgent>) {
+    fn register_commander(&self, _path: Address<Text>) -> Result<u16, CommanderRegistrationError> {
         panic!("Registering commanders not supported.");
     }
 }

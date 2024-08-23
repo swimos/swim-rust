@@ -20,7 +20,7 @@ use parking_lot::Mutex;
 use swimos_api::{
     address::Address,
     agent::{AgentConfig, WarpLaneKind},
-    error::DynamicRegistrationError,
+    error::{CommanderRegistrationError, DynamicRegistrationError},
 };
 use swimos_model::Text;
 use swimos_utilities::routing::RouteUri;
@@ -30,8 +30,8 @@ use crate::{
     config::{MapDownlinkConfig, SimpleDownlinkConfig},
     downlink_lifecycle::{StatefulMapDownlinkLifecycle, StatefulValueDownlinkLifecycle},
     event_handler::{
-        ActionContext, BoxJoinLaneInit, CommanderSpawnOnDone, DownlinkSpawnOnDone, HandlerAction,
-        HandlerFuture, LaneSpawnOnDone, LaneSpawner, LinkSpawner, Spawner, StepResult,
+        ActionContext, BoxJoinLaneInit, DownlinkSpawnOnDone, HandlerAction, HandlerFuture,
+        LaneSpawnOnDone, LaneSpawner, LinkSpawner, Spawner, StepResult,
     },
     meta::AgentMetadata,
 };
@@ -74,7 +74,7 @@ impl LinkSpawner<TestAgent> for TestSpawner {
         });
     }
 
-    fn register_commander(&self, _path: Address<Text>, _on_done: CommanderSpawnOnDone<TestAgent>) {
+    fn register_commander(&self, _path: Address<Text>) -> Result<u16, CommanderRegistrationError> {
         panic!("Registering commanders not supported.");
     }
 }

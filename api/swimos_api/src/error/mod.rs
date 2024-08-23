@@ -20,6 +20,7 @@ use std::{error::Error, sync::Arc};
 use swimos_form::read::ReadError;
 use swimos_model::Text;
 use swimos_recon::parser::AsyncParseError;
+use swimos_utilities::trigger::TriggerError;
 use swimos_utilities::{errors::Recoverable, routing::UnapplyError, trigger::promise};
 use thiserror::Error;
 use tokio::sync::{mpsc, oneshot, watch};
@@ -119,8 +120,8 @@ impl<T> From<mpsc::error::SendError<T>> for CommanderRegistrationError {
     }
 }
 
-impl From<oneshot::error::RecvError> for CommanderRegistrationError {
-    fn from(_: oneshot::error::RecvError) -> Self {
+impl From<TriggerError> for CommanderRegistrationError {
+    fn from(_: TriggerError) -> Self {
         CommanderRegistrationError::RuntimeError(AgentRuntimeError::Terminated)
     }
 }

@@ -24,7 +24,7 @@ use swimos_agent_protocol::CommandMessage;
 use swimos_agent_protocol::{encoding::ad_hoc::RawCommandMessageDecoder, CommandMessageTarget};
 use swimos_api::{
     address::{Address, RelativeAddress},
-    error::{AgentRuntimeError, CommanderRegistrationError, DownlinkRuntimeError},
+    error::{AgentRuntimeError, DownlinkRuntimeError},
 };
 use swimos_messages::protocol::{RawRequestMessageEncoder, RequestMessage};
 use swimos_model::Text;
@@ -360,52 +360,56 @@ pub async fn external_links_task<F: ReportFailed>(
     let mut commander_ids = CommanderIds::default();
 
     loop {
-        let event = if let Some(rx) = reader.as_mut() {
-            tokio::select! {
-                biased;
-                maybe_req = open_requests.recv() => {
-                    if let Some(request) = maybe_req {
-                        LinksTaskEvent::Request(request)
-                    } else {
-                        debug!(identity = %identity, "Stopping after the request channel terminated.");
-                        break;
+        let event = match reader.as_mut() {
+            // Don't read from the command stream while we are waiting for an ID to be registered.
+            Some(rx) if !commander_ids.has_pending() => {
+                tokio::select! {
+                    biased;
+                    maybe_req = open_requests.recv() => {
+                        if let Some(request) = maybe_req {
+                            LinksTaskEvent::Request(request)
+                        } else {
+                            debug!(identity = %identity, "Stopping after the request channel terminated.");
+                            break;
+                        }
                     }
+                    maybe_result = pending.next(), if !pending.is_empty() => {
+                        if let Some(result) = maybe_result {
+                            result
+                        } else {
+                            continue;
+                        }
+                    },
+                    maybe_msg = rx.next() => {
+                        if let Some(Ok(msg)) = maybe_msg {
+                            LinksTaskEvent::Command(msg)
+                        } else {
+                            debug!(identity = %identity, "The agent dropped its ad hoc command channel.");
+                            reader = None;
+                            continue;
+                        }
+                    },
                 }
-                maybe_result = pending.next(), if !pending.is_empty() => {
-                    if let Some(result) = maybe_result {
-                        result
-                    } else {
-                        continue;
-                    }
-                },
-                maybe_msg = rx.next() => {
-                    if let Some(Ok(msg)) = maybe_msg {
-                        LinksTaskEvent::Command(msg)
-                    } else {
-                        debug!(identity = %identity, "The agent dropped its ad hoc command channel.");
-                        reader = None;
-                        continue;
-                    }
-                },
             }
-        } else {
-            tokio::select! {
-                biased;
-                maybe_req = open_requests.recv() => {
-                    if let Some(request) = maybe_req {
-                        LinksTaskEvent::Request(request)
-                    } else {
-                        debug!(identity = %identity, "Stopping after the request channel terminated.");
-                        break;
+            _ => {
+                tokio::select! {
+                    biased;
+                    maybe_req = open_requests.recv() => {
+                        if let Some(request) = maybe_req {
+                            LinksTaskEvent::Request(request)
+                        } else {
+                            debug!(identity = %identity, "Stopping after the request channel terminated.");
+                            break;
+                        }
                     }
+                    maybe_result = pending.next(), if !pending.is_empty() => {
+                        if let Some(result) = maybe_result {
+                            result
+                        } else {
+                            continue;
+                        }
+                    },
                 }
-                maybe_result = pending.next(), if !pending.is_empty() => {
-                    if let Some(result) = maybe_result {
-                        result
-                    } else {
-                        continue;
-                    }
-                },
             }
         };
 
@@ -425,13 +429,35 @@ pub async fn external_links_task<F: ReportFailed>(
                 CommanderRegistrationRequest {
                     remote,
                     address,
+                    id,
                     promise,
                 },
             )) => {
                 trace!(identify = %identity, remote = ?remote, address = %address, "Handling a commander endpoint registration request for an agent.");
                 let endpoint = CommanderEndpoint::new(remote, address);
-                let id_result = commander_ids.id_for(endpoint);
-                if promise.send(id_result).is_err() {
+                // Check if this new endpoint can release a stall on the task.
+                if let Some(CommandMessage { command, overwrite_permitted, .. }) = commander_ids.check_pending(id) {
+                    debug!(id, "Received registration for a pending message allowing the command task to unstall.");
+                    if let Some(output) = outputs.get_mut(endpoint.key()) {
+                        output.append(endpoint.address(), &command, overwrite_permitted);
+                        if let Some(fut) = output.write() {
+                            pending.push(UnionFuture4::first(wrap_result(KeyOrId::Id(id), fut)));
+                        } else {
+                            pending.push(UnionFuture4::third(output_timeout(
+                                KeyOrId::Id(id),
+                                timeout_delay,
+                            )))
+                        }
+                    } else {
+                        let mut output = CommandOutput::new(identity, retry_strategy);
+                        output.append(endpoint.address(), &command, overwrite_permitted);
+                        outputs.insert(endpoint.key().clone(), output);
+                        let fut = try_open_new(identity, endpoint.key().clone(), Some(id), link_requests.clone(), None);
+                        pending.push(UnionFuture4::second(fut));
+                    }
+                }
+                commander_ids.set_id(endpoint, id);
+                if !promise.trigger() {
                     debug!("A request for a commander ID was dropped.");
                 }
             }
@@ -467,7 +493,9 @@ pub async fn external_links_task<F: ReportFailed>(
                         pending.push(UnionFuture4::second(fut));
                     }
                 } else {
-                    error!(id, "Command received for unregistered ID.");
+                    // We have a message for an ID that hasn't been registered yet. Stall until we get it.
+                    debug!(id, "Received a message for an ID before its registration has been received. Temporarily stalling.");
+                    commander_ids.set_pending(id, CommandMessage::new(CommandMessageTarget::Registered(id), command, overwrite_permitted));
                 }
             }
             LinksTaskEvent::Command(CommandMessage {
@@ -785,32 +813,49 @@ impl CommanderEndpoint {
 /// Assignment of integer IDs to commander endpoints.
 #[derive(Default, Debug)]
 struct CommanderIds {
-    next_commander_id: u16,
+    pending_id: u16,
+    pending_message: Option<CommandMessage<BytesStr, BytesMut>>,
     commander_ids: HashMap<CommanderEndpoint, u16>,
     commander_endpoints: HashMap<u16, CommanderEndpoint>,
 }
 
 impl CommanderIds {
     
-    /// Get the ID associated with an endpoint, assigning a new one if necessary.
-    fn id_for(&mut self, endpoint: CommanderEndpoint) -> Result<u16, CommanderRegistrationError> {
+    /// Set the ID associated with an endpoint.
+    fn set_id(&mut self, endpoint: CommanderEndpoint, id: u16) {
         let CommanderIds {
-            next_commander_id,
             commander_ids,
             commander_endpoints,
+            ..
         } = self;
-        match commander_ids.entry(endpoint) {
-            Entry::Occupied(entry) => Ok(*entry.get()),
-            Entry::Vacant(entry) => {
-                let id = *next_commander_id;
-                *next_commander_id = next_commander_id
-                    .checked_add(1)
-                    .ok_or(CommanderRegistrationError::CommanderIdOverflow)?;
-                commander_endpoints.insert(id, entry.key().clone());
-                entry.insert(id);
-                Ok(id)
-            }
+        commander_endpoints.insert(id, endpoint.clone());
+        commander_ids.insert(endpoint, id);
+    }
+
+    /// Check if there is a pending message for a newly registered ID.
+    fn check_pending(&mut self, id: u16) -> Option<CommandMessage<BytesStr, BytesMut>> {
+        let CommanderIds {
+            pending_id,
+            pending_message,
+            ..
+        } = self;
+        if id == *pending_id {
+            pending_message.take()
+        } else {
+            None
         }
+    }
+
+    /// Set a pending message for an ID that has yet to be registered. This will stall the
+    /// task until the registration is received (which should be soon).
+    fn set_pending(&mut self, id: u16, msg: CommandMessage<BytesStr, BytesMut>) {
+        self.pending_id = id;
+        self.pending_message = Some(msg);
+    }
+
+    /// Determine if there is a pending message (so the task should stall until it is cleared.)
+    fn has_pending(&self) -> bool {
+        self.pending_message.is_some()
     }
 
     /// Get the endpoint associated with an ID.

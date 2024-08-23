@@ -299,23 +299,25 @@ impl AgentContext for AgentRuntimeContext {
         host: Option<&str>,
         node: &str,
         lane: &str,
-    ) -> BoxFuture<'static, Result<u16, CommanderRegistrationError>> {
+        id: u16,
+    ) -> BoxFuture<'static, Result<(), CommanderRegistrationError>> {
         let remote_result = host.map(|h| h.parse::<SchemeHostPort>()).transpose();
         let node = Text::new(node);
         let lane = Text::new(lane);
         let sender = self.tx.clone();
         async move {
-            let (tx, rx) = oneshot::channel();
+            let (tx, rx) = trigger::trigger();
             let remote = match remote_result {
                 Ok(r) => r,
                 Err(_) => return Err(CommanderRegistrationError::InvalidUrl),
             };
             sender
                 .send(AgentRuntimeRequest::CommanderRegistration(
-                    CommanderRegistrationRequest::new(remote, RelativeAddress::new(node, lane), tx),
+                    CommanderRegistrationRequest::new(remote, RelativeAddress::new(node, lane), id, tx),
                 ))
                 .await?;
-            rx.await?
+            rx.await?;
+            Ok(())
         }
         .boxed()
     }

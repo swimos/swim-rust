@@ -27,7 +27,10 @@ use swimos_agent_protocol::{
 use swimos_api::{
     address::Address,
     agent::WarpLaneKind,
-    error::{AgentRuntimeError, DownlinkRuntimeError, DynamicRegistrationError, LaneSpawnError},
+    error::{
+        AgentRuntimeError, CommanderRegistrationError, DownlinkRuntimeError,
+        DynamicRegistrationError, LaneSpawnError,
+    },
 };
 use swimos_form::{read::RecognizerReadable, write::StructuralWritable};
 use swimos_model::Text;
@@ -87,7 +90,7 @@ pub trait LinkSpawner<Context> {
         on_done: DownlinkSpawnOnDone<Context>,
     );
 
-    fn register_commander(&self, path: Address<Text>, on_done: CommanderSpawnOnDone<Context>);
+    fn register_commander(&self, path: Address<Text>) -> Result<u16, CommanderRegistrationError>;
 }
 
 type SpawnHandler<Context> = BoxHandlerAction<'static, Context, ()>;
@@ -206,16 +209,11 @@ impl<'a, Context> ActionContext<'a, Context> {
             .spawn_downlink(path, Box::new(make_channel), handler)
     }
 
-    pub(crate) fn register_commander<OnDone, H>(&self, path: Address<Text>, on_done: OnDone)
-    where
-        OnDone: FnOnce(u16) -> H + Send + 'static,
-        H: EventHandler<Context> + Send + 'static,
-    {
-        let on_done_boxed: CommanderSpawnOnDone<Context> = Box::new(move |id: u16| {
-            let handler: BoxEventHandler<'static, Context> = on_done(id).boxed();
-            handler
-        });
-        self.downlink.register_commander(path, on_done_boxed);
+    pub(crate) fn register_commander(
+        &self,
+        path: Address<Text>,
+    ) -> Result<u16, CommanderRegistrationError> {
+        self.downlink.register_commander(path)
     }
 
     /// Attempt to attach a new lane to the agent runtime.
@@ -411,8 +409,12 @@ pub enum EventHandlerError {
     #[error("A command was received for a lane that does not exist: '{0}'")]
     /// Failed to register a dynamic lane.
     LaneNotFound(String),
+    /// A dynamic lane could not be registered.
     #[error("An attempt to register a dynamic lane failed: {0}")]
-    FailedRegistration(DynamicRegistrationError),
+    FailedLaneRegistration(DynamicRegistrationError),
+    /// A commander could not be registered/
+    #[error("An attempt to register a commander failed: {0}")]
+    FailedCommanderRegistration(CommanderRegistrationError),
     /// An event handler failed in a user specified effect.
     #[error("An error occurred in a user specified effect: {0}")]
     EffectError(Box<dyn std::error::Error + Send>),

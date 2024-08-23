@@ -32,9 +32,8 @@ use swimos_utilities::byte_channel::{ByteReader, ByteWriter};
 use crate::{
     agent_model::downlink::BoxDownlinkChannelFactory,
     event_handler::{
-        ActionContext, BoxJoinLaneInit, CommanderSpawnOnDone, DownlinkSpawnOnDone, EventHandler,
-        HandlerAction, HandlerFuture, LaneSpawnOnDone, LaneSpawner, LinkSpawner, Spawner,
-        StepResult,
+        ActionContext, BoxJoinLaneInit, DownlinkSpawnOnDone, EventHandler, HandlerAction,
+        HandlerFuture, LaneSpawnOnDone, LaneSpawner, LinkSpawner, Spawner, StepResult,
     },
     meta::AgentMetadata,
     test_util::TestDownlinkContext,
@@ -58,7 +57,7 @@ impl<Context> LinkSpawner<Context> for NoDownlinks {
         panic!("Opening downlinks not supported.")
     }
 
-    fn register_commander(&self, _path: Address<Text>, _on_done: CommanderSpawnOnDone<Context>) {
+    fn register_commander(&self, _path: Address<Text>) -> Result<u16, CommanderRegistrationError> {
         panic!("Registering commanders not supported.");
     }
 }
@@ -139,7 +138,8 @@ impl AgentContext for DummyAgentContext {
         _host: Option<&str>,
         _node: &str,
         _lane: &str,
-    ) -> BoxFuture<'static, Result<u16, CommanderRegistrationError>> {
+        _id: u16,
+    ) -> BoxFuture<'static, Result<(), CommanderRegistrationError>> {
         panic!("Dummy context used.");
     }
 }

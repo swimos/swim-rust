@@ -175,15 +175,15 @@ mod test_support {
 
     use bytes::BytesMut;
 
-    use swimos_api::{address::Address, agent::AgentConfig};
+    use swimos_api::{address::Address, agent::AgentConfig, error::CommanderRegistrationError};
     use swimos_model::Text;
     use swimos_utilities::routing::RouteUri;
 
     use crate::{
         agent_model::downlink::BoxDownlinkChannelFactory,
         event_handler::{
-            ActionContext, CommanderSpawnOnDone, DownlinkSpawnOnDone, HandlerFuture, LinkSpawner,
-            LocalBoxEventHandler, Spawner, StepResult,
+            ActionContext, DownlinkSpawnOnDone, HandlerFuture, LinkSpawner, LocalBoxEventHandler,
+            Spawner, StepResult,
         },
         meta::AgentMetadata,
         test_context::NoDynamicLanes,
@@ -210,8 +210,7 @@ mod test_support {
         fn register_commander(
             &self,
             _path: Address<Text>,
-            _on_done: CommanderSpawnOnDone<FakeAgent>,
-        ) {
+        ) -> Result<u16, CommanderRegistrationError> {
             panic!("Registering commanders not supported.");
         }
     }

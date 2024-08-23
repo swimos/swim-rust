@@ -53,7 +53,7 @@ use swimos_api::agent::{
     HttpLaneRequest, HttpLaneRequestChannel, HttpResponseSender, LaneConfig, StoreConfig,
 };
 use swimos_api::error::{
-    CommanderRegistrationError, DownlinkRuntimeError, OpenStoreError, StoreError,
+    DownlinkRuntimeError, OpenStoreError, StoreError,
 };
 use swimos_api::persistence::StoreDisabled;
 use swimos_api::{
@@ -173,19 +173,23 @@ pub struct CommanderRegistrationRequest {
     pub remote: Option<SchemeHostPort>,
     /// The node URI and name of the lane.
     pub address: RelativeAddress<Text>,
+    /// The ID for the registration.
+    pub id: u16,
     /// Promise to satisfy with the result.
-    pub promise: oneshot::Sender<Result<u16, CommanderRegistrationError>>,
+    pub promise: trigger::Sender,
 }
 
 impl CommanderRegistrationRequest {
     pub fn new(
         remote: Option<SchemeHostPort>,
         address: RelativeAddress<Text>,
-        promise: oneshot::Sender<Result<u16, CommanderRegistrationError>>,
+        id: u16,
+        promise: trigger::Sender,
     ) -> Self {
         CommanderRegistrationRequest {
             remote,
             address,
+            id,
             promise,
         }
     }

@@ -203,7 +203,8 @@ pub trait AgentContext: Sync {
         host: Option<&str>,
         node: &str,
         lane: &str,
-    ) -> BoxFuture<'static, Result<u16, CommanderRegistrationError>>;
+        id: u16,
+    ) -> BoxFuture<'static, Result<(), CommanderRegistrationError>>;
 
     /// Add a new lane endpoint to the runtime for this agent.
     /// # Arguments

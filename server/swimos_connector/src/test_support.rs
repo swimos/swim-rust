@@ -38,7 +38,8 @@ impl AgentContext for TestContext {
         _host: Option<&str>,
         _node: &str,
         _lane: &str,
-    ) -> BoxFuture<'static, Result<u16, CommanderRegistrationError>> {
+        _id: u16,
+    ) -> BoxFuture<'static, Result<(), CommanderRegistrationError>> {
         panic!("Commands not supported.");
     }
 

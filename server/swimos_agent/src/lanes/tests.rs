@@ -24,11 +24,12 @@ use parking_lot::Mutex;
 use swimos_api::{
     address::Address,
     agent::{AgentConfig, WarpLaneKind},
-    error::{DynamicRegistrationError, LaneSpawnError},
+    error::{CommanderRegistrationError, DynamicRegistrationError, LaneSpawnError},
 };
 use swimos_model::Text;
 use swimos_utilities::routing::RouteUri;
 
+use crate::lanes::OpenLane;
 use crate::{
     agent_lifecycle::HandlerContext,
     agent_model::downlink::BoxDownlinkChannelFactory,
@@ -38,7 +39,6 @@ use crate::{
     },
     AgentMetadata,
 };
-use crate::{event_handler::CommanderSpawnOnDone, lanes::OpenLane};
 
 pub struct TestAgent;
 
@@ -69,7 +69,7 @@ impl LinkSpawner<TestAgent> for TestSpawner {
         panic!("Opening downlinks not supported.");
     }
 
-    fn register_commander(&self, _path: Address<Text>, _on_done: CommanderSpawnOnDone<TestAgent>) {
+    fn register_commander(&self, _path: Address<Text>) -> Result<u16, CommanderRegistrationError> {
         panic!("Registering commanders not supported.");
     }
 }

@@ -20,7 +20,7 @@ use swimos_form::write::StructuralWritable;
 use swimos_model::Text;
 
 use crate::{
-    event_handler::{ActionContext, EventHandler, HandlerAction, StepResult},
+    event_handler::{ActionContext, EventHandlerError, HandlerAction, StepResult},
     AgentMetadata,
 };
 
@@ -52,29 +52,20 @@ impl<Context> Commander<Context> {
     }
 }
 
-struct RegisterCommanderInner<OnDone> {
-    address: Address<Text>,
-    on_done: OnDone,
+pub struct RegisterCommander {
+    address: Option<Address<Text>>,
 }
 
-pub struct RegisterCommander<OnDone> {
-    inner: Option<RegisterCommanderInner<OnDone>>,
-}
-
-impl<OnDone> RegisterCommander<OnDone> {
-    pub fn new(address: Address<Text>, on_done: OnDone) -> Self {
+impl RegisterCommander {
+    pub fn new(address: Address<Text>) -> Self {
         RegisterCommander {
-            inner: Some(RegisterCommanderInner { address, on_done }),
+            address: Some(address),
         }
     }
 }
 
-impl<Context, OnDone, H> HandlerAction<Context> for RegisterCommander<OnDone>
-where
-    OnDone: FnOnce(Commander<Context>) -> H + Send + 'static,
-    H: EventHandler<Context> + Send + 'static,
-{
-    type Completion = ();
+impl<Context> HandlerAction<Context> for RegisterCommander {
+    type Completion = Commander<Context>;
 
     fn step(
         &mut self,
@@ -82,13 +73,12 @@ where
         _meta: AgentMetadata,
         _context: &Context,
     ) -> StepResult<Self::Completion> {
-        let RegisterCommander { inner } = self;
-        if let Some(RegisterCommanderInner { address, on_done }) = inner.take() {
-            action_context.register_commander(address, |id: u16| {
-                let commander = Commander::new(id);
-                on_done(commander)
-            });
-            StepResult::done(())
+        let RegisterCommander { address } = self;
+        if let Some(address) = address.take() {
+            match action_context.register_commander(address) {
+                Ok(id) => StepResult::done(Commander::new(id)),
+                Err(err) => StepResult::Fail(EventHandlerError::FailedCommanderRegistration(err)),
+            }
         } else {
             StepResult::after_done()
         }

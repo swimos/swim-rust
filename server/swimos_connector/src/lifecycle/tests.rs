@@ -26,11 +26,11 @@ use swimos_agent::{
     event_handler::{
         ActionContext, DownlinkSpawnOnDone, LinkSpawner, EventHandler, EventHandlerError,
         HandlerAction, HandlerActionExt, HandlerFuture, LaneSpawnOnDone, LaneSpawner, SideEffect,
-        Spawner, StepResult, CommanderSpawnOnDone
+        Spawner, StepResult
     },
     AgentMetadata,
 };
-use swimos_api::{address::Address, agent::WarpLaneKind, error::DynamicRegistrationError};
+use swimos_api::{address::Address, agent::WarpLaneKind, error::{CommanderRegistrationError, DynamicRegistrationError}};
 use swimos_model::Text;
 use swimos_utilities::trigger;
 use thiserror::Error;
@@ -61,7 +61,7 @@ impl LinkSpawner<ConnectorAgent> for TestSpawner {
         panic!("Spawning downlinks not supported.");
     }
 
-    fn register_commander(&self, _path: Address<Text>, _on_done: CommanderSpawnOnDone<ConnectorAgent>) {
+    fn register_commander(&self, _path: Address<Text> ) -> Result<u16, CommanderRegistrationError> {
         panic!("Registering commanders not supported.");
     }
 }

@@ -35,8 +35,8 @@ use swimos_agent_protocol::{LaneRequest, MapMessage};
 use swimos_api::agent::DownlinkKind;
 use swimos_api::agent::{HttpLaneRequest, LaneConfig, RawHttpLaneResponse};
 use swimos_api::error::{
-    CommanderRegistrationError, DownlinkRuntimeError, DynamicRegistrationError, LaneSpawnError,
-    OpenStoreError,
+    AgentRuntimeError, CommanderRegistrationError, DownlinkRuntimeError, DynamicRegistrationError,
+    LaneSpawnError, OpenStoreError,
 };
 use swimos_api::{
     address::Address,
@@ -57,9 +57,8 @@ use uuid::Uuid;
 use crate::agent_lifecycle::item_event::ItemEvent;
 use crate::agent_model::io::LaneReadEvent;
 use crate::event_handler::{
-    ActionContext, BoxJoinLaneInit, CommanderSpawnOnDone, DownlinkSpawnOnDone, HandlerFuture,
-    LaneSpawnOnDone, LaneSpawner, LinkSpawner, LocalBoxEventHandler, ModificationFlags,
-    Sequentially,
+    ActionContext, BoxJoinLaneInit, DownlinkSpawnOnDone, HandlerFuture, LaneSpawnOnDone,
+    LaneSpawner, LinkSpawner, LocalBoxEventHandler, ModificationFlags, Sequentially,
 };
 use crate::{
     agent_lifecycle::AgentLifecycle,
@@ -1063,6 +1062,7 @@ where
             mut suspended,
             link_requests:
                 LinkRequestCollector {
+                    next_commander_id,
                     downlinks: downlink_requests,
                     commanders: commander_requests,
                 },
@@ -1076,6 +1076,7 @@ where
         let mut pending_writes = FuturesUnordered::new();
         let mut link_futures = FuturesUnordered::new();
         let mut external_item_ids_rev = HashMap::new();
+        let cmd_ids = RefCell::new(CommanderIds::new(next_commander_id));
 
         for (name, id) in external_item_ids.iter() {
             external_item_ids_rev.insert(*id, name);
@@ -1106,12 +1107,13 @@ where
         for request in commander_requests {
             let CommanderRequest {
                 path: Address { host, node, lane },
-                ..
+                id,
             } = &request;
             let fut = context.register_command_endpoint(
                 host.as_ref().map(|h| h.as_str()),
                 node.as_str(),
                 lane.as_str(),
+                *id,
             );
             link_futures.push(LinkFuture::Registering(Some(request), fut));
         }
@@ -1217,17 +1219,13 @@ where
                 );
                 link_futures.push(LinkFuture::Opening(Some(request), fut));
             };
-            let add_commander = |request: CommanderRequest<ItemModel>| {
-                let CommanderRequest {
-                    path: Address { host, node, lane },
-                    ..
-                } = &request;
-                let fut = context.register_command_endpoint(
-                    host.as_ref().map(|h| h.as_str()),
-                    node.as_str(),
-                    lane.as_str(),
-                );
+            let add_commander = |address: Address<Text>| {
+                let (request, fut) = cmd_ids
+                    .borrow_mut()
+                    .get_request(address, context.as_ref())?;
+                let id = request.id;
                 link_futures.push(LinkFuture::Registering(Some(request), fut));
+                Ok(id)
             };
             let add_link = (add_downlink, add_commander);
             let add_lane = NoDynLanes;
@@ -1334,13 +1332,13 @@ where
                 TaskEvent::LinksEvent {
                     downlink_event:
                         LinksEvent::Registered {
-                            request: CommanderRequest { path, on_done },
-                            result: Ok(id),
+                            request: CommanderRequest { path, id },
+                            result: Ok(_),
                         },
                 } => {
                     debug!(path = %path, id, "A command channel was successfully registered.");
-                    let handler = on_done(id);
-                    exec_handler!(handler);
+                    //let handler = on_done(id);
+                    //exec_handler!(handler);
                 }
                 TaskEvent::LinksEvent {
                     downlink_event:
@@ -1581,7 +1579,14 @@ where
         }?;
         // Try to run the `on_stop` handler before we stop.
         let on_stop_handler = lifecycle.on_stop();
-        let discard = (|_| {}, |_| {});
+        let discard = (
+            |_| {},
+            |_| {
+                Err(CommanderRegistrationError::RuntimeError(
+                    AgentRuntimeError::Stopping,
+                ))
+            },
+        );
         let add_lane = NoDynLanes;
         match run_handler(
             &mut ActionContext::new(
@@ -1864,8 +1869,8 @@ enum LinksEvent<Context> {
         event: HostedDownlinkEvent,
     },
     Registered {
-        request: CommanderRequest<Context>,
-        result: Result<u16, CommanderRegistrationError>,
+        request: CommanderRequest,
+        result: Result<(), CommanderRegistrationError>,
     },
 }
 
@@ -1875,7 +1880,7 @@ enum LinkFuture<Context, F1, F2, F3, F4> {
     Opening(Option<DownlinkSpawnRequest<Context>>, #[pin] F1),
     Running(#[pin] F2),
     Reconnecting(#[pin] F3),
-    Registering(Option<CommanderRequest<Context>>, #[pin] F4),
+    Registering(Option<CommanderRequest>, #[pin] F4),
 }
 
 impl<Context, F1, F2, F3, F4> Future for LinkFuture<Context, F1, F2, F3, F4>
@@ -1883,7 +1888,7 @@ where
     F1: Future<Output = OpenDownlinkResult>,
     F2: Future<Output = (HostedDownlink<Context>, HostedDownlinkEvent)>,
     F3: Future<Output = (HostedDownlink<Context>, HostedDownlinkEvent)>,
-    F4: Future<Output = Result<u16, CommanderRegistrationError>>,
+    F4: Future<Output = Result<(), CommanderRegistrationError>>,
 {
     type Output = LinksEvent<Context>;
 
@@ -1971,28 +1976,22 @@ async fn open_with_retry(
     }
 }
 
-struct CommanderRequest<Context> {
+#[derive(Debug)]
+struct CommanderRequest {
     path: Address<Text>,
-    on_done: CommanderSpawnOnDone<Context>,
-}
-
-impl<Context> std::fmt::Debug for CommanderRequest<Context> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("CommanderRequest")
-            .field("path", &self.path)
-            .field("on_done", &"...")
-            .finish()
-    }
+    id: u16,
 }
 
 struct LinkRequestCollector<Context> {
+    next_commander_id: u16,
     downlinks: Vec<DownlinkSpawnRequest<Context>>,
-    commanders: Vec<CommanderRequest<Context>>,
+    commanders: Vec<CommanderRequest>,
 }
 
 impl<Context> Default for LinkRequestCollector<Context> {
     fn default() -> Self {
         Self {
+            next_commander_id: 0,
             downlinks: Default::default(),
             commanders: Default::default(),
         }
@@ -2023,17 +2022,23 @@ impl<Context> LinkSpawner<Context> for RefCell<LinkRequestCollector<Context>> {
         })
     }
 
-    fn register_commander(&self, path: Address<Text>, on_done: CommanderSpawnOnDone<Context>) {
-        self.borrow_mut()
-            .commanders
-            .push(CommanderRequest { path, on_done })
+    fn register_commander(&self, path: Address<Text>) -> Result<u16, CommanderRegistrationError> {
+        let mut guard = self.borrow_mut();
+        let id = guard.next_commander_id;
+        if let Some(next) = guard.next_commander_id.checked_add(1) {
+            guard.next_commander_id = next;
+        } else {
+            return Err(CommanderRegistrationError::CommanderIdOverflow);
+        }
+        guard.commanders.push(CommanderRequest { path, id });
+        Ok(id)
     }
 }
 
 impl<Context, F1, F2> LinkSpawner<Context> for (F1, F2)
 where
     F1: Fn(DownlinkSpawnRequest<Context>),
-    F2: Fn(CommanderRequest<Context>),
+    F2: Fn(Address<Text>) -> Result<u16, CommanderRegistrationError>,
 {
     fn spawn_downlink(
         &self,
@@ -2049,7 +2054,53 @@ where
         })
     }
 
-    fn register_commander(&self, path: Address<Text>, on_done: CommanderSpawnOnDone<Context>) {
-        (self.1)(CommanderRequest { path, on_done })
+    fn register_commander(&self, path: Address<Text>) -> Result<u16, CommanderRegistrationError> {
+        (self.1)(path)
+    }
+}
+
+struct CommanderIds {
+    next_id: u16,
+    assigned: HashMap<Address<Text>, u16>,
+}
+
+type RegFut = BoxFuture<'static, Result<(), CommanderRegistrationError>>;
+
+impl CommanderIds {
+    fn new(next_id: u16) -> Self {
+        CommanderIds {
+            next_id,
+            assigned: HashMap::new(),
+        }
+    }
+
+    fn get_request(
+        &mut self,
+        address: Address<Text>,
+        context: &dyn AgentContext,
+    ) -> Result<(CommanderRequest, RegFut), CommanderRegistrationError> {
+        let id = if let Some(id) = self.assigned.get(&address) {
+            *id
+        } else {
+            let id = self.next_id;
+            if let Some(next) = id.checked_add(1) {
+                self.next_id = next;
+                self.assigned.insert(address.clone(), id);
+                id
+            } else {
+                return Err(CommanderRegistrationError::CommanderIdOverflow);
+            }
+        };
+
+        let Address { host, node, lane } = &address;
+
+        let fut = context.register_command_endpoint(
+            host.as_ref().map(|h| h.as_str()),
+            node.as_str(),
+            lane.as_str(),
+            id,
+        );
+
+        Ok((CommanderRequest { path: address, id }, fut))
     }
 }
