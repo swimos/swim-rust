@@ -469,7 +469,7 @@ pub async fn external_links_task<F: ReportFailed>(
                         pending.push(UnionFuture4::second(fut));
                     }
                 } else {
-                    error!(id, "Received a message for an ID before its registration has been received. Temporarily stalling.");
+                    error!(id, "Received a message for an ID before its registration has been received.");
                 }
             }
             LinksTaskEvent::Command(CommandMessage::Addressed {

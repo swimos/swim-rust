@@ -196,6 +196,23 @@ where
     assert!(tx.send(cmd).await.is_ok());
 }
 
+const REG_ID: u16 = 2;
+
+async fn send_registration(tx: &mut CommandSender, target: usize) {
+    let (host, node, lane) = &ADDRS[target];
+    let addr = Address::new(*host, node, lane);
+    let cmd = CommandMessage::<&str, String>::register(addr, REG_ID);
+    assert!(tx.send(cmd).await.is_ok());
+}
+
+async fn send_command_registered<T>(tx: &mut CommandSender, id: u16, value: T, overwrite_permitted: bool)
+where
+    T: StructuralWritable,
+{
+    let cmd = CommandMessage::<&str, _>::registered(id, value, overwrite_permitted);
+    assert!(tx.send(cmd).await.is_ok());
+}
+
 async fn open_link(rx: &mut mpsc::Receiver<LinkRequest>) -> (CommanderKey, ByteReader) {
     open_link_with_failures(rx, 0).await
 }
@@ -1257,4 +1274,45 @@ async fn open_downlink_retries_exceeded() {
         links_rx
     })
     .await;
+}
+
+#[tokio::test]
+async fn register_commander() {
+    let target = 0;
+    let test_value = 5;
+
+    let (state, _) = run_test(|context| async move {
+        let TestContext {
+            chan_tx,
+            mut links_rx,
+            ..
+        } = context;
+        let writer = register(&chan_tx).await;
+        let mut sender = CommandSender::new(writer, Default::default());
+
+        let recv_task = async move {
+            let (key, rx) = open_link(&mut links_rx).await;
+            assert_eq!(key, make_key(target));
+
+            let mut channel = RequestReader::new(rx, Default::default());
+            expect_msg(&mut channel, target, test_value).await;
+            links_rx
+        };
+
+        let send_task = async move {
+            send_registration(&mut sender, target).await;
+            send_command_registered(&mut sender, REG_ID, test_value, true).await;
+            sender
+        };
+
+        let (links_rx, sender) = join(recv_task, send_task).await;
+        drop(chan_tx);
+        (sender, links_rx)
+    })
+    .await;
+
+    let expected_key = make_key(target);
+    assert!(state.reader.is_some());
+    assert_eq!(state.outputs.len(), 1);
+    assert!(state.outputs.contains_key(&expected_key));
 }
