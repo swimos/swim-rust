@@ -14,7 +14,6 @@
 
 use std::marker::PhantomData;
 
-use swimos_agent_protocol::CommandMessageTarget;
 use swimos_api::address::Address;
 use swimos_form::write::StructuralWritable;
 use swimos_model::Text;
@@ -132,11 +131,7 @@ impl<T: StructuralWritable, Context> HandlerAction<Context> for SendCommandById<
             overwrite_permitted,
         } = self;
         if let Some(body) = body.take() {
-            action_context.send_command::<&str, T>(
-                CommandMessageTarget::Registered(*id),
-                body,
-                *overwrite_permitted,
-            );
+            action_context.send_registered_command(*id, body, *overwrite_permitted);
             StepResult::done(())
         } else {
             StepResult::after_done()

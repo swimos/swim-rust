@@ -16,12 +16,9 @@ use bytes::BytesMut;
 use swimos_api::address::Address;
 use tokio_util::codec::{Decoder, Encoder};
 
-use crate::{
-    command::{RawCommandMessageDecoder, RawCommandMessageEncoder},
-    CommandMessageTarget,
-};
+use crate::command::{RawCommandMessageDecoder, RawCommandMessageEncoder};
 
-use super::CommandMessage;
+use super::{CommandMessage, ID_LEN};
 
 fn round_trip(message: CommandMessage<&str, &[u8]>) -> CommandMessage<String, BytesMut> {
     let mut buffer = BytesMut::new();
@@ -73,16 +70,26 @@ fn round_trip2(
 }
 
 fn header_len(msg: &CommandMessage<&str, &[u8]>) -> usize {
-    match &msg.target {
-        CommandMessageTarget::Addressed(Address { host, node, lane }) => {
+    match msg {
+        CommandMessage::Register { address: Address { host, node, lane }, .. } => {
+            let n = super::FLAGS_LEN + node.len() + lane.len() + ID_LEN;
+            if let Some(h) = host {
+                n + super::MAX_REQUIRED + h.len()
+            } else {
+                n + super::MIN_REQUIRED
+            }
+        },
+        CommandMessage::Addressed { target: Address { host, node, lane }, .. } => {
             let n = super::FLAGS_LEN + node.len() + lane.len();
             if let Some(h) = host {
                 n + super::MAX_REQUIRED + h.len()
             } else {
                 n + super::MIN_REQUIRED
             }
-        }
-        CommandMessageTarget::Registered(_) => super::FLAGS_LEN + super::ID_LEN,
+        },
+        CommandMessage::Registered { .. } => {
+            super::FLAGS_LEN + super::ID_LEN
+        },
     }
 }
 
@@ -112,170 +119,145 @@ fn round_trip_partial(message: CommandMessage<&str, &[u8]>) -> CommandMessage<St
     }
 }
 
-fn extract_address(target: CommandMessageTarget<String>) -> Address<String> {
-    match target {
-        CommandMessageTarget::Addressed(addr) => addr,
-        CommandMessageTarget::Registered(_) => panic!("Not addressed."),
-    }
-}
-
-fn extract_id(target: CommandMessageTarget<String>) -> u16 {
-    match target {
-        CommandMessageTarget::Addressed(_) =>  panic!("Not registered."),
-        CommandMessageTarget::Registered(id) => id,
-    }
-}
-
 #[test]
 fn round_trip_with_host_with_ow() {
     let addr = Address::new(Some("ws://localhost:8080"), "/node", "lane");
     let msg = CommandMessage::<_, &[u8]>::ad_hoc(addr, &[1, 2, 3], true);
-    let CommandMessage {
-        target,
-        command,
-        overwrite_permitted,
-    } = round_trip(msg);
+    
+    match round_trip(msg) {
+        CommandMessage::Addressed { target: Address { host, node, lane }, command, overwrite_permitted } => {
+            assert_eq!(host, Some("ws://localhost:8080".to_string()));
+            assert_eq!(node, "/node");
+            assert_eq!(lane, "lane");
+            assert_eq!(command.as_ref(), &[1, 2, 3]);
+            assert!(overwrite_permitted);
+        },
+        _ => panic!("Incorrect kind."),
+    }
 
-    let Address { host, node, lane } = extract_address(target);
-
-    assert_eq!(host, Some("ws://localhost:8080".to_string()));
-    assert_eq!(node, "/node");
-    assert_eq!(lane, "lane");
-    assert_eq!(command.as_ref(), &[1, 2, 3]);
-    assert!(overwrite_permitted);
 }
 
 #[test]
 fn round_trip_with_host_no_ow() {
     let addr = Address::new(Some("ws://localhost:8080"), "/node", "lane");
     let msg = CommandMessage::<_, &[u8]>::ad_hoc(addr, &[1, 2, 3], false);
-    let CommandMessage {
-        target,
-        command,
-        overwrite_permitted,
-    } = round_trip(msg);
-
-    let Address { host, node, lane } = extract_address(target);
-
-    assert_eq!(host, Some("ws://localhost:8080".to_string()));
-    assert_eq!(node, "/node");
-    assert_eq!(lane, "lane");
-    assert_eq!(command.as_ref(), &[1, 2, 3]);
-    assert!(!overwrite_permitted);
+    
+    match round_trip(msg) {
+        CommandMessage::Addressed { target: Address { host, node, lane }, command, overwrite_permitted } => {
+            assert_eq!(host, Some("ws://localhost:8080".to_string()));
+            assert_eq!(node, "/node");
+            assert_eq!(lane, "lane");
+            assert_eq!(command.as_ref(), &[1, 2, 3]);
+            assert!(!overwrite_permitted);
+        },
+        _ => panic!("Incorrect kind."),
+    }
+   
 }
 
 #[test]
 fn round_trip_with_host_partial_with_ow() {
     let addr = Address::new(Some("ws://localhost:8080"), "/node", "lane");
     let msg = CommandMessage::<_, &[u8]>::ad_hoc(addr, &[1, 2, 3], true);
-    let CommandMessage {
-        target,
-        command,
-        overwrite_permitted,
-    } = round_trip_partial(msg);
+    
+    match round_trip_partial(msg) {
+        CommandMessage::Addressed { target: Address { host, node, lane }, command, overwrite_permitted } => {
+            assert_eq!(host, Some("ws://localhost:8080".to_string()));
+            assert_eq!(node, "/node");
+            assert_eq!(lane, "lane");
+            assert_eq!(command.as_ref(), &[1, 2, 3]);
+            assert!(overwrite_permitted);
+        },
+        _ => panic!("Incorrect kind."),
+    }
 
-    let Address { host, node, lane } = extract_address(target);
-
-    assert_eq!(host, Some("ws://localhost:8080".to_string()));
-    assert_eq!(node, "/node");
-    assert_eq!(lane, "lane");
-    assert_eq!(command.as_ref(), &[1, 2, 3]);
-    assert!(overwrite_permitted);
 }
 
 #[test]
 fn round_trip_with_host_partial_no_ow() {
     let addr = Address::new(Some("ws://localhost:8080"), "/node", "lane");
     let msg = CommandMessage::<_, &[u8]>::ad_hoc(addr, &[1, 2, 3], false);
-    let CommandMessage {
-        target,
-        command,
-        overwrite_permitted,
-    } = round_trip_partial(msg);
-
-    let Address { host, node, lane } = extract_address(target);
-
-    assert_eq!(host, Some("ws://localhost:8080".to_string()));
-    assert_eq!(node, "/node");
-    assert_eq!(lane, "lane");
-    assert_eq!(command.as_ref(), &[1, 2, 3]);
-    assert!(!overwrite_permitted);
+    
+    match round_trip_partial(msg) {
+        CommandMessage::Addressed { target: Address { host, node, lane }, command, overwrite_permitted } => {
+            assert_eq!(host, Some("ws://localhost:8080".to_string()));
+            assert_eq!(node, "/node");
+            assert_eq!(lane, "lane");
+            assert_eq!(command.as_ref(), &[1, 2, 3]);
+            assert!(!overwrite_permitted);
+        },
+        _ => panic!("Incorrect kind."),
+    }
 }
 
 #[test]
 fn round_trip_no_host_with_ow() {
     let addr = Address::new(None, "/node", "lane");
     let msg = CommandMessage::<_, &[u8]>::ad_hoc(addr, &[1, 2, 3], true);
-    let CommandMessage {
-        target,
-        command,
-        overwrite_permitted,
-    } = round_trip(msg);
+    
+    match round_trip(msg) {
+        CommandMessage::Addressed { target: Address { host, node, lane }, command, overwrite_permitted } => {
+            assert!(host.is_none());
+            assert_eq!(node, "/node");
+            assert_eq!(lane, "lane");
+            assert_eq!(command.as_ref(), &[1, 2, 3]);
+            assert!(overwrite_permitted);
+        },
+        _ => panic!("Incorrect kind."),
+    }
 
-    let Address { host, node, lane } = extract_address(target);
-
-    assert!(host.is_none());
-    assert_eq!(node, "/node");
-    assert_eq!(lane, "lane");
-    assert_eq!(command.as_ref(), &[1, 2, 3]);
-    assert!(overwrite_permitted);
 }
 
 #[test]
 fn round_trip_no_host_no_ow() {
     let addr = Address::new(None, "/node", "lane");
     let msg = CommandMessage::<_, &[u8]>::ad_hoc(addr, &[1, 2, 3], false);
-    let CommandMessage {
-        target,
-        command,
-        overwrite_permitted,
-    } = round_trip(msg);
-
-    let Address { host, node, lane } = extract_address(target);
-
-    assert!(host.is_none());
-    assert_eq!(node, "/node");
-    assert_eq!(lane, "lane");
-    assert_eq!(command.as_ref(), &[1, 2, 3]);
-    assert!(!overwrite_permitted);
+    match round_trip(msg) {
+        CommandMessage::Addressed { target: Address { host, node, lane }, command, overwrite_permitted } => {
+            assert!(host.is_none());
+            assert_eq!(node, "/node");
+            assert_eq!(lane, "lane");
+            assert_eq!(command.as_ref(), &[1, 2, 3]);
+            assert!(!overwrite_permitted);
+        },
+        _ => panic!("Incorrect kind."),
+    }
 }
 
 #[test]
 fn round_trip_no_host_partial_with_ow() {
     let addr = Address::new(None, "/node", "lane");
     let msg = CommandMessage::<_, &[u8]>::ad_hoc(addr, &[1, 2, 3], true);
-    let CommandMessage {
-        target,
-        command,
-        overwrite_permitted,
-    } = round_trip_partial(msg);
+    
+    match round_trip_partial(msg) {
+        CommandMessage::Addressed { target: Address { host, node, lane }, command, overwrite_permitted } => {
+            assert!(host.is_none());
+            assert_eq!(node, "/node");
+            assert_eq!(lane, "lane");
+            assert_eq!(command.as_ref(), &[1, 2, 3]);
+            assert!(overwrite_permitted);
+        },
+        _ => panic!("Incorrect kind."),
+    }
 
-    let Address { host, node, lane } = extract_address(target);
-
-    assert!(host.is_none());
-    assert_eq!(node, "/node");
-    assert_eq!(lane, "lane");
-    assert_eq!(command.as_ref(), &[1, 2, 3]);
-    assert!(overwrite_permitted);
 }
 
 #[test]
 fn round_trip_no_host_partial_no_ow() {
     let addr = Address::new(None, "/node", "lane");
     let msg = CommandMessage::<_, &[u8]>::ad_hoc(addr, &[1, 2, 3], false);
-    let CommandMessage {
-        target,
-        command,
-        overwrite_permitted,
-    } = round_trip_partial(msg);
+    
+    match round_trip_partial(msg) {
+        CommandMessage::Addressed { target: Address { host, node, lane }, command, overwrite_permitted } => {
+            assert!(host.is_none());
+            assert_eq!(node, "/node");
+            assert_eq!(lane, "lane");
+            assert_eq!(command.as_ref(), &[1, 2, 3]);
+            assert!(!overwrite_permitted);
+        },
+        _ => panic!("Incorrect kind."),
+    }
 
-    let Address { host, node, lane } = extract_address(target);
-
-    assert!(host.is_none());
-    assert_eq!(node, "/node");
-    assert_eq!(lane, "lane");
-    assert_eq!(command.as_ref(), &[1, 2, 3]);
-    assert!(!overwrite_permitted);
 }
 
 #[test]
@@ -287,95 +269,120 @@ fn round_trip_two_messages() {
     let msg2 = CommandMessage::<_, &[u8]>::ad_hoc(addr2, &[4, 5, 6, 7, 8], false);
     let (first, second) = round_trip2(msg1, msg2);
 
-    let CommandMessage {
-        target,
-        command,
-        overwrite_permitted,
-    } = first;
+    match first {
+        CommandMessage::Addressed { target: Address { host, node, lane }, command, overwrite_permitted } => {
+            assert_eq!(host, Some("ws://localhost:8080".to_string()));
+            assert_eq!(node, "/first_node");
+            assert_eq!(lane, "lane1");
+            assert_eq!(command.as_ref(), &[1, 2, 3]);
+            assert!(overwrite_permitted);
+        },
+        _ => panic!("Incorrect kind."),
+    }
 
-    let Address { host, node, lane } = extract_address(target);
+    match second {
+        CommandMessage::Addressed { target: Address { host, node, lane }, command, overwrite_permitted } => {
+            assert!(host.is_none());
+            assert_eq!(node, "/second_node");
+            assert_eq!(lane, "lane2");
+            assert_eq!(command.as_ref(), &[4, 5, 6, 7, 8]);
+            assert!(!overwrite_permitted);
+        },
+        _ => panic!("Incorrect kind."),
+    }
 
-    assert_eq!(host, Some("ws://localhost:8080".to_string()));
-    assert_eq!(node, "/first_node");
-    assert_eq!(lane, "lane1");
-    assert_eq!(command.as_ref(), &[1, 2, 3]);
-    assert!(overwrite_permitted);
-
-    let CommandMessage {
-        target,
-        command,
-        overwrite_permitted,
-    } = second;
-
-    let Address { host, node, lane } = extract_address(target);
-
-    assert!(host.is_none());
-    assert_eq!(node, "/second_node");
-    assert_eq!(lane, "lane2");
-    assert_eq!(command.as_ref(), &[4, 5, 6, 7, 8]);
-    assert!(!overwrite_permitted);
 }
 
 #[test]
 fn round_trip_registered_no_ow() {
-    let msg = CommandMessage::<_, &[u8]>::new(CommandMessageTarget::Registered(653), &[1, 2, 3], false);
-    let CommandMessage {
-        target,
-        command,
-        overwrite_permitted,
-    } = round_trip(msg);
+    let msg = CommandMessage::<_, &[u8]>::registered(653, &[1, 2, 3], false);
+    
+    match round_trip(msg) {
+        CommandMessage::Registered { target, command, overwrite_permitted } => {
+            assert_eq!(target, 653);
+            assert_eq!(command.as_ref(), &[1, 2, 3]);
+            assert!(!overwrite_permitted);
+        }
+        _ => panic!("Incorrect kind."),
+    }
 
-    let id = extract_id(target);
-
-    assert_eq!(id, 653);
-    assert_eq!(command.as_ref(), &[1, 2, 3]);
-    assert!(!overwrite_permitted);
 }
 
 #[test]
 fn round_trip_registered_with_ow() {
-    let msg = CommandMessage::<_, &[u8]>::new(CommandMessageTarget::Registered(187), &[1, 2, 3], true);
-    let CommandMessage {
-        target,
-        command,
-        overwrite_permitted,
-    } = round_trip(msg);
+    let msg = CommandMessage::<_, &[u8]>::registered(187, &[1, 2, 3], true);
+   
+    match round_trip(msg) {
+        CommandMessage::Registered { target, command, overwrite_permitted } => {
+            assert_eq!(target, 187);
+            assert_eq!(command.as_ref(), &[1, 2, 3]);
+            assert!(overwrite_permitted);
+        }
+        _ => panic!("Incorrect kind."),
+    }
 
-    let id = extract_id(target);
-
-    assert_eq!(id, 187);
-    assert_eq!(command.as_ref(), &[1, 2, 3]);
-    assert!(overwrite_permitted);
 }
 
 #[test]
 fn round_trip_registered_partial_no_ow() {
-    let msg = CommandMessage::<_, &[u8]>::new(CommandMessageTarget::Registered(653), &[1, 2, 3], false);
-    let CommandMessage {
-        target,
-        command,
-        overwrite_permitted,
-    } = round_trip_partial(msg);
+    let msg = CommandMessage::<_, &[u8]>::registered(653, &[1, 2, 3], false);
+    
+    match round_trip_partial(msg) {
+        CommandMessage::Registered { target, command, overwrite_permitted } => {
+            assert_eq!(target, 653);
+            assert_eq!(command.as_ref(), &[1, 2, 3]);
+            assert!(!overwrite_permitted);
+        }
+        _ => panic!("Incorrect kind."),
+    }
 
-    let id = extract_id(target);
-
-    assert_eq!(id, 653);
-    assert_eq!(command.as_ref(), &[1, 2, 3]);
-    assert!(!overwrite_permitted);
 }
 
 #[test]
 fn round_trip_registered_partial_with_ow() {
-    let msg = CommandMessage::<_, &[u8]>::new(CommandMessageTarget::Registered(187), &[1, 2, 3], true);
-    let CommandMessage {
-        target,
-        command,
-        overwrite_permitted,
-    } = round_trip_partial(msg);
+    let msg = CommandMessage::<_, &[u8]>::registered(187, &[1, 2, 3], true);
+    
+    match round_trip_partial(msg) {
+        CommandMessage::Registered { target, command, overwrite_permitted } => {
+            assert_eq!(target, 187);
+            assert_eq!(command.as_ref(), &[1, 2, 3]);
+            assert!(overwrite_permitted);
+        }
+        _ => panic!("Incorrect kind."),
+    }
 
-    let id = extract_id(target);
+}
 
-    assert_eq!(id, 187);
-    assert_eq!(command.as_ref(), &[1, 2, 3]);
-    assert!(overwrite_permitted);
+#[test]
+fn round_trip_register() {
+    let addr = Address::new(Some("ws://localhost:8080"), "/node", "lane");
+    let msg = CommandMessage::<_, &[u8]>::register(addr, 7392);
+    
+    match round_trip(msg) {
+        CommandMessage::Register { address: Address { host, node, lane }, id } => {
+            assert_eq!(host, Some("ws://localhost:8080".to_string()));
+            assert_eq!(node, "/node");
+            assert_eq!(lane, "lane");
+            assert_eq!(id, 7392)
+        },
+        _ => panic!("Incorrect kind."),
+    }
+
+}
+
+#[test]
+fn round_trip_register_no_host() {
+    let addr = Address::new(None, "/node", "lane");
+    let msg = CommandMessage::<_, &[u8]>::register(addr, 9992);
+    
+    match round_trip(msg) {
+        CommandMessage::Register { address: Address { host, node, lane }, id } => {
+            assert!(host.is_none());
+            assert_eq!(node, "/node");
+            assert_eq!(lane, "lane");
+            assert_eq!(id, 9992)
+        },
+        _ => panic!("Incorrect kind."),
+    }
+
 }

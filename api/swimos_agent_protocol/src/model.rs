@@ -146,41 +146,23 @@ impl<T> From<StoreResponse<T>> for LaneResponse<T> {
     }
 }
 
-/// Target endpoint for a command message.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum CommandMessageTarget<S> {
-    /// Explicit address for an ad hoc message.
-    Addressed(Address<S>),
-    /// ID of a registered point to point connection.
-    Registered(u16),
-}
-
-impl PartialEq<CommandMessageTarget<&str>> for CommandMessageTarget<Text> {
-    fn eq(&self, other: &CommandMessageTarget<&str>) -> bool {
-        match (self, other) {
-            (CommandMessageTarget::Registered(id1), CommandMessageTarget::Registered(id2)) => id1 == id2,
-            (CommandMessageTarget::Addressed(addr1), CommandMessageTarget::Addressed(addr2)) => addr1 == addr2,
-            _ => false,
-        }
-    }
-}
-
-impl PartialEq<CommandMessageTarget<&str>> for CommandMessageTarget<BytesStr> {
-    fn eq(&self, other: &CommandMessageTarget<&str>) -> bool {
-        match (self, other) {
-            (CommandMessageTarget::Registered(id1), CommandMessageTarget::Registered(id2)) => id1 == id2,
-            (CommandMessageTarget::Addressed(addr1), CommandMessageTarget::Addressed(addr2)) => addr1 == addr2,
-            _ => false,
-        }
-    }
-}
-
 /// Message type for agents to send commands to the runtime.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct CommandMessage<S, T> {
-    pub target: CommandMessageTarget<S>,
-    pub command: T,
-    pub overwrite_permitted: bool,
+pub enum CommandMessage<S, T> {
+    Register {
+        address: Address<S>,
+        id: u16,
+    },
+    Addressed {
+        target: Address<S>,
+        command: T,
+        overwrite_permitted: bool,
+    },
+    Registered {
+        target: u16,
+        command: T,
+        overwrite_permitted: bool,
+    }
 }
 
 impl<S, T> CommandMessage<S, T> {
@@ -192,15 +174,19 @@ impl<S, T> CommandMessage<S, T> {
     ///   will never be sent). If false, the command will be queued instead. This is a user specifiable parameter
     ///   in the API.
     pub fn ad_hoc(address: Address<S>, command: T, overwrite_permitted: bool) -> Self {
-        CommandMessage {
-            target: CommandMessageTarget::Addressed(address),
+        CommandMessage::Addressed {
+            target: address,
             command,
             overwrite_permitted,
         }
     }
 
-    pub fn new(target: CommandMessageTarget<S>, command: T, overwrite_permitted: bool) -> Self {
-        CommandMessage {
+    pub fn register(address: Address<S>, id: u16) -> Self {
+        CommandMessage::Register { address, id }
+    }
+
+    pub fn registered(target: u16, command: T, overwrite_permitted: bool) -> Self {
+        CommandMessage::Registered {
             target,
             command,
             overwrite_permitted,
@@ -223,9 +209,12 @@ where
     T2: PartialEq<T1>,
 {
     fn eq(&self, other: &CommandMessage<&str, T1>) -> bool {
-        self.target == other.target
-            && self.command == other.command
-            && self.overwrite_permitted == other.overwrite_permitted
+        match (self, other) {
+            (CommandMessage::Register { address: ad1, id: id1 }, CommandMessage::Register { address: ad2, id: id2 }) => ad1 == ad2 && id1 == id2,
+            (CommandMessage::Addressed { target: ad1, command: cmd1, overwrite_permitted: op1 }, CommandMessage::Addressed { target: ad2, command: cmd2, overwrite_permitted: op2 }) => ad1 == ad2 && cmd1 == cmd2 && op1 == op2,
+            (CommandMessage::Registered { target: id1, command: cmd1, overwrite_permitted: op1 }, CommandMessage::Registered { target: id2, command: cmd2, overwrite_permitted: op2 }) => id1 == id2 && cmd1 == cmd2 && op1 == op2,
+            _ => false,
+        }
     }
 }
 
@@ -234,9 +223,12 @@ where
     T2: PartialEq<T1>,
 {
     fn eq(&self, other: &CommandMessage<&str, T1>) -> bool {
-        self.target == other.target
-            && self.command == other.command
-            && self.overwrite_permitted == other.overwrite_permitted
+        match (self, other) {
+            (CommandMessage::Register { address: ad1, id: id1 }, CommandMessage::Register { address: ad2, id: id2 }) => ad1 == ad2 && id1 == id2,
+            (CommandMessage::Addressed { target: ad1, command: cmd1, overwrite_permitted: op1 }, CommandMessage::Addressed { target: ad2, command: cmd2, overwrite_permitted: op2 }) => ad1 == ad2 && cmd1 == cmd2 && op1 == op2,
+            (CommandMessage::Registered { target: id1, command: cmd1, overwrite_permitted: op1 }, CommandMessage::Registered { target: id2, command: cmd2, overwrite_permitted: op2 }) => id1 == id2 && cmd1 == cmd2 && op1 == op2,
+            _ => false,
+        }
     }
 }
 

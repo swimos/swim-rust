@@ -24,7 +24,7 @@ use tokio_util::codec::{Decoder, Encoder};
 
 use swimos_api::{address::Address, error::FrameIoError};
 
-use crate::{CommandMessage, CommandMessageTarget};
+use crate::model::CommandMessage;
 
 #[cfg(test)]
 mod tests;
@@ -38,9 +38,11 @@ struct CommandEncoder<E> {
 enum DecoderState<S> {
     #[default]
     Init,
+    ReadingRegistration(FrameFlags),
     ReadingRegisteredHeader(FrameFlags),
     ReadingAddressedHeader(FrameFlags),
-    ReadingBody(CommandMessageTarget<S>, bool),
+    ReadingAddressedBody(Address<S>, bool),
+    ReadingRegisteredBody(u16, bool),
 }
 
 #[derive(Debug)]
@@ -65,10 +67,32 @@ const ID_LEN: usize = 2;
 bitflags! {
     #[derive(Debug, Copy, Clone)]
     struct FrameFlags: u8 {
-        const REGISTERED = 0b001;
-        const HAS_HOST = 0b010;
-        const OVERWRITE_PERMITTED = 0b100;
+        const REGISTRATION = 0b0001;
+        const REGISTERED = 0b0010;
+        const HAS_HOST = 0b0100;
+        const OVERWRITE_PERMITTED = 0b1000;
     }
+}
+
+fn put_address<S>(dst: &mut bytes::BytesMut, address: &Address<S>)
+where
+    S: AsRef<str>,
+{
+    let Address { host, node, lane } = address;
+    let node_str = node.as_ref();
+    let lane_str = lane.as_ref();
+    if let Some(h) = host {
+        let host_str = h.as_ref();
+        dst.put_u64(host_str.len() as u64);
+        dst.put_u64(node_str.len() as u64);
+        dst.put_u64(lane_str.len() as u64);
+        dst.put(host_str.as_bytes());
+    } else {
+        dst.put_u64(node_str.len() as u64);
+        dst.put_u64(lane_str.len() as u64);
+    }
+    dst.put(node_str.as_bytes());
+    dst.put(lane_str.as_bytes());
 }
 
 impl<S, T, E> Encoder<CommandMessage<S, T>> for CommandEncoder<E>
@@ -84,56 +108,52 @@ where
         dst: &mut bytes::BytesMut,
     ) -> Result<(), Self::Error> {
         let CommandEncoder { body_encoder } = self;
-        let CommandMessage {
-            target,
-            command,
-            overwrite_permitted,
-        } = item;
-        match target {
-            CommandMessageTarget::Addressed(Address { host, node, lane }) => {
-                let node_str = node.as_ref();
-                let lane_str = lane.as_ref();
-                let required_base = FLAGS_LEN + 2 * LEN_LEN + node_str.len() + lane_str.len();
-                match host {
-                    Some(host) => {
-                        let host_str = host.as_ref();
-                        let required = required_base + LEN_LEN + host_str.len();
-                        dst.reserve(required);
-                        let mut tag = FrameFlags::HAS_HOST;
-                        if overwrite_permitted {
-                            tag.insert(FrameFlags::OVERWRITE_PERMITTED);
-                        }
-                        dst.put_u8(tag.bits());
-                        dst.put_u64(host_str.len() as u64);
-                        dst.put_u64(node_str.len() as u64);
-                        dst.put_u64(lane_str.len() as u64);
-                        dst.put(host_str.as_bytes());
-                    }
-                    None => {
-                        dst.reserve(required_base);
-                        let mut tag = FrameFlags::empty();
-                        if overwrite_permitted {
-                            tag.insert(FrameFlags::OVERWRITE_PERMITTED);
-                        }
-                        dst.put_u8(tag.bits());
-                        dst.put_u64(node_str.len() as u64);
-                        dst.put_u64(lane_str.len() as u64);
-                    }
+        let mut flags = FrameFlags::empty();
+        let mut required = FLAGS_LEN;
+        match &item {
+            CommandMessage::Register { address: Address { host, node, lane }, .. } => {
+                flags.insert(FrameFlags::REGISTRATION);
+                required += 2 * LEN_LEN + ID_LEN + node.as_ref().len() + lane.as_ref().len();
+                if let Some(h) = host {
+                    flags.insert(FrameFlags::HAS_HOST);
+                    required += LEN_LEN + h.as_ref().len();
                 }
-                dst.put(node_str.as_bytes());
-                dst.put(lane_str.as_bytes());
-            }
-            CommandMessageTarget::Registered(id) => {
-                dst.reserve(FLAGS_LEN + ID_LEN);
-                let mut tag = FrameFlags::REGISTERED;
-                if overwrite_permitted {
-                    tag.insert(FrameFlags::OVERWRITE_PERMITTED);
+            },
+            CommandMessage::Addressed { target: Address { host, node, lane }, overwrite_permitted, .. } => {
+                if *overwrite_permitted {
+                    flags.insert(FrameFlags::OVERWRITE_PERMITTED);
                 }
-                dst.put_u8(tag.bits());
-                dst.put_u16(id);
-            }
+                required += 2 * LEN_LEN + node.as_ref().len() + lane.as_ref().len();
+                if let Some(h) = host {
+                    flags.insert(FrameFlags::HAS_HOST);
+                    required += LEN_LEN + h.as_ref().len();
+                }
+            },
+            CommandMessage::Registered { overwrite_permitted, .. } => {
+                flags.insert(FrameFlags::REGISTERED);
+                if *overwrite_permitted {
+                    flags.insert(FrameFlags::OVERWRITE_PERMITTED);
+                }
+                required += ID_LEN;
+            },
         }
-        body_encoder.encode(command, dst)
+        dst.reserve(required);
+        dst.put_u8(flags.bits());
+        match item {
+            CommandMessage::Register { address, id } => {
+                put_address(dst, &address);
+                dst.put_u16(id);
+                Ok(())
+            },
+            CommandMessage::Addressed { target, command, .. } => {
+                put_address(dst, &target);
+                body_encoder.encode(command, dst)
+            },
+            CommandMessage::Registered { target, command, .. } => {
+                dst.put_u16(target);
+                body_encoder.encode(command, dst)
+            },
+        }
     }
 }
 
@@ -164,11 +184,54 @@ where
                         break Ok(None);
                     }
                     let flags = FrameFlags::from_bits_truncate(src.get_u8());
-                    if flags.contains(FrameFlags::REGISTERED) {
+                    if flags.contains(FrameFlags::REGISTRATION) {
+                        *state = DecoderState::ReadingRegistration(flags);
+                    } else if flags.contains(FrameFlags::REGISTERED) {
                         *state = DecoderState::ReadingRegisteredHeader(flags);
                     } else {
                         *state = DecoderState::ReadingAddressedHeader(flags);
                     }
+                }
+                DecoderState::ReadingRegistration(flags) => {
+                    let remaining = src.remaining();
+                    let req = if flags.contains(FrameFlags::HAS_HOST) {
+                        MAX_REQUIRED
+                    } else {
+                        MIN_REQUIRED
+                    };
+                    if remaining < req {
+                        *state = DecoderState::ReadingAddressedHeader(flags);
+                        break Ok(None);
+                    }
+                    let mut bytes = src.as_ref();
+                    let has_host = flags.contains(FrameFlags::HAS_HOST);
+                    
+                    let host_len = if has_host {
+                        bytes.get_u64() as usize
+                    } else {
+                        0
+                    };
+
+                    let node_len = bytes.get_u64() as usize;
+                    let lane_len = bytes.get_u64() as usize;
+
+                    if bytes.remaining() < host_len + node_len + lane_len + ID_LEN {
+                        *state = DecoderState::ReadingAddressedHeader(flags);
+                        break Ok(None);
+                    }
+                    let host = if has_host {
+                        src.advance(MAX_REQUIRED);
+                        Some(try_extract_utf8(src, host_len)?)
+                    } else {
+                        src.advance(MIN_REQUIRED);
+                        None
+                    };
+
+                    let node = try_extract_utf8(src, node_len)?;
+                    let lane = try_extract_utf8(src, lane_len)?;
+                    let address = Address::new(host, node, lane);
+                    let id = src.get_u16();
+                    break Ok(Some(CommandMessage::Register { address, id }));
                 }
                 DecoderState::ReadingRegisteredHeader(flags) => {
                     let remaining = src.remaining();
@@ -177,8 +240,8 @@ where
                         break Ok(None);
                     }
                     let id = src.get_u16();
-                    *state = DecoderState::ReadingBody(
-                        CommandMessageTarget::Registered(id),
+                    *state = DecoderState::ReadingRegisteredBody(
+                        id,
                         flags.contains(FrameFlags::OVERWRITE_PERMITTED),
                     );
                 }
@@ -220,18 +283,30 @@ where
                     let node = try_extract_utf8(src, node_len)?;
                     let lane = try_extract_utf8(src, lane_len)?;
 
-                    *state = DecoderState::ReadingBody(
-                        CommandMessageTarget::Addressed(Address::new(host, node, lane)),
+                    *state = DecoderState::ReadingAddressedBody(
+                        Address::new(host, node, lane),
                         overwrite_permitted,
                     );
                 }
-                DecoderState::ReadingBody(target, overwrite_permitted) => {
+                DecoderState::ReadingAddressedBody(target, overwrite_permitted) => {
                     break match body_decoder.decode(src) {
                         Ok(Some(body)) => {
-                            Ok(Some(CommandMessage::new(target, body, overwrite_permitted)))
+                            Ok(Some(CommandMessage::Addressed { target, command: body, overwrite_permitted }))
                         }
                         Ok(_) => {
-                            *state = DecoderState::ReadingBody(target, overwrite_permitted);
+                            *state = DecoderState::ReadingAddressedBody(target, overwrite_permitted);
+                            Ok(None)
+                        }
+                        Err(e) => Err(e.into()),
+                    };
+                }
+                DecoderState::ReadingRegisteredBody(target, overwrite_permitted) => {
+                    break match body_decoder.decode(src) {
+                        Ok(Some(body)) => {
+                            Ok(Some(CommandMessage::Registered { target, command: body, overwrite_permitted }))
+                        }
+                        Ok(_) => {
+                            *state = DecoderState::ReadingRegisteredBody(target, overwrite_permitted);
                             Ok(None)
                         }
                         Err(e) => Err(e.into()),

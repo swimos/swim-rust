@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swimos_agent_protocol::CommandMessageTarget;
 use swimos_api::address::Address;
 use swimos_form::write::StructuralWritable;
 
@@ -70,11 +69,7 @@ where
             overwrite_permitted,
         } = self;
         if let Some(Body { address, value }) = body.take() {
-            action_context.send_command(
-                CommandMessageTarget::Addressed(address),
-                value,
-                *overwrite_permitted,
-            );
+            action_context.send_ad_hoc_command(address, value, *overwrite_permitted);
             StepResult::done(())
         } else {
             StepResult::after_done()

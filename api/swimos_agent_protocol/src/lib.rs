@@ -31,7 +31,7 @@ mod store;
 mod model;
 
 pub use model::{
-    CommandMessage, CommandMessageTarget, DownlinkNotification, DownlinkOperation, LaneRequest, LaneResponse,
+    CommandMessage, DownlinkNotification, DownlinkOperation, LaneRequest, LaneResponse,
     MapLaneResponse, MapMessage, MapOperation, MapStoreResponse, StoreInitMessage,
     StoreInitialized, StoreResponse,
 };

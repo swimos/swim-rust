@@ -21,9 +21,7 @@ use std::{
 use bytes::BytesMut;
 use frunk::{coproduct::CNil, Coproduct};
 use static_assertions::assert_obj_safe;
-use swimos_agent_protocol::{
-    encoding::ad_hoc::CommandMessageEncoder, CommandMessage, CommandMessageTarget,
-};
+use swimos_agent_protocol::{encoding::ad_hoc::CommandMessageEncoder, CommandMessage};
 use swimos_api::{
     address::Address,
     agent::WarpLaneKind,
@@ -241,14 +239,14 @@ impl<'a, Context> ActionContext<'a, Context> {
     /// Send a command message to a remote lane.
     ///
     /// # Arguments
-    /// * `target` - Address or registered ID for the target endpoint.
+    /// * `target` - Address of the target endpoint.
     /// * `command` - The body of the command message.
     /// * `overwrite_permitted` - Configures back-pressure relief for this message. If true, and the messages has not
     /// been sent before another message is send, it will be overwritten and never sent.
     #[doc(hidden)]
-    pub(crate) fn send_command<S, T>(
+    pub(crate) fn send_ad_hoc_command<S, T>(
         &mut self,
-        target: CommandMessageTarget<S>,
+        target: Address<S>,
         command: T,
         overwrite_permitted: bool,
     ) where
@@ -257,7 +255,31 @@ impl<'a, Context> ActionContext<'a, Context> {
     {
         let ActionContext { ad_hoc_buffer, .. } = self;
         let mut encoder = CommandMessageEncoder::default();
-        let cmd = CommandMessage::new(target, command, overwrite_permitted);
+        let cmd = CommandMessage::ad_hoc(target, command, overwrite_permitted);
+        encoder
+            .encode(cmd, ad_hoc_buffer)
+            .expect("Encoding should be infallible.")
+    }
+
+    /// Send a command message to a remote lane.
+    ///
+    /// # Arguments
+    /// * `target` - Registered ID of the remote lane endpoint.
+    /// * `command` - The body of the command message.
+    /// * `overwrite_permitted` - Configures back-pressure relief for this message. If true, and the messages has not
+    /// been sent before another message is send, it will be overwritten and never sent.
+    #[doc(hidden)]
+    pub(crate) fn send_registered_command<T>(
+        &mut self,
+        target: u16,
+        command: T,
+        overwrite_permitted: bool,
+    ) where
+        T: StructuralWritable,
+    {
+        let ActionContext { ad_hoc_buffer, .. } = self;
+        let mut encoder = CommandMessageEncoder::default();
+        let cmd = CommandMessage::<&str, T>::registered(target, command, overwrite_permitted);
         encoder
             .encode(cmd, ad_hoc_buffer)
             .expect("Encoding should be infallible.")

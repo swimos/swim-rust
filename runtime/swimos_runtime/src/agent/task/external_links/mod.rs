@@ -21,7 +21,7 @@ use std::{
 use bytes::{BufMut, BytesMut};
 use futures::{stream::FuturesUnordered, Future, StreamExt};
 use swimos_agent_protocol::CommandMessage;
-use swimos_agent_protocol::{encoding::ad_hoc::RawCommandMessageDecoder, CommandMessageTarget};
+use swimos_agent_protocol::encoding::ad_hoc::RawCommandMessageDecoder;
 use swimos_api::{
     address::{Address, RelativeAddress},
     error::{AgentRuntimeError, DownlinkRuntimeError},
@@ -436,7 +436,7 @@ pub async fn external_links_task<F: ReportFailed>(
                 trace!(identify = %identity, remote = ?remote, address = %address, "Handling a commander endpoint registration request for an agent.");
                 let endpoint = CommanderEndpoint::new(remote, address);
                 // Check if this new endpoint can release a stall on the task.
-                if let Some(CommandMessage { command, overwrite_permitted, .. }) = commander_ids.check_pending(id) {
+                /* if let Some(CommandMessage { command, overwrite_permitted, .. }) = commander_ids.check_pending(id) {
                     debug!(id, "Received registration for a pending message allowing the command task to unstall.");
                     if let Some(output) = outputs.get_mut(endpoint.key()) {
                         output.append(endpoint.address(), &command, overwrite_permitted);
@@ -455,7 +455,7 @@ pub async fn external_links_task<F: ReportFailed>(
                         let fut = try_open_new(identity, endpoint.key().clone(), Some(id), link_requests.clone(), None);
                         pending.push(UnionFuture4::second(fut));
                     }
-                }
+                } */
                 commander_ids.set_id(endpoint, id);
                 if !promise.trigger() {
                     debug!("A request for a commander ID was dropped.");
@@ -469,8 +469,11 @@ pub async fn external_links_task<F: ReportFailed>(
                     retry_strategy,
                 )));
             }
-            LinksTaskEvent::Command(CommandMessage {
-                target: CommandMessageTarget::Registered(id),
+            LinksTaskEvent::Command(CommandMessage::Register { .. }) => {
+                todo!()
+            }
+            LinksTaskEvent::Command(CommandMessage::Registered {
+                target:id,
                 command,
                 overwrite_permitted,
             }) => {
@@ -495,11 +498,12 @@ pub async fn external_links_task<F: ReportFailed>(
                 } else {
                     // We have a message for an ID that hasn't been registered yet. Stall until we get it.
                     debug!(id, "Received a message for an ID before its registration has been received. Temporarily stalling.");
-                    commander_ids.set_pending(id, CommandMessage::new(CommandMessageTarget::Registered(id), command, overwrite_permitted));
+                    //TODO
+                    //commander_ids.set_pending(id, CommandMessage::new(CommandMessageTarget::Registered(id), command, overwrite_permitted));
                 }
             }
-            LinksTaskEvent::Command(CommandMessage {
-                target: CommandMessageTarget::Addressed(address),
+            LinksTaskEvent::Command(CommandMessage::Addressed {
+                target: address,
                 command,
                 overwrite_permitted,
             }) => {
