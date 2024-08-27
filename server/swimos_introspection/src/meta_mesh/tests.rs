@@ -29,7 +29,7 @@ use swimos_api::agent::{
     AgentContext, DownlinkKind, HttpLaneRequestChannel, LaneConfig, StoreKind, WarpLaneKind,
 };
 use swimos_api::error::{
-    AgentRuntimeError, CommanderRegistrationError, DownlinkRuntimeError, OpenStoreError,
+    AgentRuntimeError, DownlinkRuntimeError, OpenStoreError,
 };
 use swimos_form::read::RecognizerReadable;
 use swimos_model::{Text, Timestamp};
@@ -75,16 +75,6 @@ impl AgentContext for MockAgentContext {
 
     fn command_channel(&self) -> BoxFuture<'static, Result<ByteWriter, DownlinkRuntimeError>> {
         panic!("Unexpected ad hoc commands invocation")
-    }
-
-    fn register_command_endpoint(
-        &self,
-        _host: Option<&str>,
-        _node: &str,
-        _lane: &str,
-        _id: u16,
-    ) -> BoxFuture<'static, Result<(), CommanderRegistrationError>> {
-        panic!("Unexpected command endpoint registration.");
     }
 
     fn add_http_lane(

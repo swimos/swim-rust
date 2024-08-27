@@ -37,7 +37,7 @@ use thiserror::Error;
 use tokio::sync::{mpsc, oneshot};
 
 use crate::error::{
-    AgentInitError, AgentRuntimeError, AgentTaskError, CommanderRegistrationError,
+    AgentInitError, AgentRuntimeError, AgentTaskError,
     DownlinkRuntimeError, OpenStoreError,
 };
 use crate::http::{HttpRequest, HttpResponse};
@@ -196,16 +196,6 @@ pub trait AgentContext: Sync {
     /// Open a channel for sending direct commands. Only one channel can be open at one time
     /// and requesting a second will result in the first being closed.
     fn command_channel(&self) -> BoxFuture<'static, Result<ByteWriter, DownlinkRuntimeError>>;
-
-    /// Register an endpoint with the command channel. The returned ID can be used in place of
-    /// specifying the complete address when sending commands.
-    fn register_command_endpoint(
-        &self,
-        host: Option<&str>,
-        node: &str,
-        lane: &str,
-        id: u16,
-    ) -> BoxFuture<'static, Result<(), CommanderRegistrationError>>;
 
     /// Add a new lane endpoint to the runtime for this agent.
     /// # Arguments

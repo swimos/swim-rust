@@ -24,7 +24,7 @@ use swimos_api::{
         AgentContext, DownlinkKind, HttpLaneRequest, HttpLaneRequestChannel, LaneConfig, StoreKind,
         UplinkKind, WarpLaneKind,
     },
-    error::{AgentRuntimeError, CommanderRegistrationError, DownlinkRuntimeError, OpenStoreError},
+    error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError},
 };
 use swimos_utilities::{
     byte_channel::{byte_channel, ByteReader, ByteWriter},
@@ -110,16 +110,6 @@ impl AgentContext for TestAgentContext {
             guard.ad_hoc_rx = Some(rx);
         }
         ready(Ok(tx)).boxed()
-    }
-
-    fn register_command_endpoint(
-        &self,
-        _host: Option<&str>,
-        _node: &str,
-        _lane: &str,
-        _id: u16,
-    ) -> BoxFuture<'static, Result<(), CommanderRegistrationError>> {
-        panic!("Unexpected call");
     }
 
     fn add_lane(

@@ -64,7 +64,6 @@ use swimos_api::{
 use swimos_messages::protocol::{Operation, RawRequestMessageDecoder, RequestMessage};
 use swimos_model::Text;
 use swimos_recon::parser::MessageExtractError;
-use swimos_remote::SchemeHostPort;
 use swimos_utilities::byte_channel::{ByteReader, ByteWriter};
 use swimos_utilities::encoding::BytesStr;
 use swimos_utilities::future::{immediate_or_join, StopAfterError};
@@ -167,38 +166,10 @@ impl CommandChannelRequest {
     }
 }
 
-#[derive(Debug)]
-pub struct CommanderRegistrationRequest {
-    /// An explicit host for the agent, if defined.
-    pub remote: Option<SchemeHostPort>,
-    /// The node URI and name of the lane.
-    pub address: RelativeAddress<Text>,
-    /// The ID for the registration.
-    pub id: u16,
-    /// Promise to satisfy with the result.
-    pub promise: trigger::Sender,
-}
-
-impl CommanderRegistrationRequest {
-    pub fn new(
-        remote: Option<SchemeHostPort>,
-        address: RelativeAddress<Text>,
-        id: u16,
-        promise: trigger::Sender,
-    ) -> Self {
-        CommanderRegistrationRequest {
-            remote,
-            address,
-            id,
-            promise,
-        }
-    }
-}
 
 #[derive(Debug)]
 pub enum ExternalLinkRequest {
     Command(CommandChannelRequest),
-    CommanderRegistration(CommanderRegistrationRequest),
     Downlink(DownlinkRequest),
 }
 
@@ -207,8 +178,6 @@ pub enum ExternalLinkRequest {
 pub enum AgentRuntimeRequest {
     /// Attempt to open a channel for direct commands.
     Command(CommandChannelRequest),
-    /// Attempt to register a command channel endpoint.
-    CommanderRegistration(CommanderRegistrationRequest),
     /// Attempt to open a new lane for the agent.
     AddLane(LaneRuntimeSpec),
     /// Attempt to open a new lane for the agent.
@@ -679,7 +648,6 @@ async fn attachment_task<F>(
                                 AgentRuntimeRequest::AddStore(req) => write_tx.send(WriteTaskMessage::Store(req)).await.is_ok(),
                                 AgentRuntimeRequest::Command(request) => ext_link_tx.send(ExternalLinkRequest::Command(request)).await.is_ok(),
                                 AgentRuntimeRequest::OpenDownlink(req) => ext_link_tx.send(ExternalLinkRequest::Downlink(req)).await.is_ok(),
-                                AgentRuntimeRequest::CommanderRegistration(req) => ext_link_tx.send(ExternalLinkRequest::CommanderRegistration(req)).await.is_ok(),
                             };
                             if !succeeded {
                                 break;

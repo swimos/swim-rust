@@ -23,7 +23,7 @@ use swimos_api::{
         LaneConfig, LaneKind, StoreKind, WarpLaneKind,
     },
     error::{
-        AgentInitError, AgentRuntimeError, AgentTaskError, CommanderRegistrationError,
+        AgentInitError, AgentRuntimeError, AgentTaskError,
         DownlinkFailureReason, DownlinkRuntimeError, OpenStoreError, StoreError,
     },
     persistence::NodePersistence,
@@ -68,7 +68,7 @@ mod task;
 #[cfg(test)]
 mod tests;
 
-use task::{AgentRuntimeRequest, CommanderRegistrationRequest};
+use task::AgentRuntimeRequest;
 use tracing::{error, info_span, Instrument};
 
 /// A message type that can be sent to the agent runtime to request a link to one of its lanes.
@@ -294,33 +294,6 @@ impl AgentContext for AgentRuntimeContext {
         .boxed()
     }
 
-    fn register_command_endpoint(
-        &self,
-        host: Option<&str>,
-        node: &str,
-        lane: &str,
-        id: u16,
-    ) -> BoxFuture<'static, Result<(), CommanderRegistrationError>> {
-        let remote_result = host.map(|h| h.parse::<SchemeHostPort>()).transpose();
-        let node = Text::new(node);
-        let lane = Text::new(lane);
-        let sender = self.tx.clone();
-        async move {
-            let (tx, rx) = trigger::trigger();
-            let remote = match remote_result {
-                Ok(r) => r,
-                Err(_) => return Err(CommanderRegistrationError::InvalidUrl),
-            };
-            sender
-                .send(AgentRuntimeRequest::CommanderRegistration(
-                    CommanderRegistrationRequest::new(remote, RelativeAddress::new(node, lane), id, tx),
-                ))
-                .await?;
-            rx.await?;
-            Ok(())
-        }
-        .boxed()
-    }
 }
 
 /// Reasons that a remote connected to an agent runtime task could be disconnected.

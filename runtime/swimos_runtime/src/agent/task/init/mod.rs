@@ -491,15 +491,6 @@ where
                         break Err(AgentExecError::FailedDownlinkRequest);
                     }
                 }
-                AgentRuntimeRequest::CommanderRegistration(req) => {
-                    if ext_link_tx
-                        .send(ExternalLinkRequest::CommanderRegistration(req))
-                        .await
-                        .is_err()
-                    {
-                        break Err(AgentExecError::FailedDownlinkRequest);
-                    }
-                },
                 AgentRuntimeRequest::AddLane(LaneRuntimeSpec {
                     name,
                     kind,

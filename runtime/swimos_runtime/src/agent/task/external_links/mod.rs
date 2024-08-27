@@ -49,7 +49,7 @@ use crate::{
     Io,
 };
 
-use super::{CommandChannelRequest, CommanderRegistrationRequest, ExternalLinkRequest};
+use super::{CommandChannelRequest, ExternalLinkRequest};
 
 #[cfg(test)]
 mod tests;
@@ -360,59 +360,55 @@ pub async fn external_links_task<F: ReportFailed>(
     let mut commander_ids = CommanderIds::default();
 
     loop {
-        let event = match reader.as_mut() {
-            // Don't read from the command stream while we are waiting for an ID to be registered.
-            Some(rx) if !commander_ids.has_pending() => {
-                tokio::select! {
-                    biased;
-                    maybe_req = open_requests.recv() => {
-                        if let Some(request) = maybe_req {
-                            LinksTaskEvent::Request(request)
-                        } else {
-                            debug!(identity = %identity, "Stopping after the request channel terminated.");
-                            break;
-                        }
+        let event = if let Some(rx) = reader.as_mut() {
+            tokio::select! {
+                biased;
+                maybe_req = open_requests.recv() => {
+                    if let Some(request) = maybe_req {
+                        LinksTaskEvent::Request(request)
+                    } else {
+                        debug!(identity = %identity, "Stopping after the request channel terminated.");
+                        break;
                     }
-                    maybe_result = pending.next(), if !pending.is_empty() => {
-                        if let Some(result) = maybe_result {
-                            result
-                        } else {
-                            continue;
-                        }
-                    },
-                    maybe_msg = rx.next() => {
-                        if let Some(Ok(msg)) = maybe_msg {
-                            LinksTaskEvent::Command(msg)
-                        } else {
-                            debug!(identity = %identity, "The agent dropped its ad hoc command channel.");
-                            reader = None;
-                            continue;
-                        }
-                    },
                 }
+                maybe_result = pending.next(), if !pending.is_empty() => {
+                    if let Some(result) = maybe_result {
+                        result
+                    } else {
+                        continue;
+                    }
+                },
+                maybe_msg = rx.next() => {
+                    if let Some(Ok(msg)) = maybe_msg {
+                        LinksTaskEvent::Command(msg)
+                    } else {
+                        debug!(identity = %identity, "The agent dropped its ad hoc command channel.");
+                        reader = None;
+                        continue;
+                    }
+                },
             }
-            _ => {
-                tokio::select! {
-                    biased;
-                    maybe_req = open_requests.recv() => {
-                        if let Some(request) = maybe_req {
-                            LinksTaskEvent::Request(request)
-                        } else {
-                            debug!(identity = %identity, "Stopping after the request channel terminated.");
-                            break;
-                        }
+        } else {
+            tokio::select! {
+                biased;
+                maybe_req = open_requests.recv() => {
+                    if let Some(request) = maybe_req {
+                        LinksTaskEvent::Request(request)
+                    } else {
+                        debug!(identity = %identity, "Stopping after the request channel terminated.");
+                        break;
                     }
-                    maybe_result = pending.next(), if !pending.is_empty() => {
-                        if let Some(result) = maybe_result {
-                            result
-                        } else {
-                            continue;
-                        }
-                    },
                 }
+                maybe_result = pending.next(), if !pending.is_empty() => {
+                    if let Some(result) = maybe_result {
+                        result
+                    } else {
+                        continue;
+                    }
+                },
             }
         };
-
+        
         match event {
             LinksTaskEvent::Request(ExternalLinkRequest::Command(CommandChannelRequest {
                 promise,
@@ -425,42 +421,6 @@ pub async fn external_links_task<F: ReportFailed>(
                     debug!(identity = %identity, "The agent dropped its request for an ad hoc command channel before it was completed.");
                 }
             }
-            LinksTaskEvent::Request(ExternalLinkRequest::CommanderRegistration(
-                CommanderRegistrationRequest {
-                    remote,
-                    address,
-                    id,
-                    promise,
-                },
-            )) => {
-                trace!(identify = %identity, remote = ?remote, address = %address, "Handling a commander endpoint registration request for an agent.");
-                let endpoint = CommanderEndpoint::new(remote, address);
-                // Check if this new endpoint can release a stall on the task.
-                /* if let Some(CommandMessage { command, overwrite_permitted, .. }) = commander_ids.check_pending(id) {
-                    debug!(id, "Received registration for a pending message allowing the command task to unstall.");
-                    if let Some(output) = outputs.get_mut(endpoint.key()) {
-                        output.append(endpoint.address(), &command, overwrite_permitted);
-                        if let Some(fut) = output.write() {
-                            pending.push(UnionFuture4::first(wrap_result(KeyOrId::Id(id), fut)));
-                        } else {
-                            pending.push(UnionFuture4::third(output_timeout(
-                                KeyOrId::Id(id),
-                                timeout_delay,
-                            )))
-                        }
-                    } else {
-                        let mut output = CommandOutput::new(identity, retry_strategy);
-                        output.append(endpoint.address(), &command, overwrite_permitted);
-                        outputs.insert(endpoint.key().clone(), output);
-                        let fut = try_open_new(identity, endpoint.key().clone(), Some(id), link_requests.clone(), None);
-                        pending.push(UnionFuture4::second(fut));
-                    }
-                } */
-                commander_ids.set_id(endpoint, id);
-                if !promise.trigger() {
-                    debug!("A request for a commander ID was dropped.");
-                }
-            }
             LinksTaskEvent::Request(ExternalLinkRequest::Downlink(req)) => {
                 pending.push(UnionFuture4::fourth(try_open_downlink(
                     None,
@@ -469,8 +429,21 @@ pub async fn external_links_task<F: ReportFailed>(
                     retry_strategy,
                 )));
             }
-            LinksTaskEvent::Command(CommandMessage::Register { .. }) => {
-                todo!()
+            LinksTaskEvent::Command(CommandMessage::Register { address, id }) => {
+                trace!(identify = %identity, address = %address, "Handling a commander endpoint registration request for an agent.");
+                let Address { host, node, lane } = address;
+                let remote = match host.as_ref().map(|h| h.as_ref().parse::<SchemeHostPort>()).transpose() {
+                    Ok(remote) => remote,
+                    _ => {
+                        error!(host = ?host, "Invalid host specified for ad-hoc message.");
+                        continue;
+                    }
+                };
+                
+                let rel_addr = RelativeAddress::new(Text::new(node.as_str()), Text::new(lane.as_str()));
+                
+                let endpoint = CommanderEndpoint::new(remote, rel_addr);
+                commander_ids.set_id(endpoint, id);
             }
             LinksTaskEvent::Command(CommandMessage::Registered {
                 target:id,
@@ -496,10 +469,7 @@ pub async fn external_links_task<F: ReportFailed>(
                         pending.push(UnionFuture4::second(fut));
                     }
                 } else {
-                    // We have a message for an ID that hasn't been registered yet. Stall until we get it.
-                    debug!(id, "Received a message for an ID before its registration has been received. Temporarily stalling.");
-                    //TODO
-                    //commander_ids.set_pending(id, CommandMessage::new(CommandMessageTarget::Registered(id), command, overwrite_permitted));
+                    error!(id, "Received a message for an ID before its registration has been received. Temporarily stalling.");
                 }
             }
             LinksTaskEvent::Command(CommandMessage::Addressed {
@@ -817,8 +787,6 @@ impl CommanderEndpoint {
 /// Assignment of integer IDs to commander endpoints.
 #[derive(Default, Debug)]
 struct CommanderIds {
-    pending_id: u16,
-    pending_message: Option<CommandMessage<BytesStr, BytesMut>>,
     commander_ids: HashMap<CommanderEndpoint, u16>,
     commander_endpoints: HashMap<u16, CommanderEndpoint>,
 }
@@ -834,32 +802,6 @@ impl CommanderIds {
         } = self;
         commander_endpoints.insert(id, endpoint.clone());
         commander_ids.insert(endpoint, id);
-    }
-
-    /// Check if there is a pending message for a newly registered ID.
-    fn check_pending(&mut self, id: u16) -> Option<CommandMessage<BytesStr, BytesMut>> {
-        let CommanderIds {
-            pending_id,
-            pending_message,
-            ..
-        } = self;
-        if id == *pending_id {
-            pending_message.take()
-        } else {
-            None
-        }
-    }
-
-    /// Set a pending message for an ID that has yet to be registered. This will stall the
-    /// task until the registration is received (which should be soon).
-    fn set_pending(&mut self, id: u16, msg: CommandMessage<BytesStr, BytesMut>) {
-        self.pending_id = id;
-        self.pending_message = Some(msg);
-    }
-
-    /// Determine if there is a pending message (so the task should stall until it is cleared.)
-    fn has_pending(&self) -> bool {
-        self.pending_message.is_some()
     }
 
     /// Get the endpoint associated with an ID.

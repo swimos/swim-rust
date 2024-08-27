@@ -132,16 +132,6 @@ impl AgentContext for DummyAgentContext {
     ) -> BoxFuture<'static, Result<HttpLaneRequestChannel, AgentRuntimeError>> {
         panic!("Dummy context used.");
     }
-
-    fn register_command_endpoint(
-        &self,
-        _host: Option<&str>,
-        _node: &str,
-        _lane: &str,
-        _id: u16,
-    ) -> BoxFuture<'static, Result<(), CommanderRegistrationError>> {
-        panic!("Dummy context used.");
-    }
 }
 
 pub async fn run_with_futures<H, Agent>(

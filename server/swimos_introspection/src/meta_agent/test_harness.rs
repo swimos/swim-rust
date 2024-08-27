@@ -24,7 +24,7 @@ use swimos_api::{
         Agent, AgentConfig, AgentContext, DownlinkKind, HttpLaneRequestChannel, LaneConfig,
         StoreKind, WarpLaneKind,
     },
-    error::{AgentRuntimeError, CommanderRegistrationError, DownlinkRuntimeError, OpenStoreError},
+    error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError},
 };
 use swimos_runtime::agent::UplinkReporterRegistration;
 use swimos_utilities::{
@@ -140,16 +140,6 @@ pub struct FakeContext {
 impl AgentContext for FakeContext {
     fn command_channel(&self) -> BoxFuture<'static, Result<ByteWriter, DownlinkRuntimeError>> {
         panic!("Unexpected request for ad hoc channel.");
-    }
-
-    fn register_command_endpoint(
-        &self,
-        _host: Option<&str>,
-        _node: &str,
-        _lane: &str,
-        _id: u16,
-    ) -> BoxFuture<'static, Result<(), CommanderRegistrationError>> {
-        panic!("Unexpected command endpoint registration.");
     }
 
     fn add_lane(

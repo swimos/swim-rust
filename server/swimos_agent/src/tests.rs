@@ -48,7 +48,7 @@ use crate::test_context::{NO_DOWNLINKS, NO_DYN_LANES};
 use parking_lot::Mutex;
 use swimos_agent_derive::{lifecycle, AgentLaneModel};
 use swimos_api::agent::DownlinkKind;
-use swimos_api::error::{CommanderRegistrationError, DownlinkRuntimeError, OpenStoreError};
+use swimos_api::error::{DownlinkRuntimeError, OpenStoreError};
 use swimos_api::{
     agent::{AgentConfig, HttpLaneRequest, HttpResponseReceiver, StoreKind, WarpLaneKind},
     http::{Header, HttpRequest, HttpResponse, Method, StandardHeaderName, StatusCode, Version},
@@ -92,16 +92,6 @@ impl<Context> Spawner<Context> for NoSpawn {
 
 impl AgentContext for DummyAgentContext {
     fn command_channel(&self) -> BoxFuture<'static, Result<ByteWriter, DownlinkRuntimeError>> {
-        panic!("Dummy context used.");
-    }
-
-    fn register_command_endpoint(
-        &self,
-        _host: Option<&str>,
-        _node: &str,
-        _lane: &str,
-        _id: u16,
-    ) -> BoxFuture<'static, Result<(), CommanderRegistrationError>> {
         panic!("Dummy context used.");
     }
 

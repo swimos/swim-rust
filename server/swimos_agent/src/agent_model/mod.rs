@@ -30,8 +30,9 @@ use futures::{
 };
 use futures::{Future, FutureExt};
 use pin_project::pin_project;
+use swimos_agent_protocol::encoding::ad_hoc::CommandMessageEncoder;
 use swimos_agent_protocol::encoding::store::{RawMapStoreInitDecoder, RawValueStoreInitDecoder};
-use swimos_agent_protocol::{LaneRequest, MapMessage};
+use swimos_agent_protocol::{CommandMessage, LaneRequest, MapMessage};
 use swimos_api::agent::DownlinkKind;
 use swimos_api::agent::{HttpLaneRequest, LaneConfig, RawHttpLaneResponse};
 use swimos_api::error::{
@@ -51,6 +52,7 @@ use swimos_utilities::future::RetryStrategy;
 use swimos_utilities::routing::RouteUri;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
+use tokio_util::codec::Encoder;
 use tracing::{debug, error, info, trace};
 use uuid::Uuid;
 
@@ -1103,19 +1105,16 @@ where
             );
             link_futures.push(LinkFuture::Opening(Some(request), fut));
         }
+
         // Request commanders from the init phase.
+        let mut cmd_encoder = CommandMessageEncoder::default();
         for request in commander_requests {
-            let CommanderRequest {
-                path: Address { host, node, lane },
-                id,
-            } = &request;
-            let fut = context.register_command_endpoint(
-                host.as_ref().map(|h| h.as_str()),
-                node.as_str(),
-                lane.as_str(),
-                *id,
-            );
-            link_futures.push(LinkFuture::Registering(Some(request), fut));
+            let CommanderRequest { path, id } = request;
+
+            let msg = CommandMessage::<_, ()>::register(path, id);
+            cmd_encoder
+                .encode(msg, &mut ad_hoc_buffer)
+                .expect("Encoding should be infallible.");
         }
 
         for ((name, kind), (tx, rx)) in lane_io {
@@ -1219,14 +1218,7 @@ where
                 );
                 link_futures.push(LinkFuture::Opening(Some(request), fut));
             };
-            let add_commander = |address: Address<Text>| {
-                let (request, fut) = cmd_ids
-                    .borrow_mut()
-                    .get_request(address, context.as_ref())?;
-                let id = request.id;
-                link_futures.push(LinkFuture::Registering(Some(request), fut));
-                Ok(id)
-            };
+            let add_commander = |address: Address<Text>| cmd_ids.borrow_mut().get_request(&address);
             let add_link = (add_downlink, add_commander);
             let add_lane = NoDynLanes;
 
@@ -1329,27 +1321,6 @@ where
                         exec_handler!(handler);
                     }
                 },
-                TaskEvent::LinksEvent {
-                    downlink_event:
-                        LinksEvent::Registered {
-                            request: CommanderRequest { path, id },
-                            result: Ok(_),
-                        },
-                } => {
-                    debug!(path = %path, id, "A command channel was successfully registered.");
-                    //let handler = on_done(id);
-                    //exec_handler!(handler);
-                }
-                TaskEvent::LinksEvent {
-                    downlink_event:
-                        LinksEvent::Registered {
-                            result: Err(error), ..
-                        },
-                } => {
-                    error!(error = %error, "Attempting to register a command channel failed.");
-                    // This implies either the runtime has stopped or integer overflow which is not-recoverable.
-                    break Err(AgentTaskError::CommanderRegistrationFailed);
-                }
                 TaskEvent::LinksEvent {
                     downlink_event:
                         LinksEvent::Event {
@@ -1868,27 +1839,21 @@ enum LinksEvent<Context> {
         downlink: HostedDownlink<Context>,
         event: HostedDownlinkEvent,
     },
-    Registered {
-        request: CommanderRequest,
-        result: Result<(), CommanderRegistrationError>,
-    },
 }
 
 /// A future that either opens a new downlink, registers a commander or waits on activity from an open downlink.
 #[pin_project(project = LinkFutureProj)]
-enum LinkFuture<Context, F1, F2, F3, F4> {
+enum LinkFuture<Context, F1, F2, F3> {
     Opening(Option<DownlinkSpawnRequest<Context>>, #[pin] F1),
     Running(#[pin] F2),
     Reconnecting(#[pin] F3),
-    Registering(Option<CommanderRequest>, #[pin] F4),
 }
 
-impl<Context, F1, F2, F3, F4> Future for LinkFuture<Context, F1, F2, F3, F4>
+impl<Context, F1, F2, F3> Future for LinkFuture<Context, F1, F2, F3>
 where
     F1: Future<Output = OpenDownlinkResult>,
     F2: Future<Output = (HostedDownlink<Context>, HostedDownlinkEvent)>,
     F3: Future<Output = (HostedDownlink<Context>, HostedDownlinkEvent)>,
-    F4: Future<Output = Result<(), CommanderRegistrationError>>,
 {
     type Output = LinksEvent<Context>;
 
@@ -1913,13 +1878,6 @@ where
                 Poll::Ready(LinksEvent::Event {
                     downlink: dl,
                     event: ev,
-                })
-            }
-            LinkFutureProj::Registering(request, fut) => {
-                let result = ready!(fut.poll(cx));
-                Poll::Ready(LinksEvent::Registered {
-                    request: request.take().expect("Polled twice."),
-                    result,
                 })
             }
         }
@@ -2064,8 +2022,6 @@ struct CommanderIds {
     assigned: HashMap<Address<Text>, u16>,
 }
 
-type RegFut = BoxFuture<'static, Result<(), CommanderRegistrationError>>;
-
 impl CommanderIds {
     fn new(next_id: u16) -> Self {
         CommanderIds {
@@ -2074,12 +2030,8 @@ impl CommanderIds {
         }
     }
 
-    fn get_request(
-        &mut self,
-        address: Address<Text>,
-        context: &dyn AgentContext,
-    ) -> Result<(CommanderRequest, RegFut), CommanderRegistrationError> {
-        let id = if let Some(id) = self.assigned.get(&address) {
+    fn get_request(&mut self, address: &Address<Text>) -> Result<u16, CommanderRegistrationError> {
+        let id = if let Some(id) = self.assigned.get(address) {
             *id
         } else {
             let id = self.next_id;
@@ -2092,15 +2044,6 @@ impl CommanderIds {
             }
         };
 
-        let Address { host, node, lane } = &address;
-
-        let fut = context.register_command_endpoint(
-            host.as_ref().map(|h| h.as_str()),
-            node.as_str(),
-            lane.as_str(),
-            id,
-        );
-
-        Ok((CommanderRequest { path: address, id }, fut))
+        Ok(id)
     }
 }
