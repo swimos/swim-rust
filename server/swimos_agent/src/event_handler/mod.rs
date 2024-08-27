@@ -208,10 +208,16 @@ impl<'a, Context> ActionContext<'a, Context> {
     }
 
     pub(crate) fn register_commander(
-        &self,
+        &mut self,
         path: Address<Text>,
     ) -> Result<u16, CommanderRegistrationError> {
-        self.downlink.register_commander(path)
+        let id = self.downlink.register_commander(path.clone())?;
+        let msg = CommandMessage::<_, String>::register(path, id);
+        let mut encoder = CommandMessageEncoder::default();
+        encoder
+            .encode(msg, &mut self.ad_hoc_buffer)
+            .expect("Encoding should be infallible.");
+        Ok(id)
     }
 
     /// Attempt to attach a new lane to the agent runtime.

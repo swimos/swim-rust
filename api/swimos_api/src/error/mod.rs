@@ -108,8 +108,6 @@ pub enum AgentRuntimeError {
 pub enum CommanderRegistrationError {
     #[error(transparent)]
     RuntimeError(#[from] AgentRuntimeError),
-    #[error("The specified remote URL was not valid.")]
-    InvalidUrl,
     #[error("Too many commander IDs were requested for the agent.")]
     CommanderIdOverflow,
 }
