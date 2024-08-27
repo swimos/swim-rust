@@ -215,7 +215,7 @@ impl<'a, Context> ActionContext<'a, Context> {
         let msg = CommandMessage::<_, String>::register(path, id);
         let mut encoder = CommandMessageEncoder::default();
         encoder
-            .encode(msg, &mut self.ad_hoc_buffer)
+            .encode(msg, self.ad_hoc_buffer)
             .expect("Encoding should be infallible.");
         Ok(id)
     }
