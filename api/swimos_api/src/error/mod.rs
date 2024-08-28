@@ -104,10 +104,13 @@ pub enum AgentRuntimeError {
     Terminated,
 }
 
+/// Error type for registering point to point command channels.
 #[derive(Error, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CommanderRegistrationError {
+    /// The registration could not be completed because the agent is stopping.
     #[error(transparent)]
     RuntimeError(#[from] AgentRuntimeError),
+    /// The limit on the number of registrations for the agent was exceeded.
     #[error("Too many commander IDs were requested for the agent.")]
     CommanderIdOverflow,
 }

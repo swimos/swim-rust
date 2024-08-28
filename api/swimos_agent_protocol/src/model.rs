@@ -149,15 +149,15 @@ impl<T> From<StoreResponse<T>> for LaneResponse<T> {
 /// Message type for agents to send commands to the runtime.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CommandMessage<S, T> {
-    Register {
-        address: Address<S>,
-        id: u16,
-    },
+    /// Register an endpoint so that it can be referred to by an integer ID.
+    Register { address: Address<S>, id: u16 },
+    /// Send an message to explicit address.
     Addressed {
         target: Address<S>,
         command: T,
         overwrite_permitted: bool,
     },
+    /// Send a message to an endpoint that was registered with a register message.
     Registered {
         target: u16,
         command: T,
@@ -166,6 +166,8 @@ pub enum CommandMessage<S, T> {
 }
 
 impl<S, T> CommandMessage<S, T> {
+    /// Send a message to an explicit endpoint.
+    ///
     /// # Arguments
     /// * `address` - The target lane for the command.
     /// * `command` - The body of the command message.
@@ -181,10 +183,24 @@ impl<S, T> CommandMessage<S, T> {
         }
     }
 
+    /// Register an integer ID for a lane endpoint.
+    ///
+    /// # Arguments
+    /// * `address` - The target lane to register.
+    /// * `id` - The ID to assign to the address.
     pub fn register(address: Address<S>, id: u16) -> Self {
         CommandMessage::Register { address, id }
     }
 
+    /// Send a message to an pre-registered endpoint.
+    ///
+    /// # Arguments
+    /// * `target` - The registered ID.
+    /// * `command` - The body of the command message.
+    /// * `overwrite_permitted` - Controls the behaviour of command handling in the case of back-pressure.
+    ///   If this is true, the command maybe be overwritten by a subsequent command to the same target (and so
+    ///   will never be sent). If false, the command will be queued instead. This is a user specifiable parameter
+    ///   in the API.
     pub fn registered(target: u16, command: T, overwrite_permitted: bool) -> Self {
         CommandMessage::Registered {
             target,
