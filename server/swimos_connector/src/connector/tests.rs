@@ -20,8 +20,8 @@ use std::collections::HashMap;
 use std::{convert::Infallible, sync::Arc};
 use swimos_agent::agent_model::downlink::BoxDownlinkChannelFactory;
 use swimos_agent::event_handler::{
-    ActionContext, DownlinkSpawnOnDone, LinkSpawner, EventHandler, HandlerAction,
-    HandlerFuture, LaneSpawnOnDone, LaneSpawner, Spawner, StepResult
+    ActionContext, DownlinkSpawnOnDone, EventHandler, HandlerAction, HandlerFuture,
+    LaneSpawnOnDone, LaneSpawner, LinkSpawner, Spawner, StepResult,
 };
 use swimos_agent::AgentMetadata;
 use swimos_api::address::Address;

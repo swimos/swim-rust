@@ -20,8 +20,8 @@ use std::{
 
 use bytes::{BufMut, BytesMut};
 use futures::{stream::FuturesUnordered, Future, StreamExt};
-use swimos_agent_protocol::CommandMessage;
 use swimos_agent_protocol::encoding::command::RawCommandMessageDecoder;
+use swimos_agent_protocol::CommandMessage;
 use swimos_api::{
     address::{Address, RelativeAddress},
     error::{AgentRuntimeError, DownlinkRuntimeError},
@@ -104,7 +104,7 @@ struct LaneBuffer {
 struct CommandOutput {
     identity: Uuid,                             // ID of the agent sending commands.
     count: usize,                               // Running counter of IDs for targets.
-    writer: Option<CmdChannelWriter>,                // Sender for the output channel.
+    writer: Option<CmdChannelWriter>,           // Sender for the output channel.
     ids: HashMap<RelativeAddress<Text>, usize>, // Mapping from target paths to IDs.
     lane_buffers: HashMap<usize, LaneBuffer>,   // Mapping from IDs to data buffers.
     dirty: Vec<usize>, // Targets that have been written to since the last write was scheduled.
@@ -408,7 +408,7 @@ pub async fn external_links_task<F: ReportFailed>(
                 },
             }
         };
-        
+
         match event {
             LinksTaskEvent::Request(ExternalLinkRequest::Command(CommandChannelRequest {
                 promise,
@@ -432,21 +432,26 @@ pub async fn external_links_task<F: ReportFailed>(
             LinksTaskEvent::Command(CommandMessage::Register { address, id }) => {
                 trace!(identify = %identity, address = %address, "Handling a commander endpoint registration request for an agent.");
                 let Address { host, node, lane } = address;
-                let remote = match host.as_ref().map(|h| h.as_ref().parse::<SchemeHostPort>()).transpose() {
+                let remote = match host
+                    .as_ref()
+                    .map(|h| h.as_ref().parse::<SchemeHostPort>())
+                    .transpose()
+                {
                     Ok(remote) => remote,
                     _ => {
                         error!(host = ?host, "Invalid host specified for ad-hoc message.");
                         continue;
                     }
                 };
-                
-                let rel_addr = RelativeAddress::new(Text::new(node.as_str()), Text::new(lane.as_str()));
-                
+
+                let rel_addr =
+                    RelativeAddress::new(Text::new(node.as_str()), Text::new(lane.as_str()));
+
                 let endpoint = CommanderEndpoint::new(remote, rel_addr);
                 commander_ids.set_id(endpoint, id);
             }
             LinksTaskEvent::Command(CommandMessage::Registered {
-                target:id,
+                target: id,
                 command,
                 overwrite_permitted,
             }) => {
@@ -465,11 +470,20 @@ pub async fn external_links_task<F: ReportFailed>(
                         let mut output = CommandOutput::new(identity, retry_strategy);
                         output.append(endpoint.address(), &command, overwrite_permitted);
                         outputs.insert(endpoint.key().clone(), output);
-                        let fut = try_open_new(identity, endpoint.key().clone(), Some(id), link_requests.clone(), None);
+                        let fut = try_open_new(
+                            identity,
+                            endpoint.key().clone(),
+                            Some(id),
+                            link_requests.clone(),
+                            None,
+                        );
                         pending.push(UnionFuture4::second(fut));
                     }
                 } else {
-                    error!(id, "Received a message for an ID before its registration has been received.");
+                    error!(
+                        id,
+                        "Received a message for an ID before its registration has been received."
+                    );
                 }
             }
             LinksTaskEvent::Command(CommandMessage::Addressed {
@@ -576,8 +590,7 @@ pub async fn external_links_task<F: ReportFailed>(
                             trace!(identify = %identity, key = ?key, "Completed writing an ad hoc command.");
                             output.replace_writer(writer);
                             if let Some(fut) = output.write() {
-                                pending
-                                    .push(UnionFuture4::first(wrap_result(key_or_id, fut)));
+                                pending.push(UnionFuture4::first(wrap_result(key_or_id, fut)));
                             } else {
                                 pending.push(UnionFuture4::third(output_timeout(
                                     key_or_id,
@@ -792,7 +805,6 @@ struct CommanderIds {
 }
 
 impl CommanderIds {
-    
     /// Set the ID associated with an endpoint.
     fn set_id(&mut self, endpoint: CommanderEndpoint, id: u16) {
         let CommanderIds {

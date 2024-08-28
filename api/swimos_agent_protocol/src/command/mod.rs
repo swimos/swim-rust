@@ -43,7 +43,7 @@ enum DecoderState<S> {
     ReadingRegisteredHeader(FrameFlags), // The flags indicate a message for a registered endpoint.
     ReadingAddressedHeader(FrameFlags), // The flags indicate a message for a specified endpoint.
     ReadingAddressedBody(Address<S>, bool), // Reading the body for message to a specified endpoint.
-    ReadingRegisteredBody(u16, bool), // Reading the body for a message to a registered endpoint. 
+    ReadingRegisteredBody(u16, bool), // Reading the body for a message to a registered endpoint.
 }
 
 /// Tokio decoder for command messages.
@@ -113,15 +113,22 @@ where
         let mut flags = FrameFlags::empty();
         let mut required = FLAGS_LEN;
         match &item {
-            CommandMessage::Register { address: Address { host, node, lane }, .. } => {
+            CommandMessage::Register {
+                address: Address { host, node, lane },
+                ..
+            } => {
                 flags.insert(FrameFlags::REGISTRATION);
                 required += 2 * LEN_LEN + ID_LEN + node.as_ref().len() + lane.as_ref().len();
                 if let Some(h) = host {
                     flags.insert(FrameFlags::HAS_HOST);
                     required += LEN_LEN + h.as_ref().len();
                 }
-            },
-            CommandMessage::Addressed { target: Address { host, node, lane }, overwrite_permitted, .. } => {
+            }
+            CommandMessage::Addressed {
+                target: Address { host, node, lane },
+                overwrite_permitted,
+                ..
+            } => {
                 if *overwrite_permitted {
                     flags.insert(FrameFlags::OVERWRITE_PERMITTED);
                 }
@@ -130,14 +137,17 @@ where
                     flags.insert(FrameFlags::HAS_HOST);
                     required += LEN_LEN + h.as_ref().len();
                 }
-            },
-            CommandMessage::Registered { overwrite_permitted, .. } => {
+            }
+            CommandMessage::Registered {
+                overwrite_permitted,
+                ..
+            } => {
                 flags.insert(FrameFlags::REGISTERED);
                 if *overwrite_permitted {
                     flags.insert(FrameFlags::OVERWRITE_PERMITTED);
                 }
                 required += ID_LEN;
-            },
+            }
         }
         dst.reserve(required);
         dst.put_u8(flags.bits());
@@ -146,15 +156,19 @@ where
                 put_address(dst, &address);
                 dst.put_u16(id);
                 Ok(())
-            },
-            CommandMessage::Addressed { target, command, .. } => {
+            }
+            CommandMessage::Addressed {
+                target, command, ..
+            } => {
                 put_address(dst, &target);
                 body_encoder.encode(command, dst)
-            },
-            CommandMessage::Registered { target, command, .. } => {
+            }
+            CommandMessage::Registered {
+                target, command, ..
+            } => {
                 dst.put_u16(target);
                 body_encoder.encode(command, dst)
-            },
+            }
         }
     }
 }
@@ -207,7 +221,7 @@ where
                     }
                     let mut bytes = src.as_ref();
                     let has_host = flags.contains(FrameFlags::HAS_HOST);
-                    
+
                     let host_len = if has_host {
                         bytes.get_u64() as usize
                     } else {
@@ -292,11 +306,14 @@ where
                 }
                 DecoderState::ReadingAddressedBody(target, overwrite_permitted) => {
                     break match body_decoder.decode(src) {
-                        Ok(Some(body)) => {
-                            Ok(Some(CommandMessage::Addressed { target, command: body, overwrite_permitted }))
-                        }
+                        Ok(Some(body)) => Ok(Some(CommandMessage::Addressed {
+                            target,
+                            command: body,
+                            overwrite_permitted,
+                        })),
                         Ok(_) => {
-                            *state = DecoderState::ReadingAddressedBody(target, overwrite_permitted);
+                            *state =
+                                DecoderState::ReadingAddressedBody(target, overwrite_permitted);
                             Ok(None)
                         }
                         Err(e) => Err(e.into()),
@@ -304,11 +321,14 @@ where
                 }
                 DecoderState::ReadingRegisteredBody(target, overwrite_permitted) => {
                     break match body_decoder.decode(src) {
-                        Ok(Some(body)) => {
-                            Ok(Some(CommandMessage::Registered { target, command: body, overwrite_permitted }))
-                        }
+                        Ok(Some(body)) => Ok(Some(CommandMessage::Registered {
+                            target,
+                            command: body,
+                            overwrite_permitted,
+                        })),
                         Ok(_) => {
-                            *state = DecoderState::ReadingRegisteredBody(target, overwrite_permitted);
+                            *state =
+                                DecoderState::ReadingRegisteredBody(target, overwrite_permitted);
                             Ok(None)
                         }
                         Err(e) => Err(e.into()),
@@ -395,7 +415,6 @@ where
         self.inner.decode(src)
     }
 }
-
 
 /// Decoder for command messages with raw byte bodies. (The returned body could contain
 /// a reference to the read from buffer).

@@ -23,8 +23,8 @@ use swimos_api::{
         LaneConfig, LaneKind, StoreKind, WarpLaneKind,
     },
     error::{
-        AgentInitError, AgentRuntimeError, AgentTaskError,
-        DownlinkFailureReason, DownlinkRuntimeError, OpenStoreError, StoreError,
+        AgentInitError, AgentRuntimeError, AgentTaskError, DownlinkFailureReason,
+        DownlinkRuntimeError, OpenStoreError, StoreError,
     },
     persistence::NodePersistence,
 };
@@ -293,7 +293,6 @@ impl AgentContext for AgentRuntimeContext {
         }
         .boxed()
     }
-
 }
 
 /// Reasons that a remote connected to an agent runtime task could be disconnected.

@@ -162,7 +162,7 @@ pub enum CommandMessage<S, T> {
         target: u16,
         command: T,
         overwrite_permitted: bool,
-    }
+    },
 }
 
 impl<S, T> CommandMessage<S, T> {
@@ -210,9 +210,40 @@ where
 {
     fn eq(&self, other: &CommandMessage<&str, T1>) -> bool {
         match (self, other) {
-            (CommandMessage::Register { address: ad1, id: id1 }, CommandMessage::Register { address: ad2, id: id2 }) => ad1 == ad2 && id1 == id2,
-            (CommandMessage::Addressed { target: ad1, command: cmd1, overwrite_permitted: op1 }, CommandMessage::Addressed { target: ad2, command: cmd2, overwrite_permitted: op2 }) => ad1 == ad2 && cmd1 == cmd2 && op1 == op2,
-            (CommandMessage::Registered { target: id1, command: cmd1, overwrite_permitted: op1 }, CommandMessage::Registered { target: id2, command: cmd2, overwrite_permitted: op2 }) => id1 == id2 && cmd1 == cmd2 && op1 == op2,
+            (
+                CommandMessage::Register {
+                    address: ad1,
+                    id: id1,
+                },
+                CommandMessage::Register {
+                    address: ad2,
+                    id: id2,
+                },
+            ) => ad1 == ad2 && id1 == id2,
+            (
+                CommandMessage::Addressed {
+                    target: ad1,
+                    command: cmd1,
+                    overwrite_permitted: op1,
+                },
+                CommandMessage::Addressed {
+                    target: ad2,
+                    command: cmd2,
+                    overwrite_permitted: op2,
+                },
+            ) => ad1 == ad2 && cmd1 == cmd2 && op1 == op2,
+            (
+                CommandMessage::Registered {
+                    target: id1,
+                    command: cmd1,
+                    overwrite_permitted: op1,
+                },
+                CommandMessage::Registered {
+                    target: id2,
+                    command: cmd2,
+                    overwrite_permitted: op2,
+                },
+            ) => id1 == id2 && cmd1 == cmd2 && op1 == op2,
             _ => false,
         }
     }
@@ -224,9 +255,40 @@ where
 {
     fn eq(&self, other: &CommandMessage<&str, T1>) -> bool {
         match (self, other) {
-            (CommandMessage::Register { address: ad1, id: id1 }, CommandMessage::Register { address: ad2, id: id2 }) => ad1 == ad2 && id1 == id2,
-            (CommandMessage::Addressed { target: ad1, command: cmd1, overwrite_permitted: op1 }, CommandMessage::Addressed { target: ad2, command: cmd2, overwrite_permitted: op2 }) => ad1 == ad2 && cmd1 == cmd2 && op1 == op2,
-            (CommandMessage::Registered { target: id1, command: cmd1, overwrite_permitted: op1 }, CommandMessage::Registered { target: id2, command: cmd2, overwrite_permitted: op2 }) => id1 == id2 && cmd1 == cmd2 && op1 == op2,
+            (
+                CommandMessage::Register {
+                    address: ad1,
+                    id: id1,
+                },
+                CommandMessage::Register {
+                    address: ad2,
+                    id: id2,
+                },
+            ) => ad1 == ad2 && id1 == id2,
+            (
+                CommandMessage::Addressed {
+                    target: ad1,
+                    command: cmd1,
+                    overwrite_permitted: op1,
+                },
+                CommandMessage::Addressed {
+                    target: ad2,
+                    command: cmd2,
+                    overwrite_permitted: op2,
+                },
+            ) => ad1 == ad2 && cmd1 == cmd2 && op1 == op2,
+            (
+                CommandMessage::Registered {
+                    target: id1,
+                    command: cmd1,
+                    overwrite_permitted: op1,
+                },
+                CommandMessage::Registered {
+                    target: id2,
+                    command: cmd2,
+                    overwrite_permitted: op2,
+                },
+            ) => id1 == id2 && cmd1 == cmd2 && op1 == op2,
             _ => false,
         }
     }

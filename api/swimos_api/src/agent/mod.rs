@@ -37,8 +37,7 @@ use thiserror::Error;
 use tokio::sync::{mpsc, oneshot};
 
 use crate::error::{
-    AgentInitError, AgentRuntimeError, AgentTaskError,
-    DownlinkRuntimeError, OpenStoreError,
+    AgentInitError, AgentRuntimeError, AgentTaskError, DownlinkRuntimeError, OpenStoreError,
 };
 use crate::http::{HttpRequest, HttpResponse};
 
@@ -192,7 +191,6 @@ pub type HttpLaneRequestChannel = mpsc::Receiver<HttpLaneRequest>;
 
 /// Trait for the context that is passed to an agent to allow it to interact with the runtime.
 pub trait AgentContext: Sync {
-    
     /// Open a channel for sending direct commands. Only one channel can be open at one time
     /// and requesting a second will result in the first being closed.
     fn command_channel(&self) -> BoxFuture<'static, Result<ByteWriter, DownlinkRuntimeError>>;

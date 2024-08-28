@@ -20,9 +20,7 @@ use swimos_api::agent::{
     AgentConfig, AgentContext, DownlinkKind, HttpLaneRequestChannel, LaneConfig, StoreKind,
     WarpLaneKind,
 };
-use swimos_api::error::{
-    AgentRuntimeError, DownlinkRuntimeError, OpenStoreError,
-};
+use swimos_api::error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError};
 use swimos_utilities::byte_channel::{ByteReader, ByteWriter};
 use swimos_utilities::routing::RouteUri;
 

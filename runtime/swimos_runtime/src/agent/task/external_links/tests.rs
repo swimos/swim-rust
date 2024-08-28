@@ -52,8 +52,8 @@ use tokio_util::codec::{Decoder, FramedRead, FramedWrite};
 use uuid::Uuid;
 
 use super::{
-    external_links_task, CommandOutput, CmdChannelWriter, LinksTaskConfig, LinksTaskState, PendingWrites,
-    ReportFailed,
+    external_links_task, CmdChannelWriter, CommandOutput, LinksTaskConfig, LinksTaskState,
+    PendingWrites, ReportFailed,
 };
 
 struct TestContext {
@@ -205,8 +205,12 @@ async fn send_registration(tx: &mut CommandSender, target: usize) {
     assert!(tx.send(cmd).await.is_ok());
 }
 
-async fn send_command_registered<T>(tx: &mut CommandSender, id: u16, value: T, overwrite_permitted: bool)
-where
+async fn send_command_registered<T>(
+    tx: &mut CommandSender,
+    id: u16,
+    value: T,
+    overwrite_permitted: bool,
+) where
     T: StructuralWritable,
 {
     let cmd = CommandMessage::<&str, _>::registered(id, value, overwrite_permitted);

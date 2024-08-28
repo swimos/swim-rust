@@ -52,9 +52,7 @@ use swimos_api::address::RelativeAddress;
 use swimos_api::agent::{
     HttpLaneRequest, HttpLaneRequestChannel, HttpResponseSender, LaneConfig, StoreConfig,
 };
-use swimos_api::error::{
-    DownlinkRuntimeError, OpenStoreError, StoreError,
-};
+use swimos_api::error::{DownlinkRuntimeError, OpenStoreError, StoreError};
 use swimos_api::persistence::StoreDisabled;
 use swimos_api::{
     agent::{StoreKind, UplinkKind, WarpLaneKind},
@@ -165,7 +163,6 @@ impl CommandChannelRequest {
         CommandChannelRequest { promise }
     }
 }
-
 
 #[derive(Debug)]
 pub enum ExternalLinkRequest {
