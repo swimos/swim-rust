@@ -29,6 +29,7 @@ use crate::model::CommandMessage;
 #[cfg(test)]
 mod tests;
 
+/// Tokio encoder for command messages.
 #[derive(Debug, Default, Clone, Copy)]
 struct CommandEncoder<E> {
     body_encoder: E,
@@ -37,14 +38,15 @@ struct CommandEncoder<E> {
 #[derive(Debug, Default)]
 enum DecoderState<S> {
     #[default]
-    Init,
-    ReadingRegistration(FrameFlags),
-    ReadingRegisteredHeader(FrameFlags),
-    ReadingAddressedHeader(FrameFlags),
-    ReadingAddressedBody(Address<S>, bool),
-    ReadingRegisteredBody(u16, bool),
+    Init, // Initial state before any bytes consumed.
+    ReadingRegistration(FrameFlags), // The flags indicate a new registration for an endpoint.
+    ReadingRegisteredHeader(FrameFlags), // The flags indicate a message for a registered endpoint.
+    ReadingAddressedHeader(FrameFlags), // The flags indicate a message for a specified endpoint.
+    ReadingAddressedBody(Address<S>, bool), // Reading the body for message to a specified endpoint.
+    ReadingRegisteredBody(u16, bool), // Reading the body for a message to a registered endpoint. 
 }
 
+/// Tokio decoder for command messages.
 #[derive(Debug)]
 struct CommandDecoder<S, D> {
     state: DecoderState<S>,
@@ -328,6 +330,7 @@ fn try_extract_utf8<S: TryFromUtf8Bytes>(
     })
 }
 
+/// Encoder for command messages with recon bodies.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct CommandMessageEncoder {
     inner: CommandEncoder<WithLenReconEncoder>,
@@ -345,6 +348,7 @@ impl<S: AsRef<str>, T: StructuralWritable> Encoder<CommandMessage<S, T>> for Com
     }
 }
 
+/// Encoder for command messages with byte array bodies.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct RawCommandMessageEncoder {
     inner: CommandEncoder<WithLengthBytesCodec>,
@@ -362,6 +366,7 @@ impl<S: AsRef<str>, T: AsRef<[u8]>> Encoder<CommandMessage<S, T>> for RawCommand
     }
 }
 
+/// Decoder for command messages with Recon bodies.
 pub struct CommandMessageDecoder<S, T: RecognizerReadable> {
     inner: CommandDecoder<S, WithLenRecognizerDecoder<T::Rec>>,
 }
@@ -391,6 +396,9 @@ where
     }
 }
 
+
+/// Decoder for command messages with raw byte bodies. (The returned body could contain
+/// a reference to the read from buffer).
 #[derive(Debug)]
 pub struct RawCommandMessageDecoder<S> {
     inner: CommandDecoder<S, WithLengthBytesCodec>,
