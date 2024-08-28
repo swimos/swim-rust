@@ -426,14 +426,14 @@ where
 
     let no_spawn = NoSpawn;
     let mut join_lane_init = HashMap::new();
-    let mut ad_hoc_buffer = BytesMut::new();
+    let mut command_buffer = BytesMut::new();
 
     let mut action_context = ActionContext::new(
         &no_spawn,
         &no_spawn,
         &no_spawn,
         &mut join_lane_init,
-        &mut ad_hoc_buffer,
+        &mut command_buffer,
     );
 
     let mut ids = HashSet::new();

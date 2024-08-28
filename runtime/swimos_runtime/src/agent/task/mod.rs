@@ -545,9 +545,9 @@ where
         );
 
         let ext_link_config = LinksTaskConfig {
-            buffer_size: config.ad_hoc_buffer_size,
-            retry_strategy: config.ad_hoc_output_retry,
-            timeout_delay: config.ad_hoc_output_timeout,
+            buffer_size: config.command_msg_buffer,
+            retry_strategy: config.command_output_retry,
+            timeout_delay: config.command_output_timeout,
         };
 
         let ext_links = external_links::external_links_task::<NoReport>(

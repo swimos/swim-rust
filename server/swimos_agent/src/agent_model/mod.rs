@@ -648,7 +648,7 @@ where
         let link_requests = RefCell::new(LinkRequestCollector::default());
         let mut dynamic_lanes = RefCell::new(vec![]);
         let mut join_lane_init = HashMap::new();
-        let mut ad_hoc_buffer = BytesMut::new();
+        let mut command_buffer = BytesMut::new();
 
         let item_model = item_model_fac.create();
         let default_lane_config = config.default_lane_config.unwrap_or_default();
@@ -756,7 +756,7 @@ where
                 &link_requests,
                 &dynamic_lanes,
                 &mut join_lane_init,
-                &mut ad_hoc_buffer,
+                &mut command_buffer,
             ),
             meta,
             &item_model,
@@ -815,7 +815,7 @@ where
                 &link_requests,
                 &dynamic_lanes,
                 &mut join_lane_init,
-                &mut ad_hoc_buffer,
+                &mut command_buffer,
             ),
             meta,
             &item_model,
@@ -840,7 +840,7 @@ where
                 &link_requests,
                 &dynamic_lanes,
                 &mut join_lane_init,
-                &mut ad_hoc_buffer,
+                &mut command_buffer,
             ),
             meta,
             &item_model,
@@ -867,7 +867,7 @@ where
             http_lane_rxs,
             suspended,
             link_requests: link_requests.into_inner(),
-            ad_hoc_buffer,
+            command_buffer,
             join_lane_init,
         };
         Ok(agent_task.run_agent(context).boxed())
@@ -1031,7 +1031,7 @@ struct AgentTask<ItemModel, Lifecycle> {
     suspended: FuturesUnordered<HandlerFuture<ItemModel>>,
     link_requests: LinkRequestCollector<ItemModel>,
     join_lane_init: HashMap<u64, BoxJoinLaneInit<'static, ItemModel>>,
-    ad_hoc_buffer: BytesMut,
+    command_buffer: BytesMut,
 }
 
 impl<ItemModel, Lifecycle> AgentTask<ItemModel, Lifecycle>
@@ -1066,7 +1066,7 @@ where
                     commander_ids,
                 },
             mut join_lane_init,
-            mut ad_hoc_buffer,
+            mut command_buffer,
         } = self;
         let meta = AgentMetadata::new(&route, &route_params, &config);
 
@@ -1128,7 +1128,7 @@ where
         // We need to check if anything has been written into the command buffer as the agent
         // initialisation process called lifecycle::on_start and that may have sent commands.
         check_cmds(
-            &mut ad_hoc_buffer,
+            &mut command_buffer,
             &mut cmd_writer,
             &mut cmd_send_fut,
             CommandWriter::write,
@@ -1217,7 +1217,7 @@ where
                             &add_link,
                             &add_lane,
                             &mut join_lane_init,
-                            &mut ad_hoc_buffer,
+                            &mut command_buffer,
                         ),
                         meta,
                         &item_model,
@@ -1229,7 +1229,7 @@ where
                         Err(EventHandlerError::StopInstructed) => break Ok(()),
                         Err(e) => break Err(AgentTaskError::UserCodeError(Box::new(e))),
                         Ok(_) => check_cmds(
-                            &mut ad_hoc_buffer,
+                            &mut command_buffer,
                             &mut cmd_writer,
                             &mut cmd_send_fut,
                             CommandWriter::write,
@@ -1389,7 +1389,7 @@ where
                                         &add_link,
                                         &add_lane,
                                         &mut join_lane_init,
-                                        &mut ad_hoc_buffer,
+                                        &mut command_buffer,
                                     ),
                                     meta,
                                     &item_model,
@@ -1413,7 +1413,7 @@ where
                                         );
                                     }
                                     _ => check_cmds(
-                                        &mut ad_hoc_buffer,
+                                        &mut command_buffer,
                                         &mut cmd_writer,
                                         &mut cmd_send_fut,
                                         CommandWriter::write,
@@ -1442,7 +1442,7 @@ where
                                         &add_link,
                                         &add_lane,
                                         &mut join_lane_init,
-                                        &mut ad_hoc_buffer,
+                                        &mut command_buffer,
                                     ),
                                     meta,
                                     &item_model,
@@ -1466,7 +1466,7 @@ where
                                         );
                                     }
                                     _ => check_cmds(
-                                        &mut ad_hoc_buffer,
+                                        &mut command_buffer,
                                         &mut cmd_writer,
                                         &mut cmd_send_fut,
                                         CommandWriter::write,
@@ -1499,8 +1499,8 @@ where
                 }
                 TaskEvent::CommandSendComplete { result: Ok(writer) } => {
                     cmd_send_fut.set(None.into());
-                    if !ad_hoc_buffer.is_empty() {
-                        let fut = writer.write(&mut ad_hoc_buffer);
+                    if !command_buffer.is_empty() {
+                        let fut = writer.write(&mut command_buffer);
                         cmd_send_fut.set(Some(fut.fuse()).into());
                     } else {
                         cmd_writer = Some(writer);
@@ -1551,7 +1551,7 @@ where
                 &discard,
                 &add_lane,
                 &mut join_lane_init,
-                &mut ad_hoc_buffer,
+                &mut command_buffer,
             ),
             meta,
             &item_model,
@@ -1758,16 +1758,16 @@ impl CommandWriter {
 /// write to the command channel.
 #[inline]
 fn check_cmds<Fut>(
-    ad_hoc_buffer: &mut BytesMut,
+    command_buffer: &mut BytesMut,
     cmd_writer: &mut Option<CommandWriter>,
     cmd_send_fut: &mut Pin<&mut OptionFuture<Fuse<Fut>>>,
     write: fn(CommandWriter, &mut BytesMut) -> Fut,
 ) where
     Fut: Future,
 {
-    if !ad_hoc_buffer.is_empty() {
+    if !command_buffer.is_empty() {
         if let Some(writer) = cmd_writer.take() {
-            let fut = write(writer, ad_hoc_buffer);
+            let fut = write(writer, command_buffer);
             cmd_send_fut.set(Some(fut.fuse()).into());
         }
     }

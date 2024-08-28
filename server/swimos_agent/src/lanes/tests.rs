@@ -113,7 +113,7 @@ fn open_lane() {
     let route_params = HashMap::new();
     let meta = make_meta(&uri, &route_params);
     let mut join_lane_init = HashMap::new();
-    let mut ad_hoc_buffer = BytesMut::new();
+    let mut command_buffer = BytesMut::new();
 
     let flag = Arc::new(AtomicI64::new(0));
     let flag_copy = flag.clone();
@@ -140,7 +140,7 @@ fn open_lane() {
         &spawner,
         &spawner,
         &mut join_lane_init,
-        &mut ad_hoc_buffer,
+        &mut command_buffer,
     );
 
     run_handler(handler, &mut action_context, &agent, meta);
@@ -174,7 +174,7 @@ fn open_lane_fail() {
     let route_params = HashMap::new();
     let meta = make_meta(&uri, &route_params);
     let mut join_lane_init = HashMap::new();
-    let mut ad_hoc_buffer = BytesMut::new();
+    let mut command_buffer = BytesMut::new();
 
     let flag = Arc::new(AtomicI64::new(0));
     let flag_copy = flag.clone();
@@ -201,7 +201,7 @@ fn open_lane_fail() {
         &spawner,
         &spawner,
         &mut join_lane_init,
-        &mut ad_hoc_buffer,
+        &mut command_buffer,
     );
 
     run_handler(handler, &mut action_context, &agent, meta);

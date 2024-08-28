@@ -21,7 +21,7 @@ use std::{
 use bytes::{BufMut, BytesMut};
 use futures::{stream::FuturesUnordered, Future, StreamExt};
 use swimos_agent_protocol::CommandMessage;
-use swimos_agent_protocol::encoding::ad_hoc::RawCommandMessageDecoder;
+use swimos_agent_protocol::encoding::command::RawCommandMessageDecoder;
 use swimos_api::{
     address::{Address, RelativeAddress},
     error::{AgentRuntimeError, DownlinkRuntimeError},

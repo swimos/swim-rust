@@ -69,7 +69,7 @@ pub struct AgentInitTask<Store = StoreDisabled> {
 }
 
 pub struct InitTaskConfig {
-    pub ad_hoc_queue_size: NonZeroUsize,
+    pub command_queue_size: NonZeroUsize,
     pub item_init_timeout: Duration,
     pub external_links: LinksTaskConfig,
     pub http_lane_channel_size: NonZeroUsize,
@@ -148,7 +148,7 @@ impl<Store: AgentPersistence + Send + Sync> AgentInitTask<Store> {
             reporting,
         } = self;
         let InitTaskConfig {
-            ad_hoc_queue_size,
+            command_queue_size,
             item_init_timeout,
             external_links,
             http_lane_channel_size,
@@ -159,7 +159,7 @@ impl<Store: AgentPersistence + Send + Sync> AgentInitTask<Store> {
 
         let mut endpoints = Endpoints::default();
 
-        let (ext_link_tx, ext_link_rx) = mpsc::channel(ad_hoc_queue_size.get());
+        let (ext_link_tx, ext_link_rx) = mpsc::channel(command_queue_size.get());
 
         let ext_link_state = LinksTaskState::new(link_requests.clone());
 

@@ -52,7 +52,7 @@ async fn suspend_future() {
     let route_params = HashMap::new();
     let meta = make_meta(&uri, &route_params);
     let mut join_lane_init = HashMap::new();
-    let mut ad_hoc_buffer = BytesMut::new();
+    let mut command_buffer = BytesMut::new();
 
     let (tx, mut rx) = mpsc::channel(4);
     let (done_tx, done_rx) = trigger::trigger();
@@ -72,7 +72,7 @@ async fn suspend_future() {
             &NO_DOWNLINKS,
             &NO_DYN_LANES,
             &mut join_lane_init,
-            &mut ad_hoc_buffer,
+            &mut command_buffer,
         ),
         meta,
         &DummyAgent,
@@ -98,7 +98,7 @@ async fn suspend_future() {
                 &NO_DOWNLINKS,
                 &NO_DYN_LANES,
                 &mut join_lane_init,
-                &mut ad_hoc_buffer,
+                &mut command_buffer,
             ),
             meta,
             &DummyAgent,
@@ -119,7 +119,7 @@ async fn suspend_future() {
                 &NO_DOWNLINKS,
                 &NO_DYN_LANES,
                 &mut join_lane_init,
-                &mut ad_hoc_buffer,
+                &mut command_buffer,
             ),
             meta,
             &DummyAgent,
@@ -143,14 +143,14 @@ where
     let route_params = HashMap::new();
     let meta = make_meta(&uri, &route_params);
     let mut join_lane_init = HashMap::new();
-    let mut ad_hoc_buffer = BytesMut::new();
+    let mut command_buffer = BytesMut::new();
 
     let mut action_context = ActionContext::new(
         spawner,
         &NO_DOWNLINKS,
         &NO_DYN_LANES,
         &mut join_lane_init,
-        &mut ad_hoc_buffer,
+        &mut command_buffer,
     );
     loop {
         match handler.step(&mut action_context, meta, &DummyAgent) {

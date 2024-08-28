@@ -21,7 +21,7 @@ use std::{
 use bytes::BytesMut;
 use frunk::{coproduct::CNil, Coproduct};
 use static_assertions::assert_obj_safe;
-use swimos_agent_protocol::{encoding::ad_hoc::CommandMessageEncoder, CommandMessage};
+use swimos_agent_protocol::{encoding::command::CommandMessageEncoder, CommandMessage};
 use swimos_api::{
     address::Address,
     agent::WarpLaneKind,
@@ -129,7 +129,7 @@ pub struct ActionContext<'a, Context> {
     downlink: &'a dyn LinkSpawner<Context>,
     lanes: &'a dyn LaneSpawner<Context>,
     join_lane_init: &'a mut HashMap<u64, BoxJoinLaneInit<'static, Context>>,
-    ad_hoc_buffer: &'a mut BytesMut,
+    command_buffer: &'a mut BytesMut,
 }
 
 impl<'a, Context> Spawner<Context> for ActionContext<'a, Context> {
@@ -144,14 +144,14 @@ impl<'a, Context> ActionContext<'a, Context> {
         downlink: &'a dyn LinkSpawner<Context>,
         lanes: &'a dyn LaneSpawner<Context>,
         join_lane_init: &'a mut HashMap<u64, BoxJoinLaneInit<'static, Context>>,
-        ad_hoc_buffer: &'a mut BytesMut,
+        command_buffer: &'a mut BytesMut,
     ) -> Self {
         ActionContext {
             spawner,
             downlink,
             lanes,
             join_lane_init,
-            ad_hoc_buffer,
+            command_buffer,
         }
     }
 
@@ -215,7 +215,7 @@ impl<'a, Context> ActionContext<'a, Context> {
         let msg = CommandMessage::<_, String>::register(path, id);
         let mut encoder = CommandMessageEncoder::default();
         encoder
-            .encode(msg, self.ad_hoc_buffer)
+            .encode(msg, self.command_buffer)
             .expect("Encoding should be infallible.");
         Ok(id)
     }
@@ -259,11 +259,11 @@ impl<'a, Context> ActionContext<'a, Context> {
         S: AsRef<str>,
         T: StructuralWritable,
     {
-        let ActionContext { ad_hoc_buffer, .. } = self;
+        let ActionContext { command_buffer, .. } = self;
         let mut encoder = CommandMessageEncoder::default();
         let cmd = CommandMessage::ad_hoc(target, command, overwrite_permitted);
         encoder
-            .encode(cmd, ad_hoc_buffer)
+            .encode(cmd, command_buffer)
             .expect("Encoding should be infallible.")
     }
 
@@ -283,11 +283,11 @@ impl<'a, Context> ActionContext<'a, Context> {
     ) where
         T: StructuralWritable,
     {
-        let ActionContext { ad_hoc_buffer, .. } = self;
+        let ActionContext { command_buffer, .. } = self;
         let mut encoder = CommandMessageEncoder::default();
         let cmd = CommandMessage::<&str, T>::registered(target, command, overwrite_permitted);
         encoder
-            .encode(cmd, ad_hoc_buffer)
+            .encode(cmd, command_buffer)
             .expect("Encoding should be infallible.")
     }
 }

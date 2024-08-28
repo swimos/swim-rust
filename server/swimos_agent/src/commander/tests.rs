@@ -15,7 +15,7 @@
 use std::{cell::RefCell, collections::HashMap};
 
 use bytes::BytesMut;
-use swimos_agent_protocol::{encoding::ad_hoc::CommandMessageDecoder, CommandMessage};
+use swimos_agent_protocol::{encoding::command::CommandMessageDecoder, CommandMessage};
 use swimos_api::{
     address::Address,
     agent::{AgentConfig, WarpLaneKind},

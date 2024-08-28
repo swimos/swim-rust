@@ -94,7 +94,7 @@ async fn suspend_repeatedly() {
     let meta = make_meta(&uri, &route_params);
     let mut spawner = FuturesUnordered::new();
     let mut join_lane_init = HashMap::new();
-    let mut ad_hoc_buffer = BytesMut::new();
+    let mut command_buffer = BytesMut::new();
 
     loop {
         loop {
@@ -104,7 +104,7 @@ async fn suspend_repeatedly() {
                     &NO_DOWNLINKS,
                     &NO_DYN_LANES,
                     &mut join_lane_init,
-                    &mut ad_hoc_buffer,
+                    &mut command_buffer,
                 ),
                 meta,
                 &Fake,

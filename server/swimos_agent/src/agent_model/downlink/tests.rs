@@ -114,19 +114,19 @@ async fn run_all_and_check(
     join_lane_init: &mut HashMap<u64, BoxJoinLaneInit<'static, TestAgent>>,
     agent: &TestAgent,
 ) {
-    let mut ad_hoc_buffer = BytesMut::new();
+    let mut command_buffer = BytesMut::new();
     while let Some(handler) = spawner.futures.next().await {
         let mut action_context = ActionContext::new(
             &spawner,
             &spawner,
             &spawner,
             join_lane_init,
-            &mut ad_hoc_buffer,
+            &mut command_buffer,
         );
         run_handler(handler, &mut action_context, agent, meta);
     }
     assert!(join_lane_init.is_empty());
-    assert!(ad_hoc_buffer.is_empty());
+    assert!(command_buffer.is_empty());
     spawner
         .inner
         .lock()
@@ -167,7 +167,7 @@ async fn open_value_downlink() {
     let route_params = HashMap::new();
     let meta = make_meta(&uri, &route_params);
     let mut join_lane_init = HashMap::new();
-    let mut ad_hoc_buffer = BytesMut::new();
+    let mut command_buffer = BytesMut::new();
     let lifecycle = StatefulValueDownlinkLifecycle::<TestAgent, _, i32>::new(());
 
     let handler = OpenValueDownlinkAction::<i32, _>::new(
@@ -184,7 +184,7 @@ async fn open_value_downlink() {
         &spawner,
         &spawner,
         &mut join_lane_init,
-        &mut ad_hoc_buffer,
+        &mut command_buffer,
     );
     let _handle = run_handler(handler, &mut action_context, &agent, meta);
 
@@ -197,7 +197,7 @@ async fn open_map_downlink() {
     let route_params = HashMap::new();
     let meta = make_meta(&uri, &route_params);
     let mut join_lane_init = HashMap::new();
-    let mut ad_hoc_buffer = BytesMut::new();
+    let mut command_buffer = BytesMut::new();
     let lifecycle = StatefulMapDownlinkLifecycle::<TestAgent, _, i32, Text>::new(());
 
     let handler = OpenMapDownlinkAction::<i32, Text, _>::new(
@@ -214,7 +214,7 @@ async fn open_map_downlink() {
         &spawner,
         &spawner,
         &mut join_lane_init,
-        &mut ad_hoc_buffer,
+        &mut command_buffer,
     );
     let _handle = run_handler(handler, &mut action_context, &agent, meta);
 

@@ -77,14 +77,14 @@ impl<Context> LaneSpawner<Context> for NoDynamicLanes {
 
 pub fn dummy_context<'a, Context>(
     join_lane_init: &'a mut HashMap<u64, BoxJoinLaneInit<'static, Context>>,
-    ad_hoc_buffer: &'a mut BytesMut,
+    command_buffer: &'a mut BytesMut,
 ) -> ActionContext<'a, Context> {
     ActionContext::new(
         &NO_SPAWN,
         &NO_DOWNLINKS,
         &NO_DYN_LANES,
         join_lane_init,
-        ad_hoc_buffer,
+        command_buffer,
     )
 }
 
@@ -139,7 +139,7 @@ pub async fn run_with_futures<H, Agent>(
     agent: &Agent,
     meta: AgentMetadata<'_>,
     inits: &mut HashMap<u64, BoxJoinLaneInit<'static, Agent>>,
-    ad_hoc_buffer: &mut BytesMut,
+    command_buffer: &mut BytesMut,
     mut handler: H,
 ) -> H::Completion
 where
@@ -149,7 +149,7 @@ where
 
     let result = loop {
         let mut action_context =
-            ActionContext::new(&pending, context, context, inits, ad_hoc_buffer);
+            ActionContext::new(&pending, context, context, inits, command_buffer);
         match handler.step(&mut action_context, meta, agent) {
             StepResult::Continue { .. } => {}
             StepResult::Fail(err) => panic!("Handler failed: {:?}", err),
@@ -159,7 +159,7 @@ where
         };
     };
 
-    run_event_handlers(context, agent, meta, inits, ad_hoc_buffer, pending).await;
+    run_event_handlers(context, agent, meta, inits, command_buffer, pending).await;
 
     result
 }
@@ -169,17 +169,17 @@ pub async fn run_event_handlers<'a, Agent>(
     agent: &Agent,
     meta: AgentMetadata<'_>,
     inits: &mut HashMap<u64, BoxJoinLaneInit<'static, Agent>>,
-    ad_hoc_buffer: &mut BytesMut,
+    command_buffer: &mut BytesMut,
     mut handlers: FuturesUnordered<HandlerFuture<Agent>>,
 ) {
     let mut dl_handlers = context.handle_dl_requests(agent);
     while !dl_handlers.is_empty() || !handlers.is_empty() {
         for h in dl_handlers.drain(..) {
-            run_event_handler(context, agent, meta, inits, ad_hoc_buffer, &handlers, h);
+            run_event_handler(context, agent, meta, inits, command_buffer, &handlers, h);
         }
         if !handlers.is_empty() {
             while let Some(h) = handlers.next().await {
-                run_event_handler(context, agent, meta, inits, ad_hoc_buffer, &handlers, h);
+                run_event_handler(context, agent, meta, inits, command_buffer, &handlers, h);
             }
         }
         dl_handlers.extend(context.handle_dl_requests(agent));
@@ -191,7 +191,7 @@ fn run_event_handler<Agent, H>(
     agent: &Agent,
     meta: AgentMetadata<'_>,
     inits: &mut HashMap<u64, BoxJoinLaneInit<'static, Agent>>,
-    ad_hoc_buffer: &mut BytesMut,
+    command_buffer: &mut BytesMut,
     handlers: &FuturesUnordered<HandlerFuture<Agent>>,
     mut handler: H,
 ) where
@@ -199,7 +199,7 @@ fn run_event_handler<Agent, H>(
 {
     loop {
         let mut action_context =
-            ActionContext::new(handlers, context, context, inits, ad_hoc_buffer);
+            ActionContext::new(handlers, context, context, inits, command_buffer);
         match handler.step(&mut action_context, meta, agent) {
             StepResult::Continue { .. } => {}
             StepResult::Fail(err) => panic!("Handler failed: {:?}", err),

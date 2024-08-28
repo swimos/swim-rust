@@ -29,7 +29,7 @@ use futures::{
     Future, SinkExt, Stream, StreamExt, TryStreamExt,
 };
 use rand::Rng;
-use swimos_agent_protocol::encoding::ad_hoc::CommandMessageEncoder;
+use swimos_agent_protocol::encoding::command::CommandMessageEncoder;
 use swimos_agent_protocol::CommandMessage;
 use swimos_api::{
     address::{Address, RelativeAddress},

@@ -81,9 +81,9 @@ fn make_prune_config(
         prune_remote_delay,
         shutdown_timeout: SHUTDOWN_TIMEOUT,
         item_init_timeout: INIT_TIMEOUT,
-        ad_hoc_output_timeout: AD_HOC_TIMEOUT,
-        ad_hoc_output_retry: RetryStrategy::none(),
-        ad_hoc_buffer_size: non_zero_usize!(4096),
+        command_output_timeout: AD_HOC_TIMEOUT,
+        command_output_retry: RetryStrategy::none(),
+        command_msg_buffer: non_zero_usize!(4096),
         lane_http_request_channel_size: non_zero_usize!(8),
     }
 }

@@ -23,7 +23,7 @@ use futures::{
 use parking_lot::Mutex;
 use std::{collections::HashMap, io::ErrorKind, sync::Arc, time::Duration};
 use swimos_agent_protocol::{
-    encoding::ad_hoc::CommandMessageDecoder, CommandMessage, MapMessage, MapOperation,
+    encoding::command::CommandMessageDecoder, CommandMessage, MapMessage, MapOperation,
 };
 use swimos_api::{
     address::Address,
@@ -1132,8 +1132,8 @@ async fn suspend_future() {
 
 #[tokio::test]
 async fn trigger_ad_hoc_command() {
-    let (ad_hoc_tx, ad_hoc_rx) = oneshot::channel();
-    let context = Box::new(TestAgentContext::new(ad_hoc_tx));
+    let (cmd_tx, cmd_rx) = oneshot::channel();
+    let context = Box::new(TestAgentContext::new(cmd_tx));
     let (
         task,
         TestContext {
@@ -1164,7 +1164,7 @@ async fn trigger_ad_hoc_command() {
         let (mut sender, receiver) = cmd_lane_io;
 
         let mut cmd_receiver = CommandReceiver::new(
-            ad_hoc_rx
+            cmd_rx
                 .await
                 .expect("Ad hoc command channel not registered."),
             CommandMessageDecoder::default(),

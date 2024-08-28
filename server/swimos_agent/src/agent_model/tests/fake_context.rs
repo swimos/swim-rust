@@ -43,7 +43,7 @@ impl TestAgentContext {
     pub fn new(promise: oneshot::Sender<ByteReader>) -> Self {
         TestAgentContext {
             inner: Arc::new(Mutex::new(Inner {
-                ad_hoc_consumer: Some(promise),
+                cmd_consumer: Some(promise),
                 ..Default::default()
             })),
         }
@@ -93,8 +93,8 @@ struct Inner {
     dyn_value_lane_io: Option<Io>,
     dyn_map_lane_io: Option<Io>,
     http_sender: Option<mpsc::Sender<HttpLaneRequest>>,
-    ad_hoc_consumer: Option<oneshot::Sender<ByteReader>>,
-    ad_hoc_rx: Option<ByteReader>,
+    cmd_consumer: Option<oneshot::Sender<ByteReader>>,
+    cmd_rx: Option<ByteReader>,
 }
 
 const CHAN_SIZE: NonZeroUsize = non_zero_usize!(8);
@@ -104,10 +104,10 @@ impl AgentContext for TestAgentContext {
     fn command_channel(&self) -> BoxFuture<'static, Result<ByteWriter, DownlinkRuntimeError>> {
         let mut guard = self.inner.lock();
         let (tx, rx) = byte_channel(BUFFER_SIZE);
-        if let Some(sender) = guard.ad_hoc_consumer.take() {
+        if let Some(sender) = guard.cmd_consumer.take() {
             sender.send(rx).expect("Registering ad hoc channel failed.");
         } else {
-            guard.ad_hoc_rx = Some(rx);
+            guard.cmd_rx = Some(rx);
         }
         ready(Ok(tx)).boxed()
     }

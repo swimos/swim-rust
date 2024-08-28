@@ -213,8 +213,8 @@ where
     H: HandlerAction<TestAgent>,
 {
     let mut join_lane_init = HashMap::new();
-    let mut ad_hoc_buffer = BytesMut::new();
-    let mut action_context = dummy_context(&mut join_lane_init, &mut ad_hoc_buffer);
+    let mut command_buffer = BytesMut::new();
+    let mut action_context = dummy_context(&mut join_lane_init, &mut command_buffer);
     let route_uri = make_uri();
     let route_params = HashMap::new();
     let meta = AgentMetadata::new(&route_uri, &route_params, &CONFIG);

@@ -98,9 +98,9 @@ pub mod encoding {
 
     /// The protocol used by the agents to send ad hoc messages to lanes on other agents.
     ///
-    /// [`crate::AdHocCommand`] messages are sent by agents to the runtime to instruct it to send an ad hoc
+    /// [Command messages](`crate::CommandMessage`) are sent by agents to the runtime to instruct it to send a
     /// command to an arbitrary lane endpoint.
-    pub mod ad_hoc {
+    pub mod command {
         pub use crate::command::{
             CommandMessageDecoder, CommandMessageEncoder, RawCommandMessageDecoder,
             RawCommandMessageEncoder,

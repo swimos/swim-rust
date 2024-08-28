@@ -26,7 +26,7 @@ use futures::{
 };
 use parking_lot::Mutex;
 use start_dl_lifecycle::StartDownlinkLifecycle;
-use swimos_agent_protocol::{encoding::ad_hoc::CommandMessageDecoder, CommandMessage};
+use swimos_agent_protocol::{encoding::command::CommandMessageDecoder, CommandMessage};
 use swimos_api::{
     address::Address,
     agent::{
@@ -79,7 +79,7 @@ struct DlTestContext {
     expected_address: Address<Text>,
     expected_kind: DownlinkKind,
     responses: Arc<Mutex<DownlinkResponses>>,
-    ad_hoc_channel: Arc<Mutex<(Option<ByteReader>, Option<ByteWriter>)>>,
+    cmd_channel: Arc<Mutex<(Option<ByteReader>, Option<ByteWriter>)>>,
 }
 
 impl DlTestContext {
@@ -88,17 +88,17 @@ impl DlTestContext {
         expected_kind: DownlinkKind,
         io: (ByteWriter, ByteReader),
     ) -> Self {
-        let (ad_hoc_writer, ad_hoc_reader) = byte_channel(BUFFER_SIZE);
+        let (cmd_writer, cmd_reader) = byte_channel(BUFFER_SIZE);
         DlTestContext {
             expected_address,
             expected_kind,
             responses: Arc::new(Mutex::new(DownlinkResponses::new(vec![], Some(io)))),
-            ad_hoc_channel: Arc::new(Mutex::new((Some(ad_hoc_reader), Some(ad_hoc_writer)))),
+            cmd_channel: Arc::new(Mutex::new((Some(cmd_reader), Some(cmd_writer)))),
         }
     }
 
     fn take_reader(&self) -> ByteReader {
-        self.ad_hoc_channel.lock().0.take().expect("Already taken.")
+        self.cmd_channel.lock().0.take().expect("Already taken.")
     }
 
     fn with_errors(
@@ -107,20 +107,20 @@ impl DlTestContext {
         errors: Vec<DownlinkRuntimeError>,
         io: Option<(ByteWriter, ByteReader)>,
     ) -> Self {
-        let (ad_hoc_writer, ad_hoc_reader) = byte_channel(BUFFER_SIZE);
+        let (cmd_writer, cmd_reader) = byte_channel(BUFFER_SIZE);
         DlTestContext {
             expected_address,
             expected_kind,
             responses: Arc::new(Mutex::new(DownlinkResponses::new(errors, io))),
-            ad_hoc_channel: Arc::new(Mutex::new((Some(ad_hoc_reader), Some(ad_hoc_writer)))),
+            cmd_channel: Arc::new(Mutex::new((Some(cmd_reader), Some(cmd_writer)))),
         }
     }
 }
 
 impl AgentContext for DlTestContext {
     fn command_channel(&self) -> BoxFuture<'static, Result<ByteWriter, DownlinkRuntimeError>> {
-        let DlTestContext { ad_hoc_channel, .. } = self;
-        ready(Ok(ad_hoc_channel
+        let DlTestContext { cmd_channel, .. } = self;
+        ready(Ok(cmd_channel
             .lock()
             .1
             .take()
