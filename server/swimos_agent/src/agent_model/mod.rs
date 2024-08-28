@@ -30,9 +30,8 @@ use futures::{
 };
 use futures::{Future, FutureExt};
 use pin_project::pin_project;
-use swimos_agent_protocol::encoding::ad_hoc::CommandMessageEncoder;
 use swimos_agent_protocol::encoding::store::{RawMapStoreInitDecoder, RawValueStoreInitDecoder};
-use swimos_agent_protocol::{CommandMessage, LaneRequest, MapMessage};
+use swimos_agent_protocol::{LaneRequest, MapMessage};
 use swimos_api::agent::DownlinkKind;
 use swimos_api::agent::{HttpLaneRequest, LaneConfig, RawHttpLaneResponse};
 use swimos_api::error::{
@@ -52,7 +51,6 @@ use swimos_utilities::future::RetryStrategy;
 use swimos_utilities::routing::RouteUri;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
-use tokio_util::codec::Encoder;
 use tracing::{debug, error, info, trace};
 use uuid::Uuid;
 
@@ -1064,9 +1062,8 @@ where
             mut suspended,
             link_requests:
                 LinkRequestCollector {
-                    next_commander_id,
                     downlinks: downlink_requests,
-                    commanders: commander_requests,
+                    commander_ids,
                 },
             mut join_lane_init,
             mut ad_hoc_buffer,
@@ -1078,7 +1075,7 @@ where
         let mut pending_writes = FuturesUnordered::new();
         let mut link_futures = FuturesUnordered::new();
         let mut external_item_ids_rev = HashMap::new();
-        let cmd_ids = RefCell::new(CommanderIds::new(next_commander_id));
+        let cmd_ids = RefCell::new(commander_ids);
 
         for (name, id) in external_item_ids.iter() {
             external_item_ids_rev.insert(*id, name);
@@ -1104,17 +1101,6 @@ where
                 None,
             );
             link_futures.push(LinkFuture::Opening(Some(request), fut));
-        }
-
-        // Request commanders from the init phase.
-        let mut cmd_encoder = CommandMessageEncoder::default();
-        for request in commander_requests {
-            let CommanderRequest { path, id } = request;
-
-            let msg = CommandMessage::<_, ()>::register(path, id);
-            cmd_encoder
-                .encode(msg, &mut ad_hoc_buffer)
-                .expect("Encoding should be infallible.");
         }
 
         for ((name, kind), (tx, rx)) in lane_io {
@@ -1934,24 +1920,16 @@ async fn open_with_retry(
     }
 }
 
-#[derive(Debug)]
-struct CommanderRequest {
-    path: Address<Text>,
-    id: u16,
-}
-
 struct LinkRequestCollector<Context> {
-    next_commander_id: u16,
     downlinks: Vec<DownlinkSpawnRequest<Context>>,
-    commanders: Vec<CommanderRequest>,
+    commander_ids: CommanderIds,
 }
 
 impl<Context> Default for LinkRequestCollector<Context> {
     fn default() -> Self {
         Self {
-            next_commander_id: 0,
             downlinks: Default::default(),
-            commanders: Default::default(),
+            commander_ids: CommanderIds::default(),
         }
     }
 }
@@ -1960,7 +1938,7 @@ impl<Context> std::fmt::Debug for LinkRequestCollector<Context> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("LinkRequestCollector")
             .field("downlinks", &self.downlinks)
-            .field("commanders", &self.commanders)
+            .field("commander_ids", &self.commander_ids)
             .finish()
     }
 }
@@ -1982,14 +1960,7 @@ impl<Context> LinkSpawner<Context> for RefCell<LinkRequestCollector<Context>> {
 
     fn register_commander(&self, path: Address<Text>) -> Result<u16, CommanderRegistrationError> {
         let mut guard = self.borrow_mut();
-        let id = guard.next_commander_id;
-        if let Some(next) = guard.next_commander_id.checked_add(1) {
-            guard.next_commander_id = next;
-        } else {
-            return Err(CommanderRegistrationError::CommanderIdOverflow);
-        }
-        guard.commanders.push(CommanderRequest { path, id });
-        Ok(id)
+        guard.commander_ids.get_request(&path)
     }
 }
 
@@ -2017,19 +1988,13 @@ where
     }
 }
 
+#[derive(Default, Debug)]
 struct CommanderIds {
     next_id: u16,
     assigned: HashMap<Address<Text>, u16>,
 }
 
 impl CommanderIds {
-    fn new(next_id: u16) -> Self {
-        CommanderIds {
-            next_id,
-            assigned: HashMap::new(),
-        }
-    }
-
     fn get_request(&mut self, address: &Address<Text>) -> Result<u16, CommanderRegistrationError> {
         let id = if let Some(id) = self.assigned.get(address) {
             *id

@@ -12,8 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::sync::Arc;
+
+use parking_lot::Mutex;
 use swimos_api::address::Address;
 use swimos_model::Text;
+use swimos_utilities::trigger;
 
 use crate::{
     agent_lifecycle::{
@@ -28,11 +32,21 @@ use super::empty_agent::EmptyAgent;
 
 pub struct CommanderLifecycle {
     address: Address<Text>,
+    stop_rx: Arc<Mutex<Option<trigger::Receiver>>>,
 }
 
 impl CommanderLifecycle {
-    pub fn new(address: Address<Text>) -> Self {
-        CommanderLifecycle { address }
+    pub fn new(address: Address<Text>, stop_rx: trigger::Receiver) -> Self {
+        CommanderLifecycle {
+            address,
+            stop_rx: Arc::new(Mutex::new(Some(stop_rx))),
+        }
+    }
+}
+
+impl CommanderLifecycle {
+    fn take_stop_rx(&self) -> trigger::Receiver {
+        self.stop_rx.lock().take().expect("Already taken.")
     }
 }
 
@@ -51,14 +65,23 @@ impl OnInit<EmptyAgent> for CommanderLifecycle {
 impl OnStart<EmptyAgent> for CommanderLifecycle {
     fn on_start(&self) -> impl EventHandler<EmptyAgent> + '_ {
         let context: HandlerContext<EmptyAgent> = Default::default();
+
+        let stop_rx = self.take_stop_rx();
+        let stop_handler = context.suspend(async move {
+            assert!(stop_rx.await.is_ok());
+            context.stop()
+        });
+
         let Address { host, node, lane } = &self.address;
         let create = context.create_commander(host.as_ref(), node, lane);
 
-        create.and_then(move |commander: Commander<EmptyAgent>| {
+        let commands = create.and_then(move |commander: Commander<EmptyAgent>| {
             commander
                 .send(7)
                 .followed_by(context.suspend(async move { commander.send(22) }))
-        })
+        });
+
+        stop_handler.followed_by(commands)
     }
 }
 
