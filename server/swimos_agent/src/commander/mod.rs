@@ -35,10 +35,7 @@ pub struct Commander<Context> {
 
 impl<Context> Clone for Commander<Context> {
     fn clone(&self) -> Self {
-        Self {
-            _type: self._type.clone(),
-            id: self.id.clone(),
-        }
+        *self
     }
 }
 
