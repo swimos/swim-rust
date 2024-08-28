@@ -12,7 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::marker::PhantomData;
+use std::{
+    hash::{Hash, Hasher},
+    marker::PhantomData,
+};
 
 use swimos_api::address::Address;
 use swimos_form::write::StructuralWritable;
@@ -28,6 +31,37 @@ use crate::{
 pub struct Commander<Context> {
     _type: PhantomData<fn(&Context)>,
     id: u16,
+}
+
+impl<Context> Clone for Commander<Context> {
+    fn clone(&self) -> Self {
+        Self {
+            _type: self._type.clone(),
+            id: self.id.clone(),
+        }
+    }
+}
+
+impl<Context> Copy for Commander<Context> {}
+
+impl<Context> std::fmt::Debug for Commander<Context> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Commander").field("id", &self.id).finish()
+    }
+}
+
+impl<Context> PartialEq for Commander<Context> {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+
+impl<Context> Eq for Commander<Context> {}
+
+impl<Context> Hash for Commander<Context> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
+    }
 }
 
 impl<Context> Commander<Context> {

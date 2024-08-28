@@ -58,7 +58,7 @@ use super::{
     AgentModel, HostedDownlink, ItemDescriptor, ItemModelFactory,
 };
 
-mod downlinks;
+mod external_links;
 mod fake_agent;
 mod fake_context;
 mod fake_lifecycle;
