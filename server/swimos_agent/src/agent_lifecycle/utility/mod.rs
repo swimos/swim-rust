@@ -40,7 +40,7 @@ use crate::downlink_lifecycle::ValueDownlinkLifecycle;
 use crate::downlink_lifecycle::{EventDownlinkLifecycle, MapDownlinkLifecycle};
 use crate::event_handler::{
     run_after, run_schedule, run_schedule_async, ConstHandler, EventHandler, Fail, GetParameter,
-    HandlerActionExt, SendCommand, Sequentially, Stop, Suspend, UnitHandler,
+    HandlerActionExt, SendCommand, Sequentially, Stop, Suspend, UnitHandler, WithParameters,
 };
 use crate::event_handler::{GetAgentUri, HandlerAction, SideEffect};
 use crate::item::{
@@ -156,6 +156,16 @@ impl<Agent: 'static> HandlerContext<Agent> {
         name: &'a str,
     ) -> impl HandlerAction<Agent, Completion = Option<String>> + Send + 'a {
         GetParameter::new(name)
+    }
+
+    /// Compute a value from the parameters extracted from the route URI of the agent instance.
+    /// # Arguments
+    /// * `f` - The function to apply to the parameters.
+    pub fn with_parameters<F, T>(&self, f: F) -> impl HandlerAction<Agent, Completion = T>
+    where
+        F: FnOnce(&HashMap<String, String>) -> T,
+    {
+        WithParameters::new(f)
     }
 
     /// Create an event handler that will get the value of a value lane store of the agent.

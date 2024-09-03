@@ -45,6 +45,10 @@ impl<'a> AgentMetadata<'a> {
         self.path
     }
 
+    pub fn get_params(&self) -> &HashMap<String, String> {
+        &self.route_params
+    }
+
     pub fn get_param(&self, name: &str) -> Option<&'a str> {
         self.route_params.get(name).map(String::as_str)
     }

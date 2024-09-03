@@ -21,7 +21,7 @@ use swimos_recon::parser::AsyncParseError;
 use swimos_utilities::routing::RouteUri;
 
 use crate::event_handler::check_step::{check_is_complete, check_is_continue};
-use crate::event_handler::{GetParameter, ModificationFlags};
+use crate::event_handler::{GetParameter, ModificationFlags, WithParameters};
 
 use crate::{
     event_handler::{
@@ -263,6 +263,41 @@ fn get_parameter() {
     }
 
     let result = present.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &DUMMY,
+    );
+    assert!(matches!(
+        result,
+        StepResult::Fail(EventHandlerError::SteppedAfterComplete)
+    ));
+}
+
+#[test]
+fn with_parameters() {
+    let uri = make_uri();
+    let mut route_params = HashMap::new();
+    route_params.insert("key".to_string(), "value".to_string());
+    let meta = make_meta(&uri, &route_params);
+
+    let mut handler = WithParameters::new(|params: &HashMap<String, String>| params.clone());
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &DUMMY,
+    );
+    if let StepResult::Complete {
+        modified_item: None,
+        result,
+    } = result
+    {
+        assert_eq!(result, route_params);
+    } else {
+        panic!("Expected completion.");
+    }
+
+    let result = handler.step(
         &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
         meta,
         &DUMMY,
