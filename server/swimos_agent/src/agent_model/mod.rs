@@ -1272,7 +1272,7 @@ where
                                 on_done,
                                 ..
                             } = request;
-                            error!(error = %error, address = %path, kind = ?kind, "Start a downlink failed with a fatal error.");
+                            error!(error = %error, address = %path, kind = ?kind, "Failed to start a downlink due a fatal error.");
                             let handler = on_done(Err(error));
                             exec_handler!(handler);
                         } else {
