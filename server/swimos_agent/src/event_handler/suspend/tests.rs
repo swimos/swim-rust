@@ -19,7 +19,7 @@ use crate::{
         ActionContext, EventHandler, EventHandlerError, HandlerAction, SideEffect, StepResult,
     },
     meta::AgentMetadata,
-    test_context::{no_downlink, DummyAgentContext, NO_DYN_LANES},
+    test_context::{NO_DOWNLINKS, NO_DYN_LANES},
 };
 use bytes::BytesMut;
 use futures::{stream::FuturesUnordered, StreamExt};
@@ -69,8 +69,7 @@ async fn suspend_future() {
     let result = suspend.step(
         &mut ActionContext::new(
             &spawner,
-            &DummyAgentContext,
-            &no_downlink,
+            &NO_DOWNLINKS,
             &NO_DYN_LANES,
             &mut join_lane_init,
             &mut ad_hoc_buffer,
@@ -96,8 +95,7 @@ async fn suspend_future() {
         let result = handler.step(
             &mut ActionContext::new(
                 &spawner,
-                &DummyAgentContext,
-                &no_downlink,
+                &NO_DOWNLINKS,
                 &NO_DYN_LANES,
                 &mut join_lane_init,
                 &mut ad_hoc_buffer,
@@ -118,8 +116,7 @@ async fn suspend_future() {
         let result = suspend.step(
             &mut ActionContext::new(
                 &spawner,
-                &DummyAgentContext,
-                &no_downlink,
+                &NO_DOWNLINKS,
                 &NO_DYN_LANES,
                 &mut join_lane_init,
                 &mut ad_hoc_buffer,
@@ -150,8 +147,7 @@ where
 
     let mut action_context = ActionContext::new(
         spawner,
-        &DummyAgentContext,
-        &no_downlink,
+        &NO_DOWNLINKS,
         &NO_DYN_LANES,
         &mut join_lane_init,
         &mut ad_hoc_buffer,

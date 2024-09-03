@@ -22,7 +22,6 @@ use crate::agent_lifecycle::on_stop::OnStop;
 use crate::agent_lifecycle::{
     item_event::ItemEvent, HandlerContext, JoinMapContext, JoinValueContext,
 };
-use crate::agent_model::downlink::BoxDownlinkChannel;
 use crate::agent_model::WriteResult;
 use crate::event_handler::{
     BoxJoinLaneInit, EventHandler, HandlerAction, HandlerFuture, Modification, Spawner, StepResult,
@@ -45,7 +44,7 @@ use crate::model::MapMessage;
 use crate::reexport::bytes::BytesMut;
 use crate::reexport::uuid::Uuid;
 use crate::stores::{MapStore, ValueStore};
-use crate::test_context::NO_DYN_LANES;
+use crate::test_context::{NO_DOWNLINKS, NO_DYN_LANES};
 use parking_lot::Mutex;
 use swimos_agent_derive::{lifecycle, AgentLaneModel};
 use swimos_api::agent::DownlinkKind;
@@ -71,10 +70,6 @@ struct NoSpawn;
 pub struct DummyAgentContext;
 
 const NO_SPAWN: NoSpawn = NoSpawn;
-const NO_AGENT: DummyAgentContext = DummyAgentContext;
-pub fn no_downlink<Context>(_dl: BoxDownlinkChannel<Context>) -> Result<(), DownlinkRuntimeError> {
-    panic!("Launching downlinks no supported.");
-}
 
 pub fn dummy_context<'a, Context>(
     join_lane_init: &'a mut HashMap<u64, BoxJoinLaneInit<'static, Context>>,
@@ -82,8 +77,7 @@ pub fn dummy_context<'a, Context>(
 ) -> ActionContext<'a, Context> {
     ActionContext::new(
         &NO_SPAWN,
-        &NO_AGENT,
-        &no_downlink,
+        &NO_DOWNLINKS,
         &NO_DYN_LANES,
         join_lane_init,
         ad_hoc_buffer,

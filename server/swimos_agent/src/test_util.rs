@@ -14,14 +14,11 @@
 
 use std::{collections::HashMap, num::NonZeroUsize, sync::Arc};
 
-use futures::{future::BoxFuture, FutureExt};
 use parking_lot::Mutex;
 use swimos_api::{
     address::Address,
-    agent::{
-        AgentContext, DownlinkKind, HttpLaneRequestChannel, LaneConfig, StoreKind, WarpLaneKind,
-    },
-    error::{AgentRuntimeError, DownlinkRuntimeError, DynamicRegistrationError, OpenStoreError},
+    agent::{DownlinkKind, WarpLaneKind},
+    error::DynamicRegistrationError,
 };
 use swimos_model::Text;
 use swimos_utilities::{
@@ -30,13 +27,14 @@ use swimos_utilities::{
 };
 
 use crate::{
-    agent_model::downlink::BoxDownlinkChannel,
-    event_handler::{DownlinkSpawner, LaneSpawnOnDone, LaneSpawner},
+    agent_model::downlink::{BoxDownlinkChannel, BoxDownlinkChannelFactory},
+    event_handler::{
+        DownlinkSpawnOnDone, DownlinkSpawner, EventHandler, LaneSpawnOnDone, LaneSpawner,
+    },
 };
 
-const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
-
 pub struct TestDlContextInner<Agent> {
+    pub requests: Vec<DownlinkSpawnRequest<Agent>>,
     pub downlink_channels: HashMap<Address<Text>, (ByteWriter, ByteReader)>,
     pub downlinks: Vec<BoxDownlinkChannel<Agent>>,
 }
@@ -46,6 +44,7 @@ impl<Agent> Default for TestDlContextInner<Agent> {
         Self {
             downlink_channels: Default::default(),
             downlinks: Default::default(),
+            requests: Default::default(),
         }
     }
 }
@@ -73,13 +72,45 @@ impl<Agent> TestDownlinkContext<Agent> {
     }
 }
 
+pub struct DownlinkSpawnRequest<Agent> {
+    path: Address<Text>,
+    kind: DownlinkKind,
+    make_channel: BoxDownlinkChannelFactory<Agent>,
+    on_done: DownlinkSpawnOnDone<Agent>,
+}
+
+const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
+
 impl<Agent> TestDownlinkContext<Agent> {
-    pub fn push_dl(&self, dl_channel: BoxDownlinkChannel<Agent>) {
-        self.inner.lock().downlinks.push(dl_channel);
+    pub fn push_dl(&self, request: DownlinkSpawnRequest<Agent>) {
+        assert_eq!(request.kind, self.expected_kind);
+        let mut guard = self.inner.lock();
+        guard.requests.push(request);
     }
 
-    pub fn push_channels(&self, key: Address<Text>, io: (ByteWriter, ByteReader)) {
-        self.inner.lock().downlink_channels.insert(key, io);
+    pub fn handle_dl_requests(&self, agent: &Agent) -> Vec<Box<dyn EventHandler<Agent> + Send>> {
+        let mut handlers = vec![];
+        let mut guard = self.inner.lock();
+        let TestDlContextInner {
+            requests,
+            downlink_channels,
+            downlinks,
+        } = &mut *guard;
+        for DownlinkSpawnRequest {
+            path,
+            make_channel,
+            on_done,
+            ..
+        } in requests.drain(..)
+        {
+            let (in_tx, in_rx) = byte_channel(BUFFER_SIZE);
+            let (out_tx, out_rx) = byte_channel(BUFFER_SIZE);
+            let channel = make_channel.create_box(agent, out_tx, in_rx);
+            downlinks.push(channel);
+            downlink_channels.insert(path, (in_tx, out_rx));
+            handlers.push(on_done(Ok(())));
+        }
+        handlers
     }
 
     pub fn take_channels(&self) -> HashMap<Address<Text>, (ByteWriter, ByteReader)> {
@@ -96,10 +127,16 @@ impl<Agent> TestDownlinkContext<Agent> {
 impl<Agent> DownlinkSpawner<Agent> for TestDownlinkContext<Agent> {
     fn spawn_downlink(
         &self,
-        dl_channel: BoxDownlinkChannel<Agent>,
-    ) -> Result<(), DownlinkRuntimeError> {
-        self.push_dl(dl_channel);
-        Ok(())
+        path: Address<Text>,
+        make_channel: BoxDownlinkChannelFactory<Agent>,
+        on_done: DownlinkSpawnOnDone<Agent>,
+    ) {
+        self.push_dl(DownlinkSpawnRequest {
+            path,
+            kind: make_channel.kind(),
+            make_channel,
+            on_done,
+        });
     }
 }
 
@@ -111,50 +148,5 @@ impl<Agent> LaneSpawner<Agent> for TestDownlinkContext<Agent> {
         _on_done: LaneSpawnOnDone<Agent>,
     ) -> Result<(), DynamicRegistrationError> {
         panic!("Spawning dynamic lanes not supported.");
-    }
-}
-
-impl<Agent> AgentContext for TestDownlinkContext<Agent> {
-    fn ad_hoc_commands(&self) -> BoxFuture<'static, Result<ByteWriter, DownlinkRuntimeError>> {
-        panic!("Unexpected request for ad hoc channel.");
-    }
-
-    fn add_lane(
-        &self,
-        _name: &str,
-        _lane_kind: WarpLaneKind,
-        _config: LaneConfig,
-    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>> {
-        panic!("Unexpected new lane.");
-    }
-
-    fn add_store(
-        &self,
-        _name: &str,
-        _kind: StoreKind,
-    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), OpenStoreError>> {
-        panic!("Unexpected new store.");
-    }
-
-    fn open_downlink(
-        &self,
-        host: Option<&str>,
-        node: &str,
-        lane: &str,
-        kind: DownlinkKind,
-    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), DownlinkRuntimeError>> {
-        assert_eq!(kind, self.expected_kind);
-        let key = Address::text(host, node, lane);
-        let (in_tx, in_rx) = byte_channel(BUFFER_SIZE);
-        let (out_tx, out_rx) = byte_channel(BUFFER_SIZE);
-        self.push_channels(key, (in_tx, out_rx));
-        async move { Ok((out_tx, in_rx)) }.boxed()
-    }
-
-    fn add_http_lane(
-        &self,
-        _name: &str,
-    ) -> BoxFuture<'static, Result<HttpLaneRequestChannel, AgentRuntimeError>> {
-        panic!("Unexpected new HTTP lane.");
     }
 }

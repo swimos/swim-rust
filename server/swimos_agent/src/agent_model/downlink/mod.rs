@@ -139,17 +139,12 @@ where
                 ValueDownlinkFactory::new(path.clone(), lifecycle, state, config, stop_rx, rx);
             let handle = ValueDownlinkHandle::new(path.clone(), tx, stop_tx, fac.dl_state());
 
-            action_context.start_downlink(
-                path,
-                DownlinkKind::Value,
-                move |con, writer, reader| fac.create(con, writer, reader),
-                |result| {
-                    if let Err(err) = result {
-                        error!(error = %err, "Registering value downlink failed.");
-                    }
-                    UnitHandler::default()
-                },
-            );
+            action_context.start_downlink(path, fac, |result| {
+                if let Err(err) = result {
+                    error!(error = %err, "Registering value downlink failed.");
+                }
+                UnitHandler::default()
+            });
 
             StepResult::done(handle)
         } else {
@@ -186,22 +181,12 @@ where
             let fac =
                 EventDownlinkFactory::new(address.clone(), lifecycle, config, stop_rx, *map_events);
             let handle = EventDownlinkHandle::new(address.clone(), stop_tx, fac.dl_state());
-            let kind = if *map_events {
-                DownlinkKind::MapEvent
-            } else {
-                DownlinkKind::Event
-            };
-            action_context.start_downlink(
-                address,
-                kind,
-                move |_con, _writer, receiver| fac.create(receiver),
-                |result| {
-                    if let Err(err) = result {
-                        error!(error = %err, "Registering event downlink failed.");
-                    }
-                    UnitHandler::default()
-                },
-            );
+            action_context.start_downlink(address, fac, |result| {
+                if let Err(err) = result {
+                    error!(error = %err, "Registering event downlink failed.");
+                }
+                UnitHandler::default()
+            });
             StepResult::done(handle)
         } else {
             StepResult::after_done()
@@ -234,17 +219,12 @@ where
             let fac = MapDownlinkFactory::new(address.clone(), lifecycle, config, stop_rx, rx);
             let handle = MapDownlinkHandle::new(address.clone(), tx, stop_tx, fac.dl_state());
 
-            action_context.start_downlink(
-                address,
-                DownlinkKind::Map,
-                move |con, writer, reader| fac.create(con, writer, reader),
-                |result| {
-                    if let Err(err) = result {
-                        error!(error = %err, "Registering map downlink failed.");
-                    }
-                    UnitHandler::default()
-                },
-            );
+            action_context.start_downlink(address, fac, |result| {
+                if let Err(err) = result {
+                    error!(error = %err, "Registering map downlink failed.");
+                }
+                UnitHandler::default()
+            });
 
             StepResult::done(handle)
         } else {
@@ -322,3 +302,40 @@ pub trait DownlinkChannel<Context> {
 /// A downlink channel that can be used by dynamic dispatch. As the agent task cannot know about the
 /// specific type of any opened downlinks, it views them through this interface.
 pub type BoxDownlinkChannel<Context> = Box<dyn DownlinkChannel<Context> + Send>;
+
+/// A downlink channel factory creates a particular type of downlink (value, map, etc.) attached to
+/// the IO channels that are provided.
+pub trait DownlinkChannelFactory<Context> {
+    /// Create a new new downlink.
+    ///
+    /// # Arguments
+    /// * `context` - The agent context to which the downlink will belong.
+    /// * `tx` - The output channel for the downlink (this may be dropped).
+    /// * `rx` - The input channel for the downlink.
+    fn create(
+        self,
+        context: &Context,
+        tx: ByteWriter,
+        rx: ByteReader,
+    ) -> BoxDownlinkChannel<Context>;
+
+    /// The kind of the downlink that is created.
+    fn kind(&self) -> DownlinkKind;
+
+    /// Create a new downlink from a boxed instances of the factory.
+    ///
+    /// # Arguments
+    /// * `context` - The agent context to which the downlink will belong.
+    /// * `tx` - The output channel for the downlink (this may be dropped).
+    /// * `rx` - The input channel for the downlink.
+    fn create_box(
+        self: Box<Self>,
+        context: &Context,
+        tx: ByteWriter,
+        rx: ByteReader,
+    ) -> BoxDownlinkChannel<Context>;
+}
+
+/// An opaque downlink channel factory that can be called by dynamic dispatch.
+pub type BoxDownlinkChannelFactory<Context> =
+    Box<dyn DownlinkChannelFactory<Context> + Send + 'static>;

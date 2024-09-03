@@ -68,6 +68,8 @@ pub mod stores;
 #[cfg(test)]
 mod test_context;
 #[cfg(test)]
+mod test_util;
+#[cfg(test)]
 mod tests;
 
 #[cfg(test)]
