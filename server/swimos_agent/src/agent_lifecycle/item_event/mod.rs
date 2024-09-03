@@ -23,11 +23,14 @@ use super::utility::HandlerContext;
 mod command;
 mod demand;
 mod demand_map;
+mod dynamic;
 mod http;
 mod map;
 #[cfg(test)]
 mod tests;
 mod value;
+
+pub use dynamic::{BorrowItem, DynamicAgent, DynamicItem};
 
 pub use command::{
     CommandBranch, CommandLeaf, CommandLifecycleHandler, CommandLifecycleHandlerShared,

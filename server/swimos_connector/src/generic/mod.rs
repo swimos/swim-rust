@@ -24,6 +24,7 @@ use std::{
 use bytes::BytesMut;
 use frunk::Coprod;
 use swimos_agent::{
+    agent_lifecycle::item_event::{BorrowItem, DynamicAgent, DynamicItem},
     agent_model::{
         AgentSpec, ItemDescriptor, ItemSpec, MapLikeInitializer, ValueLikeInitializer, WriteResult,
     },
@@ -368,6 +369,57 @@ impl HandlerAction<ConnectorAgent> for SetFlags {
             StepResult::done(())
         } else {
             StepResult::after_done()
+        }
+    }
+}
+
+enum BorrowedLaneInner<'a> {
+    Value(Ref<'a, HashMap<String, GenericValueLane>>),
+    Map(Ref<'a, HashMap<String, GenericMapLane>>),
+}
+
+pub struct BorrowedLane<'a> {
+    name: &'a str,
+    inner: BorrowedLaneInner<'a>,
+}
+
+impl<'a> BorrowItem for BorrowedLane<'a> {
+    fn borrow_item(&self) -> DynamicItem<'_> {
+        let BorrowedLane { name, inner } = self;
+        match inner {
+            BorrowedLaneInner::Value(lanes) => DynamicItem::ValueLane(&lanes[*name]),
+            BorrowedLaneInner::Map(lanes) => DynamicItem::MapLane(&lanes[*name]),
+        }
+    }
+}
+
+impl DynamicAgent for ConnectorAgent {
+    type Borrowed<'a> = BorrowedLane<'a>
+        where
+            Self: 'a;
+
+    fn lane<'a>(&'a self, name: &'a str) -> Option<Self::Borrowed<'a>> {
+        let ConnectorAgent {
+            value_lanes,
+            map_lanes,
+            ..
+        } = self;
+        let values = value_lanes.borrow();
+        if values.contains_key(name) {
+            Some(BorrowedLane {
+                name,
+                inner: BorrowedLaneInner::Value(values),
+            })
+        } else {
+            let maps = map_lanes.borrow();
+            if maps.contains_key(name) {
+                Some(BorrowedLane {
+                    name,
+                    inner: BorrowedLaneInner::Map(maps),
+                })
+            } else {
+                None
+            }
         }
     }
 }
