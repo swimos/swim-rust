@@ -36,6 +36,7 @@ use swimos_utilities::trigger;
 use thiserror::Error;
 
 use crate::{
+    connector::BaseConnector,
     test_support::{make_meta, make_uri},
     Connector, ConnectorAgent, ConnectorInitError, ConnectorLifecycle, ConnectorStream,
 };
@@ -181,6 +182,24 @@ impl HandlerAction<ConnectorAgent> for TestHandler {
     }
 }
 
+impl BaseConnector for TestConnector {
+    fn on_start(&self, init_complete: trigger::Sender) -> impl EventHandler<ConnectorAgent> + '_ {
+        let drop_trigger = self.failure == Some(Failure::DropTrigger);
+        self.make_handler(Event::Start)
+            .followed_by(SideEffect::from(move || {
+                if drop_trigger {
+                    drop(init_complete);
+                } else {
+                    let _ = init_complete.trigger();
+                }
+            }))
+    }
+
+    fn on_stop(&self) -> impl EventHandler<ConnectorAgent> + '_ {
+        self.make_handler(Event::Stop)
+    }
+}
+
 impl Connector for TestConnector {
     type StreamError = TestError;
 
@@ -202,22 +221,6 @@ impl Connector for TestConnector {
                 },
             )))
         }
-    }
-
-    fn on_start(&self, init_complete: trigger::Sender) -> impl EventHandler<ConnectorAgent> + '_ {
-        let drop_trigger = self.failure == Some(Failure::DropTrigger);
-        self.make_handler(Event::Start)
-            .followed_by(SideEffect::from(move || {
-                if drop_trigger {
-                    drop(init_complete);
-                } else {
-                    let _ = init_complete.trigger();
-                }
-            }))
-    }
-
-    fn on_stop(&self) -> impl EventHandler<ConnectorAgent> + '_ {
-        self.make_handler(Event::Stop)
     }
 }
 

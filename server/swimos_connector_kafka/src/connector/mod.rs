@@ -36,7 +36,7 @@ use swimos_utilities::trigger;
 use tokio::sync::{mpsc, Semaphore};
 use tracing::{debug, error, info, trace};
 
-use swimos_connector::{Connector, ConnectorAgent, ConnectorStream};
+use swimos_connector::{BaseConnector, Connector, ConnectorAgent, ConnectorStream};
 
 type ConnHandlerContext = HandlerContext<ConnectorAgent>;
 
@@ -81,12 +81,10 @@ impl KafkaConnector<KafkaConsumerFactory> {
     }
 }
 
-impl<F> Connector for KafkaConnector<F>
+impl<F> BaseConnector for KafkaConnector<F>
 where
     F: ConsumerFactory + Send + 'static,
 {
-    type StreamError = KafkaConnectorError;
-
     fn on_start(&self, init_complete: trigger::Sender) -> impl EventHandler<ConnectorAgent> + '_ {
         let handler_context = ConnHandlerContext::default();
         let KafkaConnector {
@@ -114,6 +112,13 @@ where
     fn on_stop(&self) -> impl EventHandler<ConnectorAgent> + '_ {
         UnitHandler::default()
     }
+}
+
+impl<F> Connector for KafkaConnector<F>
+where
+    F: ConsumerFactory + Send + 'static,
+{
+    type StreamError = KafkaConnectorError;
 
     fn create_stream(
         &self,

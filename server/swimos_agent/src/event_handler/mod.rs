@@ -1633,11 +1633,9 @@ pub struct WithParameters<F> {
 }
 
 impl<F> WithParameters<F> {
-
     pub fn new(f: F) -> Self {
         WithParameters { f: Some(f) }
     }
-
 }
 
 impl<Context, F, T> HandlerAction<Context> for WithParameters<F>

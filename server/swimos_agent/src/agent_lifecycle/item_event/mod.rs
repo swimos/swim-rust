@@ -63,7 +63,7 @@ pub trait ItemEvent<Context> {
     fn item_event<'a>(
         &'a self,
         context: &Context,
-        item_name: &str,
+        item_name: &'a str,
     ) -> Option<Self::ItemEventHandler<'a>>;
 }
 

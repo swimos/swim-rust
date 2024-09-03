@@ -25,6 +25,7 @@ tracing = { workspace = true }
 frunk = { workspace = true }
 uuid = { workspace = true }
 thiserror = { workspace = true }
+bitflags = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt", "test-util", "time"] }

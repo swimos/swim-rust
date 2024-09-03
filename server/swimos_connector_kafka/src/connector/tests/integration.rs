@@ -22,7 +22,7 @@ use futures::{future::join, TryStreamExt};
 use parking_lot::Mutex;
 use rand::{rngs::ThreadRng, Rng};
 use rdkafka::error::KafkaError;
-use swimos_connector::{Connector, ConnectorAgent};
+use swimos_connector::{BaseConnector, Connector, ConnectorAgent};
 use swimos_model::{Item, Value};
 use swimos_recon::print_recon_compact;
 use swimos_utilities::trigger;

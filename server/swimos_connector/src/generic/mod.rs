@@ -27,12 +27,13 @@ use swimos_agent::{
     agent_model::{
         AgentSpec, ItemDescriptor, ItemSpec, MapLikeInitializer, ValueLikeInitializer, WriteResult,
     },
-    event_handler::UnitHandler,
+    event_handler::{ActionContext, HandlerAction, StepResult, UnitHandler},
     lanes::{
         map::{decode_and_select_apply, DecodeAndSelectApply, MapLaneSelectSync},
         value::{decode_and_select_set, DecodeAndSelectSet, ValueLaneSelectSync},
         LaneItem, MapLane, Selector, SelectorFn, ValueLane,
     },
+    AgentMetadata,
 };
 use swimos_agent_protocol::MapMessage;
 use swimos_api::{
@@ -54,6 +55,7 @@ pub struct ConnectorAgent {
     id_counter: Cell<u64>,
     value_lanes: RefCell<HashMap<String, GenericValueLane>>,
     map_lanes: RefCell<HashMap<String, GenericMapLane>>,
+    flags: Cell<u64>,
 }
 
 type ValueHandler = DecodeAndSelectSet<ConnectorAgent, Value, ValueLaneSelectorFn>;
@@ -106,6 +108,14 @@ impl ConnectorAgent {
         } else {
             None
         }
+    }
+
+    pub fn read_flags(&self) -> u64 {
+        self.flags.get()
+    }
+
+    pub fn set_flags(flags: u64) -> SetFlags {
+        SetFlags(Some(flags))
     }
 }
 
@@ -337,5 +347,27 @@ impl SelectorFn<ConnectorAgent> for MapLaneSelectorFn {
         let ConnectorAgent { map_lanes, .. } = context;
         let map = map_lanes.borrow();
         LaneSelector::new(map, self.name)
+    }
+}
+
+#[derive(Default, Debug)]
+pub struct SetFlags(Option<u64>);
+
+impl HandlerAction<ConnectorAgent> for SetFlags {
+    type Completion = ();
+
+    fn step(
+        &mut self,
+        _action_context: &mut ActionContext<ConnectorAgent>,
+        _meta: AgentMetadata,
+        context: &ConnectorAgent,
+    ) -> StepResult<Self::Completion> {
+        let SetFlags(flags) = self;
+        if let Some(flags) = flags.take() {
+            context.flags.set(flags);
+            StepResult::done(())
+        } else {
+            StepResult::after_done()
+        }
     }
 }

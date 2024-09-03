@@ -17,7 +17,7 @@ use crate::{
     MapLaneSpec, ValueLaneSpec,
 };
 use futures::{future::join, TryStreamExt};
-use swimos_connector::{Connector, ConnectorAgent};
+use swimos_connector::{BaseConnector, Connector, ConnectorAgent};
 use swimos_utilities::trigger;
 
 use crate::connector::tests::{run_handler, run_handler_with_futures, TestSpawner};

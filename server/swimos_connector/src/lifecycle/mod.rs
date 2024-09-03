@@ -15,6 +15,9 @@
 #[cfg(test)]
 mod tests;
 
+use std::cell::{OnceCell, RefCell};
+
+use bitflags::bitflags;
 use swimos_agent::{
     agent_lifecycle::{
         item_event::ItemEvent, on_init::OnInit, on_start::OnStart, on_stop::OnStop, HandlerContext,
@@ -26,7 +29,11 @@ use swimos_agent::{
 };
 use swimos_utilities::trigger;
 
-use crate::{connector::suspend_connector, error::ConnectorInitError, Connector, ConnectorAgent};
+use crate::{
+    connector::{suspend_connector, EgressConnector},
+    error::ConnectorInitError,
+    Connector, ConnectorAgent,
+};
 
 /// An [agent lifecycle](swimos_agent::agent_lifecycle::AgentLifecycle) implementation that serves as an adapter for
 /// a [connector](Connector).
@@ -98,5 +105,94 @@ where
         _item_name: &str,
     ) -> Option<Self::ItemEventHandler<'a>> {
         None
+    }
+}
+
+pub struct EgressConnectorLifecycle<C: EgressConnector> {
+    lifecycle: C,
+    sender: OnceCell<C::Sender>,
+}
+
+impl<C> OnInit<ConnectorAgent> for EgressConnectorLifecycle<C>
+where
+    C: EgressConnector + Send,
+{
+    fn initialize(
+        &self,
+        _action_context: &mut ActionContext<ConnectorAgent>,
+        _meta: AgentMetadata,
+        _context: &ConnectorAgent,
+    ) {
+    }
+}
+
+impl<C> OnStop<ConnectorAgent> for EgressConnectorLifecycle<C>
+where
+    C: EgressConnector + Send,
+{
+    fn on_stop(&self) -> impl EventHandler<ConnectorAgent> + '_ {
+        UnitHandler::default()
+    }
+}
+
+bitflags! {
+
+    #[derive(Default, Debug, Copy, Clone)]
+    pub struct EgressFlags: u64 {
+        /// Initialization has completed.
+        const INITIALIZED = 0b1;
+    }
+
+}
+
+impl<C> OnStart<ConnectorAgent> for EgressConnectorLifecycle<C>
+where
+    C: EgressConnector + Send,
+{
+    fn on_start(&self) -> impl EventHandler<ConnectorAgent> + '_ {
+        let EgressConnectorLifecycle { lifecycle, sender } = self;
+        let (tx, rx) = trigger::trigger();
+        let context: HandlerContext<ConnectorAgent> = Default::default();
+        let on_start = lifecycle.on_start(tx);
+        let create_sender = context
+            .with_parameters(|params| lifecycle.make_sender(params))
+            .try_handler()
+            .and_then(move |egress_sender| {
+                context.effect(move || {
+                    let _ = sender.set(egress_sender);
+                })
+            });
+        let await_init = context.suspend(async move {
+            context
+                .value(rx.await)
+                .try_handler()
+                .followed_by(ConnectorAgent::set_flags(EgressFlags::INITIALIZED.bits()))
+        });
+        await_init.followed_by(on_start).followed_by(create_sender)
+    }
+}
+
+fn is_initialized(agent: &ConnectorAgent) -> bool {
+    EgressFlags::from_bits_retain(agent.read_flags()).contains(EgressFlags::INITIALIZED)
+}
+
+impl<C> ItemEvent<ConnectorAgent> for EgressConnectorLifecycle<C>
+where
+    C: EgressConnector + Send,
+{
+    type ItemEventHandler<'a> = UnitHandler
+    where
+        Self: 'a;
+
+    fn item_event<'a>(
+        &'a self,
+        context: &ConnectorAgent,
+        item_name: &'a str,
+    ) -> Option<Self::ItemEventHandler<'a>> {
+        if is_initialized(context) {
+            todo!()
+        } else {
+            None
+        }
     }
 }
