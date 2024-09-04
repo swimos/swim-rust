@@ -23,8 +23,6 @@ use crate::{
     lanes::{map::MapLaneEvent, MapLane, ValueLane},
 };
 
-use super::ItemEvent;
-
 pub trait DynamicAgent {
     type Borrowed<'a>: BorrowItem + 'a
     where
@@ -69,45 +67,38 @@ pub trait DynamicLifecycle<Context> {
     ) -> Self::MapHandler<'a>;
 }
 
-pub struct DynamicLifecycleWrapper<LC>(LC);
+pub type DynamicHandler<'a, Context, LC> = Coprod!(
+    <LC as DynamicLifecycle<Context>>::ValueHandler<'a>,
+    <LC as DynamicLifecycle<Context>>::MapHandler<'a>
+);
 
-impl<Context, LC> ItemEvent<Context> for DynamicLifecycleWrapper<LC>
+pub fn dynamic_handler<'a, Context, LC>(
+    context: &Context,
+    lifecycle: &'a LC,
+    item_name: &'a str,
+) -> Option<DynamicHandler<'a, Context, LC>>
 where
     Context: DynamicAgent,
     LC: DynamicLifecycle<Context>,
 {
-    type ItemEventHandler<'a> = Coprod!(LC::ValueHandler<'a>, LC::MapHandler<'a>)
-    where
-        Self: 'a;
-
-    fn item_event<'a>(
-        &'a self,
-        context: &Context,
-        item_name: &'a str,
-    ) -> Option<Self::ItemEventHandler<'a>> {
-        let DynamicLifecycleWrapper(lc) = self;
-
-        context
-            .lane(item_name)
-            .and_then(|lane| match lane.borrow_item() {
-                DynamicItem::ValueLane(value_lane) => {
-                    value_lane.read_with_prev(|maybe_prev, current| {
-                        maybe_prev.map(|prev| {
-                            <Self::ItemEventHandler<'a>>::inject(
-                                lc.value_lane(item_name, prev, current),
-                            )
-                        })
+    context
+        .lane(item_name)
+        .and_then(|lane| match lane.borrow_item() {
+            DynamicItem::ValueLane(value_lane) => {
+                value_lane.read_with_prev(|maybe_prev, current| {
+                    maybe_prev.map(|prev| {
+                        <DynamicHandler<'a, Context, LC>>::inject(
+                            lifecycle.value_lane(item_name, prev, current),
+                        )
                     })
-                }
-                DynamicItem::MapLane(map_lane) => {
-                    map_lane.read_with_prev(|maybe_event, current| {
-                        maybe_event.map(|event| {
-                            <Self::ItemEventHandler<'a>>::inject(
-                                lc.map_lane(item_name, event, current),
-                            )
-                        })
-                    })
-                }
-            })
-    }
+                })
+            }
+            DynamicItem::MapLane(map_lane) => map_lane.read_with_prev(|maybe_event, current| {
+                maybe_event.map(|event| {
+                    <DynamicHandler<'a, Context, LC>>::inject(
+                        lifecycle.map_lane(item_name, event, current),
+                    )
+                })
+            }),
+        })
 }

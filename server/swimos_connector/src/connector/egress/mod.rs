@@ -15,10 +15,7 @@
 use std::{collections::HashMap, error::Error};
 
 use futures::TryFuture;
-use swimos_agent::event_handler::HandlerAction;
 use swimos_model::Value;
-
-use crate::ConnectorAgent;
 
 use super::{BaseConnector, ConnectorHandler};
 
@@ -35,7 +32,12 @@ pub trait EgressConnector: BaseConnector {
 }
 
 pub trait EgressConnectorSender<SendError>: Send + Clone {
-    fn send(&self, key: Option<&Value>, value: Value) -> impl ConnectorFuture<SendError>;
+    fn send(
+        &self,
+        name: &str,
+        key: Option<&Value>,
+        value: &Value,
+    ) -> impl ConnectorFuture<SendError>;
 }
 
 pub trait ConnectorFuture<E>:

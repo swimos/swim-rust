@@ -30,7 +30,9 @@ mod map;
 mod tests;
 mod value;
 
-pub use dynamic::{BorrowItem, DynamicAgent, DynamicItem};
+pub use dynamic::{
+    dynamic_handler, BorrowItem, DynamicAgent, DynamicHandler, DynamicItem, DynamicLifecycle,
+};
 
 pub use command::{
     CommandBranch, CommandLeaf, CommandLifecycleHandler, CommandLifecycleHandlerShared,

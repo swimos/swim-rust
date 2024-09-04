@@ -20,7 +20,7 @@ use std::error::Error;
 use futures::{TryStream, TryStreamExt};
 use swimos_agent::{
     agent_lifecycle::HandlerContext,
-    event_handler::{EventHandler, HandlerAction, HandlerActionExt, TryHandlerActionExt},
+    event_handler::{HandlerAction, HandlerActionExt, TryHandlerActionExt},
 };
 
 use crate::generic::ConnectorAgent;

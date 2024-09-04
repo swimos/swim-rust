@@ -1646,9 +1646,9 @@ where
 
     fn step(
         &mut self,
-        action_context: &mut ActionContext<Context>,
+        _action_context: &mut ActionContext<Context>,
         meta: AgentMetadata,
-        context: &Context,
+        _context: &Context,
     ) -> StepResult<Self::Completion> {
         let WithParameters { f } = self;
         if let Some(f) = f.take() {

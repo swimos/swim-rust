@@ -15,7 +15,7 @@
 mod egress;
 mod ingress;
 
-pub use egress::{ConnectorFuture, EgressConnector, EgressConnectorSender};
+pub use egress::{EgressConnector, EgressConnectorSender};
 pub use ingress::{suspend_connector, Connector, ConnectorStream};
 use swimos_agent::event_handler::EventHandler;
 use swimos_utilities::trigger;

@@ -15,22 +15,30 @@
 #[cfg(test)]
 mod tests;
 
-use std::cell::{OnceCell, RefCell};
+use std::{cell::OnceCell, collections::HashMap};
 
 use bitflags::bitflags;
+use futures::{FutureExt, TryFutureExt};
 use swimos_agent::{
     agent_lifecycle::{
-        item_event::ItemEvent, on_init::OnInit, on_start::OnStart, on_stop::OnStop, HandlerContext,
+        item_event::{dynamic_handler, DynamicHandler, DynamicLifecycle, ItemEvent},
+        on_init::OnInit,
+        on_start::OnStart,
+        on_stop::OnStop,
+        HandlerContext,
     },
     event_handler::{
-        ActionContext, EventHandler, HandlerActionExt, TryHandlerActionExt, UnitHandler,
+        ActionContext, BoxHandlerAction, EventHandler, HandlerActionExt, TryHandlerActionExt,
+        UnitHandler,
     },
+    lanes::map::MapLaneEvent,
     AgentMetadata,
 };
+use swimos_model::Value;
 use swimos_utilities::trigger;
 
 use crate::{
-    connector::{suspend_connector, EgressConnector},
+    connector::{suspend_connector, EgressConnector, EgressConnectorSender},
     error::ConnectorInitError,
     Connector, ConnectorAgent,
 };
@@ -178,9 +186,9 @@ fn is_initialized(agent: &ConnectorAgent) -> bool {
 
 impl<C> ItemEvent<ConnectorAgent> for EgressConnectorLifecycle<C>
 where
-    C: EgressConnector + Send,
+    C: EgressConnector,
 {
-    type ItemEventHandler<'a> = UnitHandler
+    type ItemEventHandler<'a> = DynamicHandler<'a, ConnectorAgent, Self>
     where
         Self: 'a;
 
@@ -190,9 +198,74 @@ where
         item_name: &'a str,
     ) -> Option<Self::ItemEventHandler<'a>> {
         if is_initialized(context) {
-            todo!()
+            dynamic_handler(context, self, item_name)
         } else {
             None
         }
+    }
+}
+
+impl<C> DynamicLifecycle<ConnectorAgent> for EgressConnectorLifecycle<C>
+where
+    C: EgressConnector,
+{
+    type ValueHandler<'a> = BoxHandlerAction<'static, ConnectorAgent, ()>
+    where
+        Self: 'a;
+
+    type MapHandler<'a> = BoxHandlerAction<'static, ConnectorAgent, ()>
+    where
+        Self: 'a;
+
+    fn value_lane<'a>(
+        &'a self,
+        lane_name: &'a str,
+        _previous: Value,
+        value: &Value,
+    ) -> Self::ValueHandler<'a> {
+        let EgressConnectorLifecycle { sender, .. } = self;
+        if let Some(sender) = sender.get() {
+            let context: HandlerContext<ConnectorAgent> = Default::default();
+            let fut = sender
+                .send(lane_name, None, value)
+                .into_future()
+                .map(move |h: Result<_, _>| context.value(h).try_handler().and_then(|h| h));
+            Some(context.suspend(fut))
+        } else {
+            None
+        }
+        .discard()
+        .boxed()
+    }
+
+    fn map_lane<'a>(
+        &'a self,
+        lane_name: &'a str,
+        event: MapLaneEvent<Value, Value>,
+        contents: &HashMap<Value, Value>,
+    ) -> Self::MapHandler<'a> {
+        let EgressConnectorLifecycle { sender, .. } = self;
+        let kv = match &event {
+            MapLaneEvent::Clear(_) => None,
+            MapLaneEvent::Update(k, _) => {
+                let v = contents.get(k);
+                Some((k, v))
+            }
+            MapLaneEvent::Remove(k, _) => Some((k, None)),
+        };
+        sender
+            .get()
+            .and_then(|sender| {
+                let context: HandlerContext<ConnectorAgent> = Default::default();
+                kv.map(|(k, v)| {
+                    let fut = sender
+                        .send(lane_name, Some(k), v.unwrap_or(&Value::Extant))
+                        .into_future()
+                        .map(move |h: Result<_, _>| context.value(h).try_handler().and_then(|h| h));
+                    context.suspend(fut)
+                })
+            })
+            .discard()
+            .boxed()
     }
 }
