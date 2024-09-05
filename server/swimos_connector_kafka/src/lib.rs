@@ -18,6 +18,7 @@ mod deser;
 mod error;
 mod facade;
 mod selector;
+mod ser;
 
 pub use config::{
     DeserializationFormat, KafkaConnectorConfiguration, KafkaLogLevel, MapLaneSpec, ValueLaneSpec,

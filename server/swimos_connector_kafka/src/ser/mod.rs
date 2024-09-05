@@ -1,0 +1,308 @@
+// Copyright 2015-2024 Swim Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+use bytes::{Buf, BufMut, BytesMut};
+use std::fmt::Write;
+use swimos_model::{Value, ValueKind};
+use swimos_recon::print_recon_compact;
+use thiserror::Error;
+
+#[cfg(feature = "json")]
+mod json;
+
+use crate::Endianness;
+
+#[derive(Debug, Error)]
+pub enum SerializationError {
+    #[error("The serializations scheme does not support values of kind: {0}")]
+    InvalidKind(ValueKind),
+    #[error("Integer value {0} out of range for the serialization scheme.")]
+    IntegerOutOfRange(Value),
+    #[error("Float value {0} out of range for the serialization scheme.")]
+    FloatOutOfRange(f64),
+    #[error("A value serializer failed: {0}")]
+    SerializerFailed(Box<dyn std::error::Error + Send>),
+}
+
+pub trait MessageSerializer {
+    fn serialize(
+        &self,
+        name: &str,
+        message: &Value,
+        target: &mut BytesMut,
+    ) -> Result<(), SerializationError>;
+}
+
+pub struct StringSerializer;
+pub struct ReconSerializer;
+pub struct BytesSerializer;
+
+impl MessageSerializer for StringSerializer {
+    fn serialize(
+        &self,
+        _name: &str,
+        message: &Value,
+        target: &mut BytesMut,
+    ) -> Result<(), SerializationError> {
+        if let Value::Text(text) = message {
+            let bytes = text.as_bytes();
+            target.reserve(bytes.len());
+            target.put_slice(bytes);
+            Ok(())
+        } else {
+            Err(SerializationError::InvalidKind(message.kind()))
+        }
+    }
+}
+
+const RESERVE_INIT: usize = 256;
+const RESERVE_MULT: usize = 2;
+
+impl MessageSerializer for ReconSerializer {
+    fn serialize(
+        &self,
+        _name: &str,
+        message: &Value,
+        target: &mut BytesMut,
+    ) -> Result<(), SerializationError> {
+        let mut next_res = RESERVE_INIT.max(target.remaining_mut().saturating_mul(RESERVE_MULT));
+        let body_offset = target.remaining();
+        loop {
+            if write!(target, "{}", print_recon_compact(message)).is_err() {
+                target.truncate(body_offset);
+                target.reserve(next_res);
+                next_res = next_res.saturating_mul(RESERVE_MULT);
+            } else {
+                break Ok(());
+            }
+        }
+    }
+}
+
+impl MessageSerializer for BytesSerializer {
+    fn serialize(
+        &self,
+        _name: &str,
+        message: &Value,
+        target: &mut BytesMut,
+    ) -> Result<(), SerializationError> {
+        if let Value::Data(blob) = message {
+            let bytes = blob.as_ref();
+            target.reserve(bytes.len());
+            target.put_slice(bytes);
+            Ok(())
+        } else {
+            Err(SerializationError::InvalidKind(message.kind()))
+        }
+    }
+}
+
+#[derive(Clone, Copy, Default, Debug)]
+pub struct I32Serializer(Endianness);
+
+#[derive(Clone, Copy, Default, Debug)]
+pub struct I64Serializer(Endianness);
+
+#[derive(Clone, Copy, Default, Debug)]
+pub struct U32Serializer(Endianness);
+
+#[derive(Clone, Copy, Default, Debug)]
+pub struct U64Serializer(Endianness);
+
+#[derive(Clone, Copy, Default, Debug)]
+pub struct F32Serializer(Endianness);
+
+#[derive(Clone, Copy, Default, Debug)]
+pub struct F64Serializer(Endianness);
+
+impl MessageSerializer for I32Serializer {
+    fn serialize(
+        &self,
+        _name: &str,
+        message: &Value,
+        target: &mut BytesMut,
+    ) -> Result<(), SerializationError> {
+        if let Some(n) = match message {
+            Value::Int32Value(n) => Some(*n),
+            Value::Int64Value(n) => i32::try_from(*n).ok(),
+            Value::UInt32Value(n) => i32::try_from(*n).ok(),
+            Value::UInt64Value(n) => i32::try_from(*n).ok(),
+            Value::BigInt(n) => i32::try_from(n).ok(),
+            Value::BigUint(n) => i32::try_from(n).ok(),
+            ow => return Err(SerializationError::InvalidKind(ow.kind())),
+        } {
+            let Self(endianness) = self;
+            target.reserve(std::mem::size_of::<i32>());
+            match endianness {
+                Endianness::LittleEndian => target.put_i32_le(n),
+                Endianness::BigEndian => target.put_i32(n),
+            }
+            Ok(())
+        } else {
+            Err(SerializationError::IntegerOutOfRange(message.clone()))
+        }
+    }
+}
+
+impl MessageSerializer for I64Serializer {
+    fn serialize(
+        &self,
+        _name: &str,
+        message: &Value,
+        target: &mut BytesMut,
+    ) -> Result<(), SerializationError> {
+        if let Some(n) = match message {
+            Value::Int32Value(n) => Some(*n as i64),
+            Value::Int64Value(n) => Some(*n),
+            Value::UInt32Value(n) => Some(*n as i64),
+            Value::UInt64Value(n) => i64::try_from(*n).ok(),
+            Value::BigInt(n) => i64::try_from(n).ok(),
+            Value::BigUint(n) => i64::try_from(n).ok(),
+            ow => return Err(SerializationError::InvalidKind(ow.kind())),
+        } {
+            let Self(endianness) = self;
+            target.reserve(std::mem::size_of::<i64>());
+            match endianness {
+                Endianness::LittleEndian => target.put_i64_le(n),
+                Endianness::BigEndian => target.put_i64(n),
+            }
+            Ok(())
+        } else {
+            Err(SerializationError::IntegerOutOfRange(message.clone()))
+        }
+    }
+}
+
+impl MessageSerializer for U32Serializer {
+    fn serialize(
+        &self,
+        _name: &str,
+        message: &Value,
+        target: &mut BytesMut,
+    ) -> Result<(), SerializationError> {
+        if let Some(n) = match message {
+            Value::Int32Value(n) => u32::try_from(*n).ok(),
+            Value::Int64Value(n) => u32::try_from(*n).ok(),
+            Value::UInt32Value(n) => Some(*n),
+            Value::UInt64Value(n) => u32::try_from(*n).ok(),
+            Value::BigInt(n) => u32::try_from(n).ok(),
+            Value::BigUint(n) => u32::try_from(n).ok(),
+            ow => return Err(SerializationError::InvalidKind(ow.kind())),
+        } {
+            let Self(endianness) = self;
+            target.reserve(std::mem::size_of::<u32>());
+            match endianness {
+                Endianness::LittleEndian => target.put_u32_le(n),
+                Endianness::BigEndian => target.put_u32(n),
+            }
+            Ok(())
+        } else {
+            Err(SerializationError::IntegerOutOfRange(message.clone()))
+        }
+    }
+}
+
+impl MessageSerializer for U64Serializer {
+    fn serialize(
+        &self,
+        _name: &str,
+        message: &Value,
+        target: &mut BytesMut,
+    ) -> Result<(), SerializationError> {
+        if let Some(n) = match message {
+            Value::Int32Value(n) => u64::try_from(*n).ok(),
+            Value::Int64Value(n) => u64::try_from(*n).ok(),
+            Value::UInt32Value(n) => Some(*n as u64),
+            Value::UInt64Value(n) => Some(*n),
+            Value::BigInt(n) => u64::try_from(n).ok(),
+            Value::BigUint(n) => u64::try_from(n).ok(),
+            ow => return Err(SerializationError::InvalidKind(ow.kind())),
+        } {
+            let Self(endianness) = self;
+            target.reserve(std::mem::size_of::<u64>());
+            match endianness {
+                Endianness::LittleEndian => target.put_u64_le(n),
+                Endianness::BigEndian => target.put_u64(n),
+            }
+            Ok(())
+        } else {
+            Err(SerializationError::IntegerOutOfRange(message.clone()))
+        }
+    }
+}
+
+impl MessageSerializer for F32Serializer {
+    fn serialize(
+        &self,
+        _name: &str,
+        message: &Value,
+        target: &mut BytesMut,
+    ) -> Result<(), SerializationError> {
+        if let Value::Float64Value(x) = message {
+            let Self(endianness) = self;
+            target.reserve(std::mem::size_of::<f32>());
+            match endianness {
+                Endianness::LittleEndian => target.put_f32_le(*x as f32),
+                Endianness::BigEndian => target.put_f32(*x as f32),
+            }
+            Ok(())
+        } else {
+            Err(SerializationError::InvalidKind(message.kind()))
+        }
+    }
+}
+
+impl MessageSerializer for F64Serializer {
+    fn serialize(
+        &self,
+        _name: &str,
+        message: &Value,
+        target: &mut BytesMut,
+    ) -> Result<(), SerializationError> {
+        if let Value::Float64Value(x) = message {
+            let Self(endianness) = self;
+            target.reserve(std::mem::size_of::<f64>());
+            match endianness {
+                Endianness::LittleEndian => target.put_f64_le(*x),
+                Endianness::BigEndian => target.put_f64(*x),
+            }
+            Ok(())
+        } else {
+            Err(SerializationError::InvalidKind(message.kind()))
+        }
+    }
+}
+
+pub struct UuidSerializer;
+
+impl MessageSerializer for UuidSerializer {
+    fn serialize(
+        &self,
+        _name: &str,
+        message: &Value,
+        target: &mut BytesMut,
+    ) -> Result<(), SerializationError> {
+        if let Some(n) = match message {
+            Value::BigInt(n) => u128::try_from(n).ok(),
+            Value::BigUint(n) => u128::try_from(n).ok(),
+            ow => return Err(SerializationError::InvalidKind(ow.kind())),
+        } {
+            target.reserve(std::mem::size_of::<u128>());
+            target.put_u128(n);
+            Ok(())
+        } else {
+            Err(SerializationError::IntegerOutOfRange(message.clone()))
+        }
+    }
+}

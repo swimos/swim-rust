@@ -32,6 +32,7 @@ thiserror = { workspace = true }
 swimos_connector = { workspace = true }
 regex = { workspace = true }
 frunk = { workspace = true }
+bytes = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt"] }
