@@ -14,9 +14,12 @@
 
 use bytes::{Buf, BufMut, BytesMut};
 use std::fmt::Write;
-use swimos_model::{Value, ValueKind};
+use swimos_model::{Item, Value, ValueKind};
 use swimos_recon::print_recon_compact;
 use thiserror::Error;
+
+#[cfg(feature = "avro")]
+mod avro;
 
 #[cfg(feature = "json")]
 mod json;
@@ -305,4 +308,18 @@ impl MessageSerializer for UuidSerializer {
             Err(SerializationError::IntegerOutOfRange(message.clone()))
         }
     }
+}
+
+#[cfg(any(feature = "json", feature = "avro"))]
+fn is_array(items: &[Item]) -> bool {
+    use swimos_model::Item;
+
+    items.iter().all(|item| matches!(item, Item::ValueItem(_)))
+}
+
+#[cfg(any(feature = "json", feature = "avro"))]
+fn is_record(items: &[Item]) -> bool {
+    items
+        .iter()
+        .all(|item| matches!(item, Item::Slot(key, _) if key.kind() == ValueKind::Text))
 }

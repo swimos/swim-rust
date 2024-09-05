@@ -17,7 +17,7 @@ use serde_json::error::Category;
 use serde_json::{Map, Number, Value as JsonValue};
 use swimos_model::{Attr, Item, Value, ValueKind};
 
-use super::{MessageSerializer, SerializationError};
+use super::{is_array, is_record, MessageSerializer, SerializationError};
 
 #[derive(Debug, Default)]
 pub struct JsonSerializer;
@@ -83,9 +83,9 @@ fn convert_recon_value(input: &Value) -> Result<JsonValue, SerializationError> {
         Value::Text(string) => JsonValue::String(string.to_string()),
         Value::Record(attrs, items) => {
             if attrs.is_empty() {
-                if is_json_array(items) {
+                if is_array(items) {
                     to_json_array(items)?
-                } else if is_json_obj(items) {
+                } else if is_record(items) {
                     to_json_object(items)?
                 } else {
                     items_arr(items)?
@@ -167,14 +167,4 @@ fn to_json_object(items: &[Item]) -> Result<JsonValue, SerializationError> {
         .map(|(k, v)| convert_recon_value(v).map(move |v| (k, v)))
         .collect::<Result<Map<_, _>, _>>()?;
     Ok(JsonValue::Object(items))
-}
-
-fn is_json_array(items: &[Item]) -> bool {
-    items.iter().all(|item| matches!(item, Item::ValueItem(_)))
-}
-
-fn is_json_obj(items: &[Item]) -> bool {
-    items
-        .iter()
-        .all(|item| matches!(item, Item::Slot(key, _) if key.kind() == ValueKind::Text))
 }
