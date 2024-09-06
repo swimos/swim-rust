@@ -13,14 +13,14 @@
 // limitations under the License.
 
 use crate::{
-    DataFormat, Endianness, KafkaConnector, KafkaIngressConfiguration, KafkaLogLevel, MapLaneSpec,
-    ValueLaneSpec,
+    DataFormat, Endianness, KafkaIngressConfiguration, KafkaIngressConnector, KafkaLogLevel,
+    MapLaneSpec, ValueLaneSpec,
 };
 use futures::{future::join, TryStreamExt};
 use swimos_connector::{BaseConnector, Connector, ConnectorAgent};
 use swimos_utilities::trigger;
 
-use crate::connector::tests::{run_handler, run_handler_with_futures, TestSpawner};
+use crate::connector::ingress::tests::{run_handler, run_handler_with_futures, TestSpawner};
 
 fn make_config() -> KafkaIngressConfiguration {
     KafkaIngressConfiguration {
@@ -52,7 +52,7 @@ fn make_config() -> KafkaIngressConfiguration {
 #[ignore] // Ignored by default as this relies on an external service being present.
 async fn drive_connector() {
     let config = make_config();
-    let connector = KafkaConnector::for_config(config);
+    let connector = KafkaIngressConnector::for_config(config);
     let agent = ConnectorAgent::default();
 
     let (tx, rx) = trigger::trigger();

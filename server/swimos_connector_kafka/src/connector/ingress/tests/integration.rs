@@ -30,11 +30,11 @@ use tokio::sync::mpsc;
 
 use crate::{
     config::KafkaLogLevel,
-    connector::{message_to_handler, Lanes, MessageSelector, MessageState, MessageTasks},
+    connector::ingress::{message_to_handler, Lanes, MessageSelector, MessageState, MessageTasks},
     deser::{MessageDeserializer, MessageView, ReconDeserializer},
     error::KafkaConnectorError,
     facade::{ConsumerFactory, KafkaConsumer, KafkaMessage},
-    DataFormat, KafkaConnector, KafkaIngressConfiguration, MapLaneSpec, ValueLaneSpec,
+    DataFormat, KafkaIngressConfiguration, KafkaIngressConnector, MapLaneSpec, ValueLaneSpec,
 };
 
 use super::{run_handler_with_futures, setup_agent};
@@ -379,7 +379,7 @@ async fn connector_on_start() {
         let messages = generate_messages(num_messages, "topic_name");
         let config = make_config();
         let factory = MockConsumerFactory::new(Ok(messages), props(), KafkaLogLevel::Warning);
-        let connector = KafkaConnector::new(factory, config);
+        let connector = KafkaIngressConnector::new(factory, config);
 
         let (tx, rx) = trigger::trigger();
         let handler = connector.on_start(tx);
@@ -409,7 +409,7 @@ async fn connector_stream() {
         let config = make_config();
         let factory =
             MockConsumerFactory::new(Ok(messages.clone()), props(), KafkaLogLevel::Warning);
-        let connector = KafkaConnector::new(factory, config);
+        let connector = KafkaIngressConnector::new(factory, config);
 
         let (tx, rx) = trigger::trigger();
         let handler = connector.on_start(tx);
@@ -443,7 +443,7 @@ async fn failed_connector_stream_start() {
         let config = make_config();
         let factory =
             MockConsumerFactory::new(Err(KafkaError::Canceled), props(), KafkaLogLevel::Warning);
-        let connector = KafkaConnector::new(factory, config);
+        let connector = KafkaIngressConnector::new(factory, config);
 
         let (tx, rx) = trigger::trigger();
         let handler = connector.on_start(tx);

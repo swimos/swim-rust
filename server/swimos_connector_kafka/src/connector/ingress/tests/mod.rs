@@ -42,7 +42,7 @@ use swimos_utilities::{routing::RouteUri, trigger};
 use tokio::time::timeout;
 
 use crate::{
-    connector::{InvalidLanes, MessageSelector},
+    connector::ingress::{InvalidLanes, MessageSelector},
     deser::{MessageDeserializer, MessageView, ReconDeserializer},
     error::{DeserializationError, LaneSelectorError},
     selector::{

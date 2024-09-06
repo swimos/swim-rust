@@ -23,7 +23,7 @@ mod ser;
 pub use config::{
     DataFormat, KafkaIngressConfiguration, KafkaLogLevel, MapLaneSpec, ValueLaneSpec,
 };
-pub use connector::KafkaConnector;
+pub use connector::KafkaIngressConnector;
 pub use deser::Endianness;
 pub use error::{
     BadSelector, DeserializationError, InvalidLaneSpec, InvalidLanes, KafkaConnectorError,
