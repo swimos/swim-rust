@@ -24,6 +24,12 @@ type AvroValue = apache_avro::types::Value;
 
 pub struct AvroSerializer(Schema);
 
+impl AvroSerializer {
+    pub fn new(schema: Schema) -> Self {
+        AvroSerializer(schema)
+    }
+}
+
 impl MessageSerializer for AvroSerializer {
     fn serialize(
         &self,

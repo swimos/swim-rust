@@ -18,7 +18,7 @@ mod tests;
 use std::collections::HashSet;
 use std::{cell::RefCell, sync::Arc};
 
-use crate::config::KafkaConnectorConfiguration;
+use crate::config::KafkaIngressConfiguration;
 use crate::deser::{BoxMessageDeserializer, MessagePart, MessageView};
 use crate::error::{KafkaConnectorError, LaneSelectorError};
 use crate::facade::{ConsumerFactory, KafkaConsumer, KafkaConsumerFactory, KafkaMessage};
@@ -55,12 +55,12 @@ type ConnHandlerContext = HandlerContext<ConnectorAgent>;
 #[derive(Debug, Clone)]
 pub struct KafkaConnector<F> {
     factory: F,
-    configuration: KafkaConnectorConfiguration,
+    configuration: KafkaIngressConfiguration,
     lanes: RefCell<Lanes>,
 }
 
 impl<F> KafkaConnector<F> {
-    fn new(factory: F, configuration: KafkaConnectorConfiguration) -> Self {
+    fn new(factory: F, configuration: KafkaIngressConfiguration) -> Self {
         KafkaConnector {
             factory,
             configuration,
@@ -76,7 +76,7 @@ impl KafkaConnector<KafkaConsumerFactory> {
     /// # Arguments
     /// * `configuration` - The connector configuration, specifying the connection details for the Kafka consumer
     ///   an the lanes that the connector agent should expose.
-    pub fn for_config(configuration: KafkaConnectorConfiguration) -> Self {
+    pub fn for_config(configuration: KafkaIngressConfiguration) -> Self {
         Self::new(KafkaConsumerFactory, configuration)
     }
 }
@@ -313,11 +313,11 @@ struct Lanes {
     map_lanes: Vec<MapLaneSelector>,
 }
 
-impl TryFrom<&KafkaConnectorConfiguration> for Lanes {
+impl TryFrom<&KafkaIngressConfiguration> for Lanes {
     type Error = InvalidLanes;
 
-    fn try_from(value: &KafkaConnectorConfiguration) -> Result<Self, Self::Error> {
-        let KafkaConnectorConfiguration {
+    fn try_from(value: &KafkaIngressConfiguration) -> Result<Self, Self::Error> {
+        let KafkaIngressConfiguration {
             value_lanes,
             map_lanes,
             ..

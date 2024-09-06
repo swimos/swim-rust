@@ -13,8 +13,8 @@
 // limitations under the License.
 
 use crate::{
-    DeserializationFormat, Endianness, KafkaConnector, KafkaConnectorConfiguration, KafkaLogLevel,
-    MapLaneSpec, ValueLaneSpec,
+    DataFormat, Endianness, KafkaConnector, KafkaIngressConfiguration, KafkaLogLevel, MapLaneSpec,
+    ValueLaneSpec,
 };
 use futures::{future::join, TryStreamExt};
 use swimos_connector::{BaseConnector, Connector, ConnectorAgent};
@@ -22,8 +22,8 @@ use swimos_utilities::trigger;
 
 use crate::connector::tests::{run_handler, run_handler_with_futures, TestSpawner};
 
-fn make_config() -> KafkaConnectorConfiguration {
-    KafkaConnectorConfiguration {
+fn make_config() -> KafkaIngressConfiguration {
+    KafkaIngressConfiguration {
         properties: [
             ("bootstrap.servers", "datagen.nstream.cloud:9092"),
             ("message.timeout.ms", "5000"),
@@ -42,8 +42,8 @@ fn make_config() -> KafkaConnectorConfiguration {
             false,
             true,
         )],
-        key_deserializer: DeserializationFormat::Int32(Endianness::LittleEndian),
-        payload_deserializer: DeserializationFormat::Json,
+        key_deserializer: DataFormat::Int32(Endianness::LittleEndian),
+        payload_deserializer: DataFormat::Json,
         topics: vec!["cellular-integer-json".to_string()],
     }
 }

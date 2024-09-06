@@ -34,7 +34,7 @@ use crate::{
     deser::{MessageDeserializer, MessageView, ReconDeserializer},
     error::KafkaConnectorError,
     facade::{ConsumerFactory, KafkaConsumer, KafkaMessage},
-    DeserializationFormat, KafkaConnector, KafkaConnectorConfiguration, MapLaneSpec, ValueLaneSpec,
+    DataFormat, KafkaConnector, KafkaIngressConfiguration, MapLaneSpec, ValueLaneSpec,
 };
 
 use super::{run_handler_with_futures, setup_agent};
@@ -45,8 +45,8 @@ fn props() -> HashMap<String, String> {
         .collect()
 }
 
-fn make_config() -> KafkaConnectorConfiguration {
-    KafkaConnectorConfiguration {
+fn make_config() -> KafkaIngressConfiguration {
+    KafkaIngressConfiguration {
         properties: props(),
         log_level: KafkaLogLevel::Warning,
         value_lanes: vec![ValueLaneSpec::new(None, "$key", true)],
@@ -57,8 +57,8 @@ fn make_config() -> KafkaConnectorConfiguration {
             true,
             true,
         )],
-        key_deserializer: DeserializationFormat::Recon,
-        payload_deserializer: DeserializationFormat::Recon,
+        key_deserializer: DataFormat::Recon,
+        payload_deserializer: DataFormat::Recon,
         topics: vec!["topic".to_string()],
     }
 }

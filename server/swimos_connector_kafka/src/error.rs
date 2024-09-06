@@ -40,6 +40,8 @@ pub enum LoadError {
     /// A required resource was invalid.
     #[error(transparent)]
     InvalidDescriptor(#[from] Box<dyn std::error::Error + Send + 'static>),
+    #[error("The configuration provided for the serializer or deserializer is invalid: {0}")]
+    InvalidConfiguration(String),
 }
 
 /// Errors that can be produced by the Kafka connector.
