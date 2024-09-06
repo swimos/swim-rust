@@ -21,8 +21,14 @@ use thiserror::Error;
 #[cfg(feature = "avro")]
 mod avro;
 
+#[cfg(feature = "avro")]
+pub use avro::AvroSerializer;
+
 #[cfg(feature = "json")]
 mod json;
+
+#[cfg(feature = "json")]
+pub use json::JsonSerializer;
 
 use crate::Endianness;
 
@@ -45,10 +51,20 @@ pub trait MessageSerializer {
         message: &Value,
         target: &mut BytesMut,
     ) -> Result<(), SerializationError>;
+
+    fn boxed(self) -> BoxMessageSerializer
+    where
+        Self: Sized + Send + Sync + 'static,
+    {
+        Box::new(self)
+    }
 }
 
+#[derive(Debug, Default, Clone, Copy)]
 pub struct StringSerializer;
+#[derive(Debug, Default, Clone, Copy)]
 pub struct ReconSerializer;
+#[derive(Debug, Default, Clone, Copy)]
 pub struct BytesSerializer;
 
 impl MessageSerializer for StringSerializer {
@@ -114,20 +130,56 @@ impl MessageSerializer for BytesSerializer {
 #[derive(Clone, Copy, Default, Debug)]
 pub struct I32Serializer(Endianness);
 
+impl I32Serializer {
+    pub fn new(endianness: Endianness) -> Self {
+        Self(endianness)
+    }
+}
+
 #[derive(Clone, Copy, Default, Debug)]
 pub struct I64Serializer(Endianness);
+
+impl I64Serializer {
+    pub fn new(endianness: Endianness) -> Self {
+        Self(endianness)
+    }
+}
 
 #[derive(Clone, Copy, Default, Debug)]
 pub struct U32Serializer(Endianness);
 
+impl U32Serializer {
+    pub fn new(endianness: Endianness) -> Self {
+        Self(endianness)
+    }
+}
+
 #[derive(Clone, Copy, Default, Debug)]
 pub struct U64Serializer(Endianness);
+
+impl U64Serializer {
+    pub fn new(endianness: Endianness) -> Self {
+        Self(endianness)
+    }
+}
 
 #[derive(Clone, Copy, Default, Debug)]
 pub struct F32Serializer(Endianness);
 
+impl F32Serializer {
+    pub fn new(endianness: Endianness) -> Self {
+        Self(endianness)
+    }
+}
+
 #[derive(Clone, Copy, Default, Debug)]
 pub struct F64Serializer(Endianness);
+
+impl F64Serializer {
+    pub fn new(endianness: Endianness) -> Self {
+        Self(endianness)
+    }
+}
 
 impl MessageSerializer for I32Serializer {
     fn serialize(
@@ -287,6 +339,7 @@ impl MessageSerializer for F64Serializer {
     }
 }
 
+#[derive(Clone, Copy, Default, Debug)]
 pub struct UuidSerializer;
 
 impl MessageSerializer for UuidSerializer {
@@ -322,4 +375,24 @@ fn is_record(items: &[Item]) -> bool {
     items
         .iter()
         .all(|item| matches!(item, Item::Slot(key, _) if key.kind() == ValueKind::Text))
+}
+
+pub type BoxMessageSerializer = Box<dyn MessageSerializer + Send + Sync + 'static>;
+
+impl MessageSerializer for BoxMessageSerializer {
+    fn serialize(
+        &self,
+        name: &str,
+        message: &Value,
+        target: &mut BytesMut,
+    ) -> Result<(), SerializationError> {
+        (**self).serialize(name, message, target)
+    }
+
+    fn boxed(self) -> BoxMessageSerializer
+    where
+        Self: Sized + Send + Sync + 'static,
+    {
+        self
+    }
 }

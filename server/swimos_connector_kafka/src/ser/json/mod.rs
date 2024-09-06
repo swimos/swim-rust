@@ -19,7 +19,7 @@ use swimos_model::{Attr, Item, Value, ValueKind};
 
 use super::{is_array, is_record, MessageSerializer, SerializationError};
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone, Copy)]
 pub struct JsonSerializer;
 
 use super::{RESERVE_INIT, RESERVE_MULT};

@@ -23,7 +23,12 @@ use crate::{
         I32Deserializer, I64Deserializer, MessageDeserializer, ReconDeserializer,
         StringDeserializer, U32Deserializer, U64Deserializer, UuidDeserializer,
     },
-    error::DeserializerLoadError,
+    error::LoadError,
+    ser::{
+        BoxMessageSerializer, BytesSerializer, F32Serializer, F64Serializer, I32Serializer,
+        I64Serializer, JsonSerializer, MessageSerializer, ReconSerializer, StringSerializer,
+        U32Serializer, U64Serializer, UuidSerializer,
+    },
 };
 
 /// Configuration parameters for the Kafka connector.
@@ -143,7 +148,7 @@ pub enum DeserializationFormat {
 
 impl DeserializationFormat {
     /// Attempt to load a deserializer based on the format descriptor.
-    pub async fn load(&self) -> Result<BoxMessageDeserializer, DeserializerLoadError> {
+    pub async fn load_deserializer(&self) -> Result<BoxMessageDeserializer, LoadError> {
         match self {
             DeserializationFormat::Bytes => Ok(BytesDeserializer.boxed()),
             DeserializationFormat::String => Ok(StringDeserializer.boxed()),
@@ -177,12 +182,38 @@ impl DeserializationFormat {
                     let mut contents = String::new();
                     file.read_to_string(&mut contents).await?;
                     let schema = apache_avro::Schema::parse_str(&contents)
-                        .map_err(|e| DeserializerLoadError::InvalidDescriptor(Box::new(e)))?;
+                        .map_err(|e| LoadError::InvalidDescriptor(Box::new(e)))?;
                     Ok(crate::deser::AvroDeserializer::new(schema).boxed())
                 } else {
                     Ok(crate::deser::AvroDeserializer::default().boxed())
                 }
             }
+        }
+    }
+
+    pub async fn load_serializer(&self) -> Result<BoxMessageSerializer, LoadError> {
+        match self {
+            DeserializationFormat::Bytes => Ok(BytesSerializer.boxed()),
+            DeserializationFormat::String => Ok(StringSerializer.boxed()),
+            DeserializationFormat::Int32(endianness) => Ok(I32Serializer::new(*endianness).boxed()),
+            DeserializationFormat::Int64(endianness) => Ok(I64Serializer::new(*endianness).boxed()),
+            DeserializationFormat::UInt32(endianness) => {
+                Ok(U32Serializer::new(*endianness).boxed())
+            }
+            DeserializationFormat::UInt64(endianness) => {
+                Ok(U64Serializer::new(*endianness).boxed())
+            }
+            DeserializationFormat::Float32(endianness) => {
+                Ok(F32Serializer::new(*endianness).boxed())
+            }
+            DeserializationFormat::Float64(endianness) => {
+                Ok(F64Serializer::new(*endianness).boxed())
+            }
+            DeserializationFormat::Uuid => Ok(UuidSerializer.boxed()),
+            DeserializationFormat::Recon => Ok(ReconSerializer.boxed()),
+            #[cfg(feature = "json")]
+            DeserializationFormat::Json => Ok(JsonSerializer.boxed()),
+            DeserializationFormat::Avro { schema_path } => todo!(),
         }
     }
 }

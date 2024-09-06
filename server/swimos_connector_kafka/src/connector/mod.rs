@@ -144,8 +144,8 @@ where
         let lanes = lanes.take();
         let consumer_task = Box::pin(async move {
             debug!(key = ?key_deser_cpy, payload = ?payload_deser_cpy, "Attempting to load message deserializers.");
-            let key_deser = key_deser_cpy.load().await?;
-            let payload_deser = payload_deser_cpy.load().await?;
+            let key_deser = key_deser_cpy.load_deserializer().await?;
+            let payload_deser = payload_deser_cpy.load_deserializer().await?;
             let selector = MessageSelector::new(key_deser, payload_deser, lanes);
             let state = MessageState::new(consumer, selector, message_to_handler, tx);
             state.consume_messages(None).await

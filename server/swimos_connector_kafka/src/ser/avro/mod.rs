@@ -46,7 +46,7 @@ impl MessageSerializer for AvroSerializer {
                     target.reserve(next_res);
                     next_res = next_res.saturating_mul(RESERVE_MULT);
                 }
-                Ok(n) => break Ok(()),
+                Ok(_) => break Ok(()),
                 Err(e) => break Err(SerializationError::SerializerFailed(Box::new(e))),
             }
         }

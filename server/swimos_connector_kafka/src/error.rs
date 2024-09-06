@@ -31,9 +31,9 @@ impl DeserializationError {
     }
 }
 
-/// An error type that can be produced when attempting to load a deserializer.
+/// An error type that can be produced when attempting to load a serializer or deserializer.
 #[derive(Debug, Error)]
-pub enum DeserializerLoadError {
+pub enum LoadError {
     /// Attempting to read a required resource (for example, a file) failed.
     #[error(transparent)]
     Io(#[from] std::io::Error),
@@ -47,7 +47,7 @@ pub enum DeserializerLoadError {
 pub enum KafkaConnectorError {
     /// Failed to load the deserializers required to interpret the Kafka messages.
     #[error(transparent)]
-    Configuration(#[from] DeserializerLoadError),
+    Configuration(#[from] LoadError),
     /// The Kafka consumer failed.
     #[error(transparent)]
     Kafka(#[from] KafkaError),
