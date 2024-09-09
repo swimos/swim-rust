@@ -23,7 +23,10 @@ use swimos_model::Text;
 use swimos_utilities::byte_channel::{ByteReader, ByteWriter};
 
 use crate::{
-    agent_lifecycle::{item_event::ItemEvent, on_init::OnInit, on_start::OnStart, on_stop::OnStop},
+    agent_lifecycle::{
+        item_event::ItemEvent, on_init::OnInit, on_start::OnStart, on_stop::OnStop,
+        on_timer::OnTimer,
+    },
     agent_model::downlink::{
         BoxDownlinkChannel, DownlinkChannel, DownlinkChannelError, DownlinkChannelEvent,
         DownlinkChannelFactory,
@@ -73,6 +76,12 @@ impl OnStart<EmptyAgent> for StartDownlinkLifecycle {
 
 impl OnStop<EmptyAgent> for StartDownlinkLifecycle {
     fn on_stop(&self) -> impl EventHandler<EmptyAgent> + '_ {
+        UnitHandler::default()
+    }
+}
+
+impl OnTimer<EmptyAgent> for StartDownlinkLifecycle {
+    fn on_timer(&self, _timer_id: u64) -> impl EventHandler<EmptyAgent> + '_ {
         UnitHandler::default()
     }
 }
