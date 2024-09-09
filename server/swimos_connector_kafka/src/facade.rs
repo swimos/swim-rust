@@ -14,12 +14,14 @@
 
 use std::collections::HashMap;
 
-use futures::Future;
+use futures::{Future, FutureExt};
 use rdkafka::{
     config::RDKafkaLogLevel,
     consumer::{CommitMode, Consumer, ConsumerContext, Rebalance, StreamConsumer},
     error::{KafkaError, KafkaResult},
     message::BorrowedMessage,
+    producer::{FutureProducer, FutureRecord},
+    types::RDKafkaErrorCode,
     ClientConfig, ClientContext, Message, Statistics, TopicPartitionList,
 };
 use tracing::{debug, error, info, warn};
@@ -154,3 +156,56 @@ impl ConsumerContext for KafkaClientContext {
 }
 
 pub type LoggingConsumer = StreamConsumer<KafkaClientContext>;
+
+pub trait ProducerMessage {
+    fn topic(&self) -> &str;
+    fn key(&self) -> Option<&[u8]>;
+    fn payload(&self) -> &[u8];
+}
+
+pub enum ProduceResult<F> {
+    ResultFuture(F),
+    QueueFull,
+}
+
+pub trait KafkaProducer {
+    fn send<M, W>(
+        &self,
+        message: M,
+    ) -> ProduceResult<impl Future<Output = Result<(), KafkaError>> + Send + 'static>
+    where
+        M: ProducerMessage;
+}
+
+impl KafkaProducer for FutureProducer<KafkaClientContext> {
+    fn send<M, W>(
+        &self,
+        message: M,
+    ) -> ProduceResult<impl Future<Output = Result<(), KafkaError>> + Send + 'static>
+    where
+        M: ProducerMessage,
+    {
+        let mut record: FutureRecord<[u8], [u8]> = FutureRecord::to(message.topic());
+        if let Some(key) = message.key() {
+            record = record.key(key);
+        }
+        record = record.payload(message.payload());
+        let fut_result = match self.send_result(record) {
+            Ok(fut) => Ok(fut.map(|result| match result {
+                Ok(Ok(_)) => Ok(()),
+                Ok(Err((err, _))) => Err(err),
+                Err(_) => Err(KafkaError::Canceled),
+            })),
+            Err((KafkaError::MessageProduction(RDKafkaErrorCode::QueueFull), _)) => {
+                return ProduceResult::QueueFull;
+            }
+            Err((err, _)) => Err(err),
+        };
+        ProduceResult::ResultFuture(async move {
+            match fut_result {
+                Ok(fut) => fut.await,
+                Err(err) => Err(err),
+            }
+        })
+    }
+}
