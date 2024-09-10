@@ -57,6 +57,10 @@ impl Spawner<TestAgent> for TestSpawner {
     fn spawn_suspend(&self, _fut: HandlerFuture<TestAgent>) {
         panic!("Suspending futures not supported.");
     }
+
+    fn schedule_timer(&self, _at: tokio::time::Instant, _id: u64) {
+        panic!("Unexpected timer.");
+    }
 }
 
 impl DownlinkSpawner<TestAgent> for TestSpawner {

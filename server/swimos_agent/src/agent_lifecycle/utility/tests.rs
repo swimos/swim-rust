@@ -19,9 +19,12 @@ use futures::{future::ready, stream::FuturesUnordered, StreamExt};
 use parking_lot::Mutex;
 use swimos_api::agent::AgentConfig;
 use swimos_utilities::routing::RouteUri;
+use tokio::time::Instant;
 
 use crate::{
-    event_handler::{ActionContext, HandlerAction, LocalBoxEventHandler, StepResult},
+    event_handler::{
+        ActionContext, HandlerAction, HandlerFuture, LocalBoxEventHandler, Spawner, StepResult,
+    },
     meta::AgentMetadata,
     test_context::{NO_DOWNLINKS, NO_DYN_LANES},
 };
@@ -67,6 +70,29 @@ fn make_meta<'a>(
     AgentMetadata::new(uri, route_params, &CONFIG)
 }
 
+#[derive(Default)]
+struct TestSpawner(FuturesUnordered<HandlerFuture<Fake>>);
+
+impl Spawner<Fake> for TestSpawner {
+    fn spawn_suspend(&self, fut: HandlerFuture<Fake>) {
+        self.0.push(fut);
+    }
+
+    fn schedule_timer(&self, _at: Instant, _id: u64) {
+        panic!("Unexpected timer.");
+    }
+}
+
+impl TestSpawner {
+    async fn next(&mut self) -> Option<LocalBoxEventHandler<'static, Fake>> {
+        self.0.next().await
+    }
+
+    fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
 #[tokio::test(flavor = "current_thread", start_paused = true)]
 async fn suspend_repeatedly() {
     let state = Arc::new(Mutex::new(vec![]));
@@ -92,7 +118,7 @@ async fn suspend_repeatedly() {
     let uri = make_uri();
     let route_params = HashMap::new();
     let meta = make_meta(&uri, &route_params);
-    let mut spawner = FuturesUnordered::new();
+    let mut spawner = TestSpawner::default();
     let mut join_lane_init = HashMap::new();
     let mut ad_hoc_buffer = BytesMut::new();
 

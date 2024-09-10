@@ -40,7 +40,8 @@ use crate::downlink_lifecycle::ValueDownlinkLifecycle;
 use crate::downlink_lifecycle::{EventDownlinkLifecycle, MapDownlinkLifecycle};
 use crate::event_handler::{
     run_after, run_schedule, run_schedule_async, ConstHandler, EventHandler, Fail, GetParameter,
-    HandlerActionExt, SendCommand, Sequentially, Stop, Suspend, UnitHandler, WithParameters,
+    HandlerActionExt, ScheduleTimeout, SendCommand, Sequentially, Stop, Suspend, UnitHandler,
+    WithParameters,
 };
 use crate::event_handler::{GetAgentUri, HandlerAction, SideEffect};
 use crate::item::{
@@ -923,6 +924,34 @@ impl<Agent: 'static> HandlerContext<Agent> {
         H: EventHandler<Agent> + Send + 'static,
     {
         OpenLane::new(name.to_string(), WarpLaneKind::Map, on_done)
+    }
+
+    /// Schedule the agent's `on_timeout` event to be called at some time in the future.
+    ///
+    /// # Arguments
+    /// * `duration` - Duration after the current time for the event to trigger. If this is non-positive, the event
+    ///    will be triggered immediately.
+    /// * `id` - The ID to pass to the event handler.
+    pub fn schedule_agent_timeout(
+        &self,
+        duration: Duration,
+        id: u64,
+    ) -> impl EventHandler<Agent> + Send + 'static {
+        self.schedule_agent_timeout_at(Instant::now() + duration, id)
+    }
+
+    /// Schedule the agent's `on_timeout` event to be called at some time in the future.
+    ///
+    /// # Arguments
+    /// * `at` - The time at which to trigger the event handler. If this is in the past, the event will be triggered
+    ///   immediately.
+    /// * `id` - The ID to pass to the event handler.
+    pub fn schedule_agent_timeout_at(
+        &self,
+        at: Instant,
+        id: u64,
+    ) -> impl EventHandler<Agent> + Send + 'static {
+        ScheduleTimeout::new(at, id)
     }
 }
 

@@ -25,6 +25,7 @@ use swimos_agent::{
         on_init::OnInit,
         on_start::OnStart,
         on_stop::OnStop,
+        on_timer::OnTimer,
         HandlerContext,
     },
     event_handler::{
@@ -96,6 +97,15 @@ where
 {
     fn on_stop(&self) -> impl EventHandler<ConnectorAgent> + '_ {
         self.0.on_stop()
+    }
+}
+
+impl<C> OnTimer<ConnectorAgent> for ConnectorLifecycle<C>
+where
+    C: Connector + Send,
+{
+    fn on_timer(&self, _timer_id: u64) -> impl EventHandler<ConnectorAgent> + '_ {
+        UnitHandler::default()
     }
 }
 

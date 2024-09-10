@@ -22,7 +22,6 @@ use std::{
 };
 
 use bytes::BytesMut;
-use futures::stream::FuturesUnordered;
 use swimos_api::{
     address::Address,
     agent::{AgentConfig, DownlinkKind},
@@ -39,7 +38,7 @@ use crate::{
         JoinValueLaneGetMap, JoinValueLaneWithEntry,
     },
     meta::AgentMetadata,
-    test_context::{dummy_context, run_event_handlers, run_with_futures},
+    test_context::{dummy_context, run_event_handlers, run_with_futures, TestSpawner},
 };
 use crate::{
     lanes::join_value::JoinValueRemoveDownlink,
@@ -289,7 +288,7 @@ async fn join_value_lane_add_downlinks_event_handler() {
     );
 
     let context = TestDownlinkContext::default();
-    let spawner = FuturesUnordered::new();
+    let spawner = TestSpawner::<TestAgent>::default();
     let mut inits = HashMap::new();
     let mut ad_hoc_buffer = BytesMut::new();
 
@@ -364,7 +363,7 @@ async fn open_downlink_from_registered() {
 
     let count = Arc::new(AtomicUsize::new(0));
 
-    let spawner = FuturesUnordered::new();
+    let spawner = TestSpawner::<TestAgent>::default();
     let mut action_context =
         ActionContext::new(&spawner, &context, &context, &mut inits, &mut ad_hoc_buffer);
     register_lifecycle(&mut action_context, &agent, count.clone());
@@ -400,7 +399,7 @@ async fn stop_downlink() {
 
     let count = Arc::new(AtomicUsize::new(0));
 
-    let spawner = FuturesUnordered::new();
+    let spawner = TestSpawner::<TestAgent>::default();
     let mut action_context =
         ActionContext::new(&spawner, &context, &context, &mut inits, &mut ad_hoc_buffer);
     register_lifecycle(&mut action_context, &agent, count.clone());
