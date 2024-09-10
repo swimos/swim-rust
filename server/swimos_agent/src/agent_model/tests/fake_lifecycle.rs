@@ -12,10 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::time::Duration;
+
 use futures::FutureExt;
 use swimos_api::{address::Address, agent::WarpLaneKind, error::LaneSpawnError};
 use swimos_model::Text;
-use tokio::sync::mpsc;
+use tokio::{sync::mpsc, time::Instant};
 
 use crate::{
     agent_lifecycle::{
@@ -29,12 +31,15 @@ use crate::{
     meta::AgentMetadata,
 };
 
-use super::{fake_agent::TestAgent, AD_HOC_HOST, AD_HOC_LANE, AD_HOC_NODE, CMD_LANE, HTTP_LANE};
+use super::{
+    fake_agent::TestAgent, AD_HOC_HOST, AD_HOC_LANE, AD_HOC_NODE, CMD_LANE, HTTP_LANE, TIMEOUT_ID,
+};
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum LifecycleEvent {
     Init,
     Start,
+    Timeout(u64),
     Lane(Text),
     RanSuspended(i32),
     RanSuspendedConsequence,
@@ -153,8 +158,8 @@ impl OnStop<TestAgent> for TestLifecycle {
 }
 
 impl OnTimer<TestAgent> for TestLifecycle {
-    fn on_timer(&self, _timer_id: u64) -> impl EventHandler<TestAgent> + '_ {
-        self.make_handler(LifecycleEvent::Stop)
+    fn on_timer(&self, timer_id: u64) -> impl EventHandler<TestAgent> + '_ {
+        self.make_handler(LifecycleEvent::Timeout(timer_id))
     }
 }
 
@@ -187,22 +192,32 @@ impl HandlerAction<TestAgent> for LifecycleHandler {
                 match name.as_str() {
                     CMD_LANE => {
                         let n = context.take_cmd();
-                        if n % 2 == 0 {
-                            let tx = sender.clone();
-                            let fut = async move {
-                                tx.send(LifecycleEvent::RanSuspended(n))
-                                    .expect("Channel closed.");
-                                let h = SideEffect::from(move || {
-                                    tx.send(LifecycleEvent::RanSuspendedConsequence)
+                        match n % 3 {
+                            0 => {
+                                let tx = sender.clone();
+                                let fut = async move {
+                                    tx.send(LifecycleEvent::RanSuspended(n))
                                         .expect("Channel closed.");
-                                });
-                                let boxed: LocalBoxEventHandler<TestAgent> = Box::new(h);
-                                boxed
-                            };
-                            action_context.spawn_suspend(fut.boxed());
-                        } else {
-                            let address = Address::new(Some(AD_HOC_HOST), AD_HOC_NODE, AD_HOC_LANE);
-                            action_context.send_command(address, "content", true);
+                                    let h = SideEffect::from(move || {
+                                        tx.send(LifecycleEvent::RanSuspendedConsequence)
+                                            .expect("Channel closed.");
+                                    });
+                                    let boxed: LocalBoxEventHandler<TestAgent> = Box::new(h);
+                                    boxed
+                                };
+                                action_context.spawn_suspend(fut.boxed());
+                            }
+                            1 => {
+                                let address =
+                                    Address::new(Some(AD_HOC_HOST), AD_HOC_NODE, AD_HOC_LANE);
+                                action_context.send_command(address, "content", true);
+                            }
+                            _ => {
+                                action_context.schedule_timer(
+                                    Instant::now() + Duration::from_millis(5),
+                                    TIMEOUT_ID,
+                                );
+                            }
                         }
                     }
                     HTTP_LANE => {
