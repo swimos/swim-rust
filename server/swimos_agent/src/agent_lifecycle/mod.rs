@@ -29,6 +29,8 @@ pub mod on_start;
 /// after execution of this handler stops. The signature of the event is described by the
 /// [`on_stop::OnStop`] trait.
 pub mod on_stop;
+/// The `on_timer` event handler is executed each time a timeout (that was requested by the agent lifecycle)
+/// completes. The signature of this event is described by the [`on_timer::OnTimer`] trait.
 pub mod on_timer;
 mod stateful;
 mod utility;
