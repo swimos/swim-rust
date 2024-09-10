@@ -21,7 +21,7 @@ use std::{cell::RefCell, sync::Arc};
 use crate::config::KafkaIngressConfiguration;
 use crate::deser::{BoxMessageDeserializer, MessagePart, MessageView};
 use crate::error::{KafkaConnectorError, LaneSelectorError};
-use crate::facade::{ConsumerFactory, KafkaConsumer, KafkaConsumerFactory, KafkaMessage};
+use crate::facade::{ConsumerFactory, KafkaConsumer, KafkaFactory, KafkaMessage};
 use crate::selector::{Computed, MapLaneSelector, ValueLaneSelector};
 use crate::{InvalidLanes, MapLaneSpec, ValueLaneSpec};
 use futures::{stream::unfold, Future};
@@ -69,7 +69,7 @@ impl<F> KafkaIngressConnector<F> {
     }
 }
 
-impl KafkaIngressConnector<KafkaConsumerFactory> {
+impl KafkaIngressConnector<KafkaFactory> {
     /// Create a [`KafkaConnector`] with the provided configuration. The configuration is only validated when
     /// the agent attempts to start so this will never fail.
     ///
@@ -77,7 +77,7 @@ impl KafkaIngressConnector<KafkaConsumerFactory> {
     /// * `configuration` - The connector configuration, specifying the connection details for the Kafka consumer
     ///   an the lanes that the connector agent should expose.
     pub fn for_config(configuration: KafkaIngressConfiguration) -> Self {
-        Self::new(KafkaConsumerFactory, configuration)
+        Self::new(KafkaFactory, configuration)
     }
 }
 

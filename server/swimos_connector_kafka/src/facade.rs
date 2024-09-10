@@ -83,9 +83,9 @@ pub trait ConsumerFactory {
 }
 
 #[derive(Clone, Copy, Debug, Default)]
-pub struct KafkaConsumerFactory;
+pub struct KafkaFactory;
 
-impl ConsumerFactory for KafkaConsumerFactory {
+impl ConsumerFactory for KafkaFactory {
     type Consumer = LoggingConsumer;
 
     fn create(
@@ -207,5 +207,34 @@ impl KafkaProducer for FutureProducer<KafkaClientContext> {
                 Err(err) => Err(err),
             }
         })
+    }
+}
+
+pub trait ProducerFactory {
+    type Producer: KafkaProducer + Send + Sync + 'static;
+
+    fn create(
+        &self,
+        properties: &HashMap<String, String>,
+        log_level: KafkaLogLevel,
+    ) -> Result<Self::Producer, KafkaError>;
+}
+
+impl ProducerFactory for KafkaFactory {
+    type Producer = FutureProducer<KafkaClientContext>;
+
+    fn create(
+        &self,
+        properties: &HashMap<String, String>,
+        log_level: KafkaLogLevel,
+    ) -> Result<Self::Producer, KafkaError> {
+        let mut client_builder = ClientConfig::new();
+        properties.iter().for_each(|(k, v)| {
+            client_builder.set(k, v);
+        });
+        let producer = client_builder
+            .set_log_level(log_level.into())
+            .create_with_context::<_, FutureProducer<KafkaClientContext>>(KafkaClientContext)?;
+        Ok(producer)
     }
 }
