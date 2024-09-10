@@ -21,7 +21,7 @@ use super::{DataFormat, KafkaLogLevel};
 /// Configuration parameters for the Kafka connector.
 #[derive(Clone, Debug, Form, PartialEq, Eq)]
 #[form(tag = "kafka")]
-pub struct KafkaIngressConfiguration {
+pub struct KafkaEgressConfiguration {
     /// Properties to configure the Kafka consumer.
     pub properties: HashMap<String, String>,
     /// Log level for the Kafka producer.
@@ -32,8 +32,8 @@ pub struct KafkaIngressConfiguration {
     pub payload_serializer: DataFormat,
     /// The topic to publish to the record does not specify it.
     pub fixed_topic: Option<String>,
-    pub value_lanes: Vec<ValueLaneSpec>,
-    pub map_lanes: Vec<MapLaneSpec>,
+    pub value_lanes: Vec<EgressValueLaneSpec>,
+    pub map_lanes: Vec<EgressMapLaneSpec>,
     pub value_downlinks: Vec<ValueDownlinkSpec>,
     pub map_downlinks: Vec<MapDownlinkSpec>,
 }
@@ -51,7 +51,8 @@ pub enum TopicSpecifier {
 }
 
 #[derive(Clone, Debug, Form, PartialEq, Eq)]
-pub struct ValueLaneSpec {
+#[form(tag = "ValueLaneSpec")]
+pub struct EgressValueLaneSpec {
     /// A name to use for the lane.
     pub name: String,
     /// Chooses the topic for a value set to this lane.
@@ -63,7 +64,8 @@ pub struct ValueLaneSpec {
 }
 
 #[derive(Clone, Debug, Form, PartialEq, Eq)]
-pub struct MapLaneSpec {
+#[form(tag = "MapLaneSpec")]
+pub struct EgressMapLaneSpec {
     /// A name to use for the lane.
     pub name: String,
     /// Chooses the topic for a value set to this lane.

@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+mod egress;
 mod ingress;
 
 pub use ingress::KafkaIngressConnector;

@@ -38,7 +38,7 @@ use thiserror::Error;
 use crate::{
     connector::BaseConnector,
     test_support::{make_meta, make_uri},
-    Connector, ConnectorAgent, ConnectorInitError, ConnectorLifecycle, ConnectorStream,
+    ConnectorAgent, ConnectorInitError, ConnectorLifecycle, ConnectorStream, IngressConnector,
 };
 
 #[derive(Default)]
@@ -204,7 +204,7 @@ impl BaseConnector for TestConnector {
     }
 }
 
-impl Connector for TestConnector {
+impl IngressConnector for TestConnector {
     type StreamError = TestError;
 
     fn create_stream(&self) -> Result<impl ConnectorStream<Self::StreamError>, Self::StreamError> {

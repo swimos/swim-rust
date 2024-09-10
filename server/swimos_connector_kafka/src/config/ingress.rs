@@ -27,10 +27,10 @@ pub struct KafkaIngressConfiguration {
     pub log_level: KafkaLogLevel,
     /// Specifications for the value lanes to define for the connector. This includes a pattern to define a selector
     /// that will pick out values to set to that lane, from a Kafka message.
-    pub value_lanes: Vec<ValueLaneSpec>,
+    pub value_lanes: Vec<IngressValueLaneSpec>,
     /// Specifications for the map lanes to define for the connector. This includes a pattern to define a selector
     /// that will pick out updates to apply to that lane, from a Kafka message.
-    pub map_lanes: Vec<MapLaneSpec>,
+    pub map_lanes: Vec<IngressMapLaneSpec>,
     /// Deserialization format to use to interpret the contents of the keys of the Kafka messages.
     pub key_deserializer: DataFormat,
     /// Deserialization format to use to interpret the contents of the payloads of the Kafka messages.
@@ -41,7 +41,8 @@ pub struct KafkaIngressConfiguration {
 
 /// Specification of a value lane for the Kafka connector.
 #[derive(Clone, Debug, Form, PartialEq, Eq)]
-pub struct ValueLaneSpec {
+#[form(tag = "ValueLaneSpec")]
+pub struct IngressValueLaneSpec {
     /// A name to use for the lane. If not specified, the connector will attempt to infer one from the selector.
     pub name: Option<String>,
     /// String representation of a selector to extract values for the lane from Kafka messages.
@@ -51,14 +52,14 @@ pub struct ValueLaneSpec {
     pub required: bool,
 }
 
-impl ValueLaneSpec {
+impl IngressValueLaneSpec {
     /// # Arguments
     /// * `name` - A name to use for the lane. If not specified the connector will attempt to infer a name from the selector.
     /// * `selector` - String representation of the selector to extract values from the Kafka message.
     /// * `required` - Whether the lane is required. If this is `true` and the selector returns nothing for a Kafka Message, the
     ///   connector will fail with an error.
     pub fn new<S: Into<String>>(name: Option<S>, selector: S, required: bool) -> Self {
-        ValueLaneSpec {
+        IngressValueLaneSpec {
             name: name.map(Into::into),
             selector: selector.into(),
             required,
@@ -68,7 +69,8 @@ impl ValueLaneSpec {
 
 /// Specification of a value lane for the Kafka connector.
 #[derive(Clone, Debug, Form, PartialEq, Eq)]
-pub struct MapLaneSpec {
+#[form(tag = "MapLaneSpec")]
+pub struct IngressMapLaneSpec {
     /// The name of the lane.
     pub name: String,
     /// String representation of a selector to extract the map keys from the Kafka messages.
@@ -83,7 +85,7 @@ pub struct MapLaneSpec {
     pub required: bool,
 }
 
-impl MapLaneSpec {
+impl IngressMapLaneSpec {
     /// # Arguments
     /// * `name` - The name of the lane.
     /// * `key_selector` - String representation of a selector to extract the map keys from the Kafka messages.
@@ -99,7 +101,7 @@ impl MapLaneSpec {
         remove_when_no_value: bool,
         required: bool,
     ) -> Self {
-        MapLaneSpec {
+        IngressMapLaneSpec {
             name: name.into(),
             key_selector: key_selector.into(),
             value_selector: value_selector.into(),

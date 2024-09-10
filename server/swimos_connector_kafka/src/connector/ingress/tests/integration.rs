@@ -22,7 +22,7 @@ use futures::{future::join, TryStreamExt};
 use parking_lot::Mutex;
 use rand::{rngs::ThreadRng, Rng};
 use rdkafka::error::KafkaError;
-use swimos_connector::{BaseConnector, Connector, ConnectorAgent};
+use swimos_connector::{BaseConnector, ConnectorAgent, IngressConnector};
 use swimos_model::{Item, Value};
 use swimos_recon::print_recon_compact;
 use swimos_utilities::trigger;
@@ -34,7 +34,8 @@ use crate::{
     deser::{MessageDeserializer, MessageView, ReconDeserializer},
     error::KafkaConnectorError,
     facade::{ConsumerFactory, KafkaConsumer, KafkaMessage},
-    DataFormat, KafkaIngressConfiguration, KafkaIngressConnector, MapLaneSpec, ValueLaneSpec,
+    DataFormat, IngressMapLaneSpec, IngressValueLaneSpec, KafkaIngressConfiguration,
+    KafkaIngressConnector,
 };
 
 use super::{run_handler_with_futures, setup_agent};
@@ -49,8 +50,8 @@ fn make_config() -> KafkaIngressConfiguration {
     KafkaIngressConfiguration {
         properties: props(),
         log_level: KafkaLogLevel::Warning,
-        value_lanes: vec![ValueLaneSpec::new(None, "$key", true)],
-        map_lanes: vec![MapLaneSpec::new(
+        value_lanes: vec![IngressValueLaneSpec::new(None, "$key", true)],
+        map_lanes: vec![IngressMapLaneSpec::new(
             "map",
             "$payload.key",
             "$payload.value",
@@ -261,8 +262,8 @@ async fn message_state() {
 
     let (mut agent, ids) = setup_agent();
     let id_set = ids.values().copied().collect::<HashSet<_>>();
-    let value_specs = vec![ValueLaneSpec::new(None, "$key", true)];
-    let map_specs = vec![MapLaneSpec::new(
+    let value_specs = vec![IngressValueLaneSpec::new(None, "$key", true)];
+    let map_specs = vec![IngressMapLaneSpec::new(
         "map",
         "$payload.key",
         "$payload.value",
@@ -334,8 +335,8 @@ async fn message_tasks_stream() {
 
         let (mut agent, ids) = setup_agent();
         let id_set = ids.values().copied().collect::<HashSet<_>>();
-        let value_specs = vec![ValueLaneSpec::new(None, "$key", true)];
-        let map_specs = vec![MapLaneSpec::new(
+        let value_specs = vec![IngressValueLaneSpec::new(None, "$key", true)];
+        let map_specs = vec![IngressMapLaneSpec::new(
             "map",
             "$payload.key",
             "$payload.value",

@@ -18,8 +18,12 @@ mod egress;
 mod format;
 mod ingress;
 
+pub use egress::{
+    EgressMapLaneSpec, EgressValueLaneSpec, KafkaEgressConfiguration, MapDownlinkSpec,
+    ValueDownlinkSpec,
+};
 pub use format::DataFormat;
-pub use ingress::{KafkaIngressConfiguration, MapLaneSpec, ValueLaneSpec};
+pub use ingress::{IngressMapLaneSpec, IngressValueLaneSpec, KafkaIngressConfiguration};
 use swimos_form::Form;
 
 /// Enumeration of logging levels supported by the underlying Kafka consumer.

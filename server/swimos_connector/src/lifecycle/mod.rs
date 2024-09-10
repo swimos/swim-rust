@@ -41,7 +41,7 @@ use swimos_utilities::trigger;
 use crate::{
     connector::{suspend_connector, EgressConnector, EgressConnectorSender},
     error::ConnectorInitError,
-    Connector, ConnectorAgent,
+    ConnectorAgent, IngressConnector,
 };
 
 /// An [agent lifecycle](swimos_agent::agent_lifecycle::AgentLifecycle) implementation that serves as an adapter for
@@ -57,7 +57,7 @@ impl<C> ConnectorLifecycle<C> {
 
 impl<C> OnInit<ConnectorAgent> for ConnectorLifecycle<C>
 where
-    C: Connector + Send,
+    C: IngressConnector + Send,
 {
     fn initialize(
         &self,
@@ -70,7 +70,7 @@ where
 
 impl<C> OnStart<ConnectorAgent> for ConnectorLifecycle<C>
 where
-    C: Connector + Send,
+    C: IngressConnector + Send,
 {
     fn on_start(&self) -> impl EventHandler<ConnectorAgent> + '_ {
         let ConnectorLifecycle(connector) = self;
@@ -93,7 +93,7 @@ where
 
 impl<C> OnStop<ConnectorAgent> for ConnectorLifecycle<C>
 where
-    C: Connector + Send,
+    C: IngressConnector + Send,
 {
     fn on_stop(&self) -> impl EventHandler<ConnectorAgent> + '_ {
         self.0.on_stop()
@@ -102,7 +102,7 @@ where
 
 impl<C> OnTimer<ConnectorAgent> for ConnectorLifecycle<C>
 where
-    C: Connector + Send,
+    C: IngressConnector + Send,
 {
     fn on_timer(&self, _timer_id: u64) -> impl EventHandler<ConnectorAgent> + '_ {
         UnitHandler::default()
@@ -111,7 +111,7 @@ where
 
 impl<C> ItemEvent<ConnectorAgent> for ConnectorLifecycle<C>
 where
-    C: Connector,
+    C: IngressConnector,
 {
     type ItemEventHandler<'a> = UnitHandler
     where

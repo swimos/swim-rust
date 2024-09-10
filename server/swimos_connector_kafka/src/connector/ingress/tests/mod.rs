@@ -49,7 +49,7 @@ use crate::{
         BasicSelector, ChainSelector, Deferred, LaneSelector, MapLaneSelector, SlotSelector,
         ValueLaneSelector,
     },
-    MapLaneSpec, ValueLaneSpec,
+    IngressMapLaneSpec, IngressValueLaneSpec,
 };
 
 use super::Lanes;
@@ -220,10 +220,12 @@ fn run_handler<H: EventHandler<ConnectorAgent>>(
 #[test]
 fn lanes_from_spec() {
     let value_lanes = vec![
-        ValueLaneSpec::new(None, "$key", true),
-        ValueLaneSpec::new(Some("name"), "$payload.field", false),
+        IngressValueLaneSpec::new(None, "$key", true),
+        IngressValueLaneSpec::new(Some("name"), "$payload.field", false),
     ];
-    let map_lanes = vec![MapLaneSpec::new("map", "$key", "$payload", true, false)];
+    let map_lanes = vec![IngressMapLaneSpec::new(
+        "map", "$key", "$payload", true, false,
+    )];
     let lanes =
         Lanes::try_from_lane_specs(&value_lanes, &map_lanes).expect("Invalid specification.");
 
@@ -243,8 +245,8 @@ fn lanes_from_spec() {
 #[test]
 fn value_lane_collision() {
     let value_lanes = vec![
-        ValueLaneSpec::new(None, "$key", true),
-        ValueLaneSpec::new(Some("key"), "$payload.field", false),
+        IngressValueLaneSpec::new(None, "$key", true),
+        IngressValueLaneSpec::new(Some("key"), "$payload.field", false),
     ];
     let map_lanes = vec![];
     let err = Lanes::try_from_lane_specs(&value_lanes, &map_lanes).expect_err("Should fail.");
@@ -255,8 +257,8 @@ fn value_lane_collision() {
 fn map_lane_collision() {
     let value_lanes = vec![];
     let map_lanes = vec![
-        MapLaneSpec::new("map", "$key", "$payload", true, false),
-        MapLaneSpec::new("map", "$key[0]", "$payload", true, true),
+        IngressMapLaneSpec::new("map", "$key", "$payload", true, false),
+        IngressMapLaneSpec::new("map", "$key[0]", "$payload", true, true),
     ];
     let err = Lanes::try_from_lane_specs(&value_lanes, &map_lanes).expect_err("Should fail.");
     assert_eq!(err, InvalidLanes::NameCollision("map".to_string()))
@@ -264,8 +266,14 @@ fn map_lane_collision() {
 
 #[test]
 fn value_map_lane_collision() {
-    let value_lanes = vec![ValueLaneSpec::new(Some("field"), "$payload.field", false)];
-    let map_lanes = vec![MapLaneSpec::new("field", "$key", "$payload", true, false)];
+    let value_lanes = vec![IngressValueLaneSpec::new(
+        Some("field"),
+        "$payload.field",
+        false,
+    )];
+    let map_lanes = vec![IngressMapLaneSpec::new(
+        "field", "$key", "$payload", true, false,
+    )];
     let err = Lanes::try_from_lane_specs(&value_lanes, &map_lanes).expect_err("Should fail.");
     assert_eq!(err, InvalidLanes::NameCollision("field".to_string()))
 }
@@ -274,8 +282,8 @@ const TEST_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[tokio::test]
 async fn open_lanes() {
-    let value_specs = vec![ValueLaneSpec::new(None, "$key", true)];
-    let map_specs = vec![MapLaneSpec::new(
+    let value_specs = vec![IngressValueLaneSpec::new(None, "$key", true)];
+    let map_specs = vec![IngressMapLaneSpec::new(
         "map",
         "$payload.key",
         "$payload.value",
@@ -551,8 +559,8 @@ fn map_lane_selector_remove() {
 
 #[tokio::test]
 async fn handle_message() {
-    let value_specs = vec![ValueLaneSpec::new(None, "$key", true)];
-    let map_specs = vec![MapLaneSpec::new(
+    let value_specs = vec![IngressValueLaneSpec::new(None, "$key", true)];
+    let map_specs = vec![IngressMapLaneSpec::new(
         "map",
         "$payload.key",
         "$payload.value",
@@ -596,8 +604,8 @@ async fn handle_message() {
 
 #[tokio::test]
 async fn handle_message_missing_field() {
-    let value_specs = vec![ValueLaneSpec::new(None, "$key", true)];
-    let map_specs = vec![MapLaneSpec::new(
+    let value_specs = vec![IngressValueLaneSpec::new(None, "$key", true)];
+    let map_specs = vec![IngressMapLaneSpec::new(
         "map",
         "$payload.key",
         "$payload.value",
@@ -629,8 +637,8 @@ async fn handle_message_missing_field() {
 
 #[tokio::test]
 async fn handle_message_bad_data() {
-    let value_specs = vec![ValueLaneSpec::new(None, "$key", true)];
-    let map_specs = vec![MapLaneSpec::new(
+    let value_specs = vec![IngressValueLaneSpec::new(None, "$key", true)];
+    let map_specs = vec![IngressMapLaneSpec::new(
         "map",
         "$payload.key",
         "$payload.value",

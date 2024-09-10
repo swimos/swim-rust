@@ -20,7 +20,10 @@ mod route;
 
 #[cfg(test)]
 mod test_support;
-pub use connector::{BaseConnector, Connector, ConnectorHandler, ConnectorStream};
+pub use connector::{
+    BaseConnector, ConnectorFuture, ConnectorHandler, ConnectorStream, EgressConnector,
+    EgressConnectorSender, IngressConnector,
+};
 pub use error::ConnectorInitError;
 pub use generic::{ConnectorAgent, MapLaneSelectorFn, ValueLaneSelectorFn};
 pub use lifecycle::ConnectorLifecycle;

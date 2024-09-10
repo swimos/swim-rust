@@ -19,7 +19,7 @@ use swimos_agent::agent_model::AgentModel;
 use swimos_api::agent::{Agent, AgentConfig, AgentContext, AgentInitResult};
 use swimos_utilities::routing::RouteUri;
 
-use crate::{Connector, ConnectorAgent, ConnectorLifecycle};
+use crate::{ConnectorAgent, ConnectorLifecycle, IngressConnector};
 
 /// A convenience type to register a [connector](Connector) as an agent route.
 pub struct ConnectorModel<F> {
@@ -28,7 +28,7 @@ pub struct ConnectorModel<F> {
 
 /// Trait for factory types that create a connector.
 pub trait ConnectorFactory {
-    type ConnectorType: Connector + Send + 'static;
+    type ConnectorType: IngressConnector + Send + 'static;
 
     fn make_connector(&self) -> Self::ConnectorType;
 }
@@ -36,7 +36,7 @@ pub trait ConnectorFactory {
 impl<F, C> ConnectorFactory for F
 where
     F: Fn() -> C,
-    C: Connector + Send + 'static,
+    C: IngressConnector + Send + 'static,
 {
     type ConnectorType = C;
 
@@ -47,7 +47,7 @@ where
 
 impl<C> ConnectorFactory for CloneFactory<C>
 where
-    C: Connector + Clone + Send + Sync + 'static,
+    C: IngressConnector + Clone + Send + Sync + 'static,
 {
     type ConnectorType = C;
 
@@ -61,7 +61,7 @@ pub struct CloneFactory<C>(C);
 
 impl<C> ConnectorModel<CloneFactory<C>>
 where
-    C: Connector + Clone + Send + Sync + 'static,
+    C: IngressConnector + Clone + Send + Sync + 'static,
 {
     /// Create a connector agent model for a connector that can be cloned and shared between threads.
     pub fn new(connector: C) -> Self {
@@ -73,7 +73,7 @@ where
 
 impl<F, C> ConnectorModel<F>
 where
-    C: Connector + Send + 'static,
+    C: IngressConnector + Send + 'static,
     F: Fn() -> C + Send + Sync + 'static,
 {
     /// Create a connector agent model for a factory that will create the connector lifecycle. This

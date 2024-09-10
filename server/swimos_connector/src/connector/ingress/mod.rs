@@ -40,7 +40,7 @@ use super::{BaseConnector, ConnectorHandler};
 /// stream that consumes events from the external data source and converts them into [event handlers](EventHandler)
 /// that modify the state of the agent. This stream is suspended into the agents task and will be polled repeatedly
 /// until it either terminates (or fails) that will cause the connector agent to stop.
-pub trait Connector: BaseConnector {
+pub trait IngressConnector: BaseConnector {
     /// The type of the errors produced by the connector stream.
     type StreamError: Error + Send + 'static;
 

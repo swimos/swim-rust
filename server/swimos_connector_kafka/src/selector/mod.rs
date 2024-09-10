@@ -25,7 +25,7 @@ use swimos_model::{Attr, Item, Text, Value};
 use tracing::{error, trace};
 
 use crate::{
-    config::{MapLaneSpec, ValueLaneSpec},
+    config::{IngressMapLaneSpec, IngressValueLaneSpec},
     deser::MessagePart,
     error::{DeserializationError, LaneSelectorError},
     BadSelector, InvalidLaneSpec,
@@ -545,11 +545,11 @@ impl MapLaneSelector {
     }
 }
 
-impl TryFrom<&ValueLaneSpec> for ValueLaneSelector {
+impl TryFrom<&IngressValueLaneSpec> for ValueLaneSelector {
     type Error = InvalidLaneSpec;
 
-    fn try_from(value: &ValueLaneSpec) -> Result<Self, Self::Error> {
-        let ValueLaneSpec {
+    fn try_from(value: &IngressValueLaneSpec) -> Result<Self, Self::Error> {
+        let IngressValueLaneSpec {
             name,
             selector,
             required,
@@ -567,11 +567,11 @@ impl TryFrom<&ValueLaneSpec> for ValueLaneSelector {
     }
 }
 
-impl TryFrom<&MapLaneSpec> for MapLaneSelector {
+impl TryFrom<&IngressMapLaneSpec> for MapLaneSelector {
     type Error = InvalidLaneSpec;
 
-    fn try_from(value: &MapLaneSpec) -> Result<Self, Self::Error> {
-        let MapLaneSpec {
+    fn try_from(value: &IngressMapLaneSpec) -> Result<Self, Self::Error> {
+        let IngressMapLaneSpec {
             name,
             key_selector,
             value_selector,

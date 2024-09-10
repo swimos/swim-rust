@@ -211,7 +211,7 @@ impl KafkaProducer for FutureProducer<KafkaClientContext> {
 }
 
 pub trait ProducerFactory {
-    type Producer: KafkaProducer + Send + Sync + 'static;
+    type Producer: KafkaProducer + Clone + Send + Sync + 'static;
 
     fn create(
         &self,

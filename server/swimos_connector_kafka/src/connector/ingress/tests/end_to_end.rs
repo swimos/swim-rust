@@ -13,11 +13,11 @@
 // limitations under the License.
 
 use crate::{
-    DataFormat, Endianness, KafkaIngressConfiguration, KafkaIngressConnector, KafkaLogLevel,
-    MapLaneSpec, ValueLaneSpec,
+    DataFormat, Endianness, IngressMapLaneSpec, IngressValueLaneSpec, KafkaIngressConfiguration,
+    KafkaIngressConnector, KafkaLogLevel,
 };
 use futures::{future::join, TryStreamExt};
-use swimos_connector::{BaseConnector, Connector, ConnectorAgent};
+use swimos_connector::{BaseConnector, ConnectorAgent, IngressConnector};
 use swimos_utilities::trigger;
 
 use crate::connector::ingress::tests::{run_handler, run_handler_with_futures, TestSpawner};
@@ -34,8 +34,8 @@ fn make_config() -> KafkaIngressConfiguration {
         .map(|(k, v)| (k.to_string(), v.to_string()))
         .collect(),
         log_level: KafkaLogLevel::Debug,
-        value_lanes: vec![ValueLaneSpec::new(Some("latest_key"), "$key", true)],
-        map_lanes: vec![MapLaneSpec::new(
+        value_lanes: vec![IngressValueLaneSpec::new(Some("latest_key"), "$key", true)],
+        map_lanes: vec![IngressMapLaneSpec::new(
             "times",
             "$payload.ranLatest.mean_ul_sinr",
             "$payload.ranLatest.recorded_time",

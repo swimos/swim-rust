@@ -23,7 +23,7 @@ use crate::deser::{BoxMessageDeserializer, MessagePart, MessageView};
 use crate::error::{KafkaConnectorError, LaneSelectorError};
 use crate::facade::{ConsumerFactory, KafkaConsumer, KafkaFactory, KafkaMessage};
 use crate::selector::{Computed, MapLaneSelector, ValueLaneSelector};
-use crate::{InvalidLanes, MapLaneSpec, ValueLaneSpec};
+use crate::{IngressMapLaneSpec, IngressValueLaneSpec, InvalidLanes};
 use futures::{stream::unfold, Future};
 use swimos_agent::{
     agent_lifecycle::HandlerContext,
@@ -36,7 +36,7 @@ use swimos_utilities::trigger;
 use tokio::sync::{mpsc, Semaphore};
 use tracing::{debug, error, info, trace};
 
-use swimos_connector::{BaseConnector, Connector, ConnectorAgent, ConnectorStream};
+use swimos_connector::{BaseConnector, ConnectorAgent, ConnectorStream, IngressConnector};
 
 type ConnHandlerContext = HandlerContext<ConnectorAgent>;
 
@@ -114,7 +114,7 @@ where
     }
 }
 
-impl<F> Connector for KafkaIngressConnector<F>
+impl<F> IngressConnector for KafkaIngressConnector<F>
 where
     F: ConsumerFactory + Send + 'static,
 {
@@ -328,8 +328,8 @@ impl TryFrom<&KafkaIngressConfiguration> for Lanes {
 
 impl Lanes {
     fn try_from_lane_specs(
-        value_lanes: &[ValueLaneSpec],
-        map_lanes: &[MapLaneSpec],
+        value_lanes: &[IngressValueLaneSpec],
+        map_lanes: &[IngressMapLaneSpec],
     ) -> Result<Self, InvalidLanes> {
         let value_selectors = value_lanes
             .iter()

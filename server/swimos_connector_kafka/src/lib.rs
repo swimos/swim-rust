@@ -21,7 +21,7 @@ mod selector;
 mod ser;
 
 pub use config::{
-    DataFormat, KafkaIngressConfiguration, KafkaLogLevel, MapLaneSpec, ValueLaneSpec,
+    DataFormat, IngressMapLaneSpec, IngressValueLaneSpec, KafkaIngressConfiguration, KafkaLogLevel,
 };
 pub use connector::KafkaIngressConnector;
 pub use deser::Endianness;
