@@ -322,7 +322,7 @@ pub trait DownlinkChannelFactory<Context> {
     /// The kind of the downlink that is created.
     fn kind(&self) -> DownlinkKind;
 
-    /// Create a new new downlink from a boxed instances of the factory.
+    /// Create a new downlink from a boxed instances of the factory.
     ///
     /// # Arguments
     /// * `context` - The agent context to which the downlink will belong.

@@ -42,7 +42,7 @@ use crate::downlink_lifecycle::ValueDownlinkLifecycle;
 use crate::downlink_lifecycle::{EventDownlinkLifecycle, MapDownlinkLifecycle};
 use crate::event_handler::{
     run_after, run_schedule, run_schedule_async, ConstHandler, EventHandler, Fail, GetParameter,
-    HandlerActionExt, SendCommand, Sequentially, Stop, Suspend, UnitHandler,
+    HandlerActionExt, ScheduleTimerEvent, SendCommand, Sequentially, Stop, Suspend, UnitHandler,
 };
 use crate::event_handler::{GetAgentUri, HandlerAction, SideEffect};
 use crate::item::{
@@ -934,6 +934,38 @@ impl<Agent: 'static> HandlerContext<Agent> {
     ) -> impl HandlerAction<Agent, Completion = Commander<Agent>> + 'static {
         let address = Address::new(host.map(Into::into), node.into(), lane.into());
         RegisterCommander::new(address)
+    }
+
+    /// Schedule the agent's `on_timer` event to be called at some time in the future. This can be used as an
+    /// alternative to suspending a future where the resulting handler needs to have access to the agent
+    /// lifecycle (suspending futures must have a static lifetime).
+    ///
+    /// # Arguments
+    /// * `duration` - Duration after the current time for the event to trigger. If this is non-positive, the event
+    ///    will be triggered immediately.
+    /// * `id` - The ID to pass to the event handler.
+    pub fn schedule_timer_event(
+        &self,
+        duration: Duration,
+        id: u64,
+    ) -> impl EventHandler<Agent> + Send + 'static {
+        self.schedule_timer_event_at(Instant::now() + duration, id)
+    }
+
+    /// Schedule the agent's `on_timer` event to be called at some time in the future. This can be used as an
+    /// alternative to suspending a future where the resulting handler needs to have access to the agent
+    /// lifecycle (suspending futures must have a static lifetime).
+    ///
+    /// # Arguments
+    /// * `at` - The time at which to trigger the event handler. If this is in the past, the event will be triggered
+    ///   immediately.
+    /// * `id` - The ID to pass to the event handler.
+    pub fn schedule_timer_event_at(
+        &self,
+        at: Instant,
+        id: u64,
+    ) -> impl EventHandler<Agent> + Send + 'static {
+        ScheduleTimerEvent::new(at, id)
     }
 }
 

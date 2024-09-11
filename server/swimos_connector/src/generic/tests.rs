@@ -387,6 +387,10 @@ impl Spawner<ConnectorAgent> for NoSpawn {
     fn spawn_suspend(&self, _fut: HandlerFuture<ConnectorAgent>) {
         panic!("Spawning futures not supported.");
     }
+
+    fn schedule_timer(&self, _at: tokio::time::Instant, _id: u64) {
+        panic!("Unexpected timer.");
+    }
 }
 
 impl LinkSpawner<ConnectorAgent> for NoSpawn {

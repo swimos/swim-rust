@@ -51,6 +51,7 @@ use swimos_utilities::future::RetryStrategy;
 use swimos_utilities::routing::RouteUri;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
+use tokio::time::{sleep_until, Instant, Sleep};
 use tracing::{debug, error, info, trace};
 use uuid::Uuid;
 
@@ -58,7 +59,7 @@ use crate::agent_lifecycle::item_event::ItemEvent;
 use crate::agent_model::io::LaneReadEvent;
 use crate::event_handler::{
     ActionContext, BoxJoinLaneInit, DownlinkSpawnOnDone, HandlerFuture, LaneSpawnOnDone,
-    LaneSpawner, LinkSpawner, LocalBoxEventHandler, ModificationFlags, Sequentially,
+    LaneSpawner, LinkSpawner, LocalBoxEventHandler, ModificationFlags, Sequentially, Spawner,
 };
 use crate::{
     agent_lifecycle::AgentLifecycle,
@@ -424,7 +425,7 @@ enum TaskEvent<ItemModel> {
         result: Result<bool, std::io::Error>,
     },
     SuspendedComplete {
-        handler: LocalBoxEventHandler<'static, ItemModel>,
+        result: SuspendResult<ItemModel>,
     },
     LinksEvent {
         downlink_event: LinksEvent<ItemModel>,
@@ -1028,7 +1029,7 @@ struct AgentTask<ItemModel, Lifecycle> {
     lane_io: HashMap<(Text, WarpLaneKind), (ByteWriter, ByteReader)>,
     store_io: HashMap<Text, ByteWriter>,
     http_lane_rxs: HashMap<Text, mpsc::Receiver<HttpLaneRequest>>,
-    suspended: FuturesUnordered<HandlerFuture<ItemModel>>,
+    suspended: FuturesUnordered<Suspended<ItemModel>>,
     link_requests: LinkRequestCollector<ItemModel>,
     join_lane_init: HashMap<u64, BoxJoinLaneInit<'static, ItemModel>>,
     command_buffer: BytesMut,
@@ -1141,7 +1142,7 @@ where
             let select_event = async {
                 tokio::select! {
                     maybe_suspended = suspended.next(), if !suspended.is_empty() => {
-                        maybe_suspended.map(|handler| TaskEvent::SuspendedComplete { handler })
+                        maybe_suspended.map(|result| TaskEvent::SuspendedComplete { result })
                     }
                     maybe_downlink = link_futures.next(), if !link_futures.is_empty() => {
                         maybe_downlink.map(|downlink_event| TaskEvent::LinksEvent { downlink_event })
@@ -1254,7 +1255,15 @@ where
                     }
                     item_writers.insert(writer.lane_id(), writer);
                 }
-                TaskEvent::SuspendedComplete { handler } => {
+                TaskEvent::SuspendedComplete {
+                    result: SuspendResult::Handler(handler),
+                } => {
+                    exec_handler!(handler);
+                }
+                TaskEvent::SuspendedComplete {
+                    result: SuspendResult::TimedOut(id),
+                } => {
+                    let handler = lifecycle.on_timer(id);
                     exec_handler!(handler);
                 }
                 TaskEvent::LinksEvent {
@@ -1280,7 +1289,7 @@ where
                                 on_done,
                                 ..
                             } = request;
-                            error!(error = %error, address = %path, kind = ?kind, "Start a downlink failed with a fatal error.");
+                            error!(error = %error, address = %path, kind = ?kind, "Failed to start a downlink due a fatal error.");
                             let handler = on_done(Err(error));
                             exec_handler!(handler);
                         } else {
@@ -1934,6 +1943,36 @@ impl<Context> Default for LinkRequestCollector<Context> {
     }
 }
 
+enum SuspendResult<Context> {
+    Handler(LocalBoxEventHandler<'static, Context>),
+    TimedOut(u64),
+}
+
+#[pin_project(project = SuspendedProj)]
+enum Suspended<Context> {
+    Handler(HandlerFuture<Context>),
+    Timeout {
+        #[pin]
+        at: Sleep,
+        id: u64,
+    },
+}
+
+impl<Context> From<HandlerFuture<Context>> for Suspended<Context> {
+    fn from(value: HandlerFuture<Context>) -> Self {
+        Suspended::Handler(value)
+    }
+}
+
+impl<Context> Suspended<Context> {
+    fn timeout(time: Instant, id: u64) -> Self {
+        Suspended::Timeout {
+            at: sleep_until(time),
+            id,
+        }
+    }
+}
+
 impl<Context> std::fmt::Debug for LinkRequestCollector<Context> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("LinkRequestCollector")
@@ -2010,5 +2049,41 @@ impl CommanderIds {
         };
 
         Ok(id)
+    }
+}
+
+impl<Context> Future for Suspended<Context> {
+    type Output = SuspendResult<Context>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<Self::Output> {
+        match self.project() {
+            SuspendedProj::Handler(fut) => fut.poll_unpin(cx).map(SuspendResult::Handler),
+            SuspendedProj::Timeout { at, id } => {
+                at.poll(cx).map(move |_| SuspendResult::TimedOut(*id))
+            }
+        }
+    }
+}
+
+impl<F, Context> Spawner<Context> for F
+where
+    F: Fn(Suspended<Context>),
+{
+    fn spawn_suspend(&self, fut: HandlerFuture<Context>) {
+        self(fut.into())
+    }
+
+    fn schedule_timer(&self, at: Instant, id: u64) {
+        self(Suspended::timeout(at, id))
+    }
+}
+
+impl<Context> Spawner<Context> for FuturesUnordered<Suspended<Context>> {
+    fn spawn_suspend(&self, fut: HandlerFuture<Context>) {
+        self.push(fut.into());
+    }
+
+    fn schedule_timer(&self, at: Instant, id: u64) {
+        self.push(Suspended::timeout(at, id))
     }
 }

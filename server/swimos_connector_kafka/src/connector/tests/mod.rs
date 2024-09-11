@@ -84,6 +84,10 @@ impl Spawner<ConnectorAgent> for TestSpawner {
     fn spawn_suspend(&self, fut: HandlerFuture<ConnectorAgent>) {
         self.suspended.push(fut);
     }
+
+    fn schedule_timer(&self, _at: tokio::time::Instant, _id: u64) {
+        panic!("Unexpected timer");
+    }
 }
 
 impl LinkSpawner<ConnectorAgent> for TestSpawner {

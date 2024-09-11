@@ -21,8 +21,8 @@ use swimos_utilities::trigger;
 
 use crate::{
     agent_lifecycle::{
-        item_event::ItemEvent, on_init::OnInit, on_start::OnStart, on_stop::OnStop, AgentLifecycle,
-        HandlerContext,
+        item_event::ItemEvent, on_init::OnInit, on_start::OnStart, on_stop::OnStop,
+        on_timer::OnTimer, AgentLifecycle, HandlerContext,
     },
     commander::Commander,
     event_handler::{ActionContext, EventHandler, HandlerActionExt, UnitHandler},
@@ -87,6 +87,12 @@ impl OnStart<EmptyAgent> for CommanderLifecycle {
 
 impl OnStop<EmptyAgent> for CommanderLifecycle {
     fn on_stop(&self) -> impl EventHandler<EmptyAgent> + '_ {
+        UnitHandler::default()
+    }
+}
+
+impl OnTimer<EmptyAgent> for CommanderLifecycle {
+    fn on_timer(&self, _timer_id: u64) -> impl EventHandler<EmptyAgent> + '_ {
         UnitHandler::default()
     }
 }

@@ -84,6 +84,10 @@ impl Spawner<FakeAgent> for TestSpawner {
     fn spawn_suspend(&self, _fut: HandlerFuture<FakeAgent>) {
         panic!("Spawning futures not supported.");
     }
+
+    fn schedule_timer(&self, _at: tokio::time::Instant, _id: u64) {
+        panic!("Scheduling timers not supported.");
+    }
 }
 
 const CONFIG: AgentConfig = AgentConfig::DEFAULT;

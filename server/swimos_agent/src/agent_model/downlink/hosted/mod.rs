@@ -178,6 +178,7 @@ mod test_support {
     use swimos_api::{address::Address, agent::AgentConfig, error::CommanderRegistrationError};
     use swimos_model::Text;
     use swimos_utilities::routing::RouteUri;
+    use tokio::time::Instant;
 
     use crate::{
         agent_model::downlink::BoxDownlinkChannelFactory,
@@ -194,6 +195,10 @@ mod test_support {
     impl<FakeAgent> Spawner<FakeAgent> for NoSpawn {
         fn spawn_suspend(&self, _fut: HandlerFuture<FakeAgent>) {
             panic!("Unexpected spawn.");
+        }
+
+        fn schedule_timer(&self, _at: Instant, _id: u64) {
+            panic!("Unexpected timer.");
         }
     }
 

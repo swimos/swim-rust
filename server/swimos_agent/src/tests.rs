@@ -88,6 +88,10 @@ impl<Context> Spawner<Context> for NoSpawn {
     fn spawn_suspend(&self, _: HandlerFuture<Context>) {
         panic!("No suspended futures expected.");
     }
+
+    fn schedule_timer(&self, _at: tokio::time::Instant, _id: u64) {
+        panic!("Unexpected timer.");
+    }
 }
 
 impl AgentContext for DummyAgentContext {
