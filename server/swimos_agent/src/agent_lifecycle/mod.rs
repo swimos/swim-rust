@@ -12,7 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use self::{item_event::ItemEvent, on_init::OnInit, on_start::OnStart, on_stop::OnStop};
+use self::{
+    item_event::ItemEvent, on_init::OnInit, on_start::OnStart, on_stop::OnStop, on_timer::OnTimer,
+};
 
 #[doc(hidden)]
 pub mod item_event;
@@ -27,6 +29,9 @@ pub mod on_start;
 /// after execution of this handler stops. The signature of the event is described by the
 /// [`on_stop::OnStop`] trait.
 pub mod on_stop;
+/// The `on_timer` event handler is executed each time a timeout (that was requested by the agent lifecycle)
+/// completes. The signature of this event is described by the [`on_timer::OnTimer`] trait.
+pub mod on_timer;
 mod stateful;
 mod utility;
 
@@ -35,12 +40,12 @@ mod utility;
 /// # Type Parameters
 /// * `Context` - The context in which the lifecycle events run (provides access to the lanes of the agent).
 pub trait AgentLifecycle<Context>:
-    OnInit<Context> + OnStart<Context> + OnStop<Context> + ItemEvent<Context>
+    OnInit<Context> + OnStart<Context> + OnStop<Context> + OnTimer<Context> + ItemEvent<Context>
 {
 }
 
 impl<L, Context> AgentLifecycle<Context> for L where
-    L: OnInit<Context> + OnStart<Context> + OnStop<Context> + ItemEvent<Context>
+    L: OnInit<Context> + OnStart<Context> + OnStop<Context> + OnTimer<Context> + ItemEvent<Context>
 {
 }
 

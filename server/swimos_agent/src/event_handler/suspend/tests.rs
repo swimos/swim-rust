@@ -19,16 +19,16 @@ use crate::{
         ActionContext, EventHandler, EventHandlerError, HandlerAction, SideEffect, StepResult,
     },
     meta::AgentMetadata,
-    test_context::{NO_DOWNLINKS, NO_DYN_LANES},
+    test_context::{TestSpawner, NO_DOWNLINKS, NO_DYN_LANES},
 };
 use bytes::BytesMut;
-use futures::{stream::FuturesUnordered, StreamExt};
+use futures::StreamExt;
 use parking_lot::Mutex;
 use swimos_api::agent::AgentConfig;
 use swimos_utilities::{routing::RouteUri, trigger};
 use tokio::{sync::mpsc, time::Instant};
 
-use super::{HandlerFuture, Suspend};
+use super::Suspend;
 
 const CONFIG: AgentConfig = AgentConfig::DEFAULT;
 const NODE_URI: &str = "/node";
@@ -64,7 +64,7 @@ async fn suspend_future() {
         })
     });
 
-    let mut spawner = FuturesUnordered::new();
+    let mut spawner = TestSpawner::<DummyAgent>::default();
 
     let result = suspend.step(
         &mut ActionContext::new(
@@ -135,7 +135,7 @@ async fn suspend_future() {
     .expect("Timed out.");
 }
 
-fn run_handler<H>(mut handler: H, spawner: &FuturesUnordered<HandlerFuture<DummyAgent>>)
+fn run_handler<H>(mut handler: H, spawner: &TestSpawner<DummyAgent>)
 where
     H: EventHandler<DummyAgent>,
 {
@@ -173,7 +173,7 @@ async fn run_handler_with_futures<H>(handler: H)
 where
     H: EventHandler<DummyAgent>,
 {
-    let mut spawner = FuturesUnordered::new();
+    let mut spawner = TestSpawner::default();
     run_handler(handler, &spawner);
 
     if !spawner.is_empty() {

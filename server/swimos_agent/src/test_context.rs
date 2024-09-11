@@ -25,12 +25,14 @@ use swimos_api::{
 };
 use swimos_model::Text;
 use swimos_utilities::byte_channel::{ByteReader, ByteWriter};
+use tokio::time::Instant;
 
 use crate::{
     agent_model::downlink::BoxDownlinkChannelFactory,
     event_handler::{
         ActionContext, BoxJoinLaneInit, DownlinkSpawnOnDone, DownlinkSpawner, EventHandler,
-        HandlerAction, HandlerFuture, LaneSpawnOnDone, LaneSpawner, Spawner, StepResult,
+        HandlerAction, HandlerFuture, LaneSpawnOnDone, LaneSpawner, LocalBoxEventHandler, Spawner,
+        StepResult,
     },
     meta::AgentMetadata,
     test_util::TestDownlinkContext,
@@ -85,6 +87,10 @@ impl<Context> Spawner<Context> for NoSpawn {
     fn spawn_suspend(&self, _: HandlerFuture<Context>) {
         panic!("No suspended futures expected.");
     }
+
+    fn schedule_timer(&self, _at: tokio::time::Instant, _id: u64) {
+        panic!("Unexpected timer.");
+    }
 }
 
 impl AgentContext for DummyAgentContext {
@@ -127,6 +133,34 @@ impl AgentContext for DummyAgentContext {
     }
 }
 
+pub struct TestSpawner<Context>(FuturesUnordered<HandlerFuture<Context>>);
+
+impl<Context> Default for TestSpawner<Context> {
+    fn default() -> Self {
+        Self(Default::default())
+    }
+}
+
+impl<Context> Spawner<Context> for TestSpawner<Context> {
+    fn spawn_suspend(&self, fut: HandlerFuture<Context>) {
+        self.0.push(fut)
+    }
+
+    fn schedule_timer(&self, _at: Instant, _id: u64) {
+        panic!("Unexpected timer.");
+    }
+}
+
+impl<Context> TestSpawner<Context> {
+    pub async fn next(&mut self) -> Option<LocalBoxEventHandler<'static, Context>> {
+        self.0.next().await
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
 pub async fn run_with_futures<H, Agent>(
     context: &TestDownlinkContext<Agent>,
     agent: &Agent,
@@ -138,7 +172,7 @@ pub async fn run_with_futures<H, Agent>(
 where
     H: HandlerAction<Agent>,
 {
-    let pending = FuturesUnordered::new();
+    let pending = TestSpawner::<Agent>::default();
 
     let result = loop {
         let mut action_context =
@@ -163,7 +197,7 @@ pub async fn run_event_handlers<'a, Agent>(
     meta: AgentMetadata<'_>,
     inits: &mut HashMap<u64, BoxJoinLaneInit<'static, Agent>>,
     ad_hoc_buffer: &mut BytesMut,
-    mut handlers: FuturesUnordered<HandlerFuture<Agent>>,
+    mut handlers: TestSpawner<Agent>,
 ) {
     let mut dl_handlers = context.handle_dl_requests(agent);
     while !dl_handlers.is_empty() || !handlers.is_empty() {
@@ -185,7 +219,7 @@ fn run_event_handler<Agent, H>(
     meta: AgentMetadata<'_>,
     inits: &mut HashMap<u64, BoxJoinLaneInit<'static, Agent>>,
     ad_hoc_buffer: &mut BytesMut,
-    handlers: &FuturesUnordered<HandlerFuture<Agent>>,
+    handlers: &TestSpawner<Agent>,
     mut handler: H,
 ) where
     H: EventHandler<Agent>,

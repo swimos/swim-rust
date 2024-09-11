@@ -17,7 +17,8 @@ mod tests;
 
 use swimos_agent::{
     agent_lifecycle::{
-        item_event::ItemEvent, on_init::OnInit, on_start::OnStart, on_stop::OnStop, HandlerContext,
+        item_event::ItemEvent, on_init::OnInit, on_start::OnStart, on_stop::OnStop,
+        on_timer::OnTimer, HandlerContext,
     },
     event_handler::{
         ActionContext, EventHandler, HandlerActionExt, TryHandlerActionExt, UnitHandler,
@@ -81,6 +82,15 @@ where
 {
     fn on_stop(&self) -> impl EventHandler<ConnectorAgent> + '_ {
         self.0.on_stop()
+    }
+}
+
+impl<C> OnTimer<ConnectorAgent> for ConnectorLifecycle<C>
+where
+    C: Connector + Send,
+{
+    fn on_timer(&self, _timer_id: u64) -> impl EventHandler<ConnectorAgent> + '_ {
+        UnitHandler::default()
     }
 }
 

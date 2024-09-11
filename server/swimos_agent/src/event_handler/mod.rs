@@ -36,6 +36,7 @@ use swimos_utilities::{
     routing::RouteUri,
 };
 use thiserror::Error;
+use tokio::time::Instant;
 use tokio_util::codec::{Decoder, Encoder};
 
 use crate::{
@@ -125,7 +126,11 @@ pub struct ActionContext<'a, Context> {
 
 impl<'a, Context> Spawner<Context> for ActionContext<'a, Context> {
     fn spawn_suspend(&self, fut: HandlerFuture<Context>) {
-        self.spawner.spawn_suspend(fut)
+        self.spawner.spawn_suspend(fut);
+    }
+
+    fn schedule_timer(&self, at: Instant, id: u64) {
+        self.spawner.schedule_timer(at, id);
     }
 }
 
@@ -1621,6 +1626,40 @@ where
     ) -> StepResult<Self::Completion> {
         if let Some(e) = self.error.take() {
             StepResult::Fail(EventHandlerError::EffectError(Box::new(e)))
+        } else {
+            StepResult::after_done()
+        }
+    }
+}
+
+/// Schedule the agent's `on_timer` event to be called.
+pub struct ScheduleTimerEvent {
+    at: Option<Instant>,
+    id: u64,
+}
+
+impl ScheduleTimerEvent {
+    /// # Arguments
+    /// * `at` - The time at which the event should trigger. If this is in the past, the event will trigger immediately.
+    /// * `id` - The ID to be passed to the event handler.
+    pub fn new(at: Instant, id: u64) -> ScheduleTimerEvent {
+        ScheduleTimerEvent { at: Some(at), id }
+    }
+}
+
+impl<Context> HandlerAction<Context> for ScheduleTimerEvent {
+    type Completion = ();
+
+    fn step(
+        &mut self,
+        action_context: &mut ActionContext<Context>,
+        _meta: AgentMetadata,
+        _context: &Context,
+    ) -> StepResult<Self::Completion> {
+        let ScheduleTimerEvent { at, id } = self;
+        if let Some(t) = at.take() {
+            action_context.schedule_timer(t, *id);
+            StepResult::done(())
         } else {
             StepResult::after_done()
         }

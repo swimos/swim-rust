@@ -24,6 +24,7 @@ use swimos_api::{
 };
 use swimos_model::Text;
 use swimos_utilities::routing::RouteUri;
+use tokio::time::Instant;
 
 use crate::{
     agent_model::DownlinkSpawnRequest,
@@ -54,6 +55,10 @@ struct TestSpawner {
 impl Spawner<TestAgent> for TestSpawner {
     fn spawn_suspend(&self, fut: HandlerFuture<TestAgent>) {
         self.futures.push(fut);
+    }
+
+    fn schedule_timer(&self, _at: Instant, _id: u64) {
+        panic!("Unexpected timer.");
     }
 }
 
