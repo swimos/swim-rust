@@ -51,12 +51,9 @@ pub enum TopicSpecifier {
 }
 
 #[derive(Clone, Debug, Form, PartialEq, Eq)]
-#[form(tag = "ValueLaneSpec")]
-pub struct EgressValueLaneSpec {
-    /// A name to use for the lane.
-    pub name: String,
+pub struct ExtractionSpec {
     /// Chooses the topic for a value set to this lane.
-    pub topic: TopicSpecifier,
+    pub topic_specifier: TopicSpecifier,
     /// A selector for a key to associate with the message. If not specified, the key will be empty.
     pub key_selector: Option<String>,
     /// A selector for for the payload of the message. If not specified, the entire value will be used.
@@ -64,16 +61,19 @@ pub struct EgressValueLaneSpec {
 }
 
 #[derive(Clone, Debug, Form, PartialEq, Eq)]
+#[form(tag = "ValueLaneSpec")]
+pub struct EgressValueLaneSpec {
+    /// A name to use for the lane.
+    pub name: String,
+    pub extractor: ExtractionSpec,
+}
+
+#[derive(Clone, Debug, Form, PartialEq, Eq)]
 #[form(tag = "MapLaneSpec")]
 pub struct EgressMapLaneSpec {
     /// A name to use for the lane.
     pub name: String,
-    /// Chooses the topic for a value set to this lane.
-    pub topic: TopicSpecifier,
-    /// A selector for a key to associate with the message. If not specified, the key will be empty.
-    pub key_selector: Option<String>,
-    /// A selector for for the payload of the message. If not specified, the entire value will be used.
-    pub payload_selector: Option<String>,
+    pub extractor: ExtractionSpec,
 }
 
 #[derive(Clone, Debug, Form, PartialEq, Eq)]
@@ -87,22 +87,12 @@ pub struct DownlinkAddress {
 pub struct ValueDownlinkSpec {
     /// The address of the lane to link from.
     pub address: DownlinkAddress,
-    /// Chooses the topic for a value set to this lane.
-    pub topic: TopicSpecifier,
-    /// A selector for a key to associate with the message. If not specified, the key will be empty.
-    pub key_selector: Option<String>,
-    /// A selector for for the payload of the message. If not specified, the entire value will be used.
-    pub payload_selector: Option<String>,
+    pub extractor: ExtractionSpec,
 }
 
 #[derive(Clone, Debug, Form, PartialEq, Eq)]
 pub struct MapDownlinkSpec {
     /// The address of the lane to link from.
     pub address: DownlinkAddress,
-    /// Chooses the topic for a value set to this lane.
-    pub topic: TopicSpecifier,
-    /// A selector for a key to associate with the message. If not specified, the key will be empty.
-    pub key_selector: Option<String>,
-    /// A selector for for the payload of the message. If not specified, the entire value will be used.
-    pub payload_selector: Option<String>,
+    pub extractor: ExtractionSpec,
 }

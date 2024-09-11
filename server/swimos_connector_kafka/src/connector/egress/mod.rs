@@ -16,6 +16,7 @@ use std::collections::HashMap;
 
 use rdkafka::error::KafkaError;
 use swimos_agent::event_handler::{EventHandler, UnitHandler};
+use swimos_api::address::Address;
 use swimos_connector::{
     BaseConnector, ConnectorAgent, ConnectorFuture, EgressConnector, EgressConnectorSender,
 };
@@ -23,8 +24,8 @@ use swimos_model::Value;
 use swimos_utilities::trigger::Sender;
 
 use crate::{
-    config::KafkaEgressConfiguration,
-    facade::{KafkaProducer, ProducerFactory},
+    config::{EgressValueLaneSpec, KafkaEgressConfiguration},
+    facade::{KafkaProducer, ProducerFactory}, selector::MessageSelector, BadSelector,
 };
 
 pub struct KafkaEgressConnector<F> {
@@ -77,5 +78,23 @@ where
         value: &Value,
     ) -> impl ConnectorFuture<KafkaError> {
         Box::pin(async { Ok(UnitHandler::default()) })
+    }
+}
+
+pub struct Extractors {
+    value_lanes: HashMap<String, MessageSelector>,
+    map_lanes: HashMap<String, MessageSelector>,
+    value_downlinks: HashMap<Address<String>, MessageSelector>,
+    map_downlinks: HashMap<Address<String>, MessageSelector>,
+}
+
+impl TryFrom<&KafkaEgressConfiguration> for Extractors {
+    type Error = BadSelector;
+
+    fn try_from(value: &KafkaEgressConfiguration) -> Result<Self, Self::Error> {
+        let KafkaEgressConfiguration { fixed_topic, value_lanes, map_lanes, value_downlinks, map_downlinks, .. } = value;
+        let top = fixed_topic.as_ref().map(|s| s.as_str()).unwrap_or_default();
+        let value_lanes = value_lanes.iter().map(|EgressValueLaneSpec { name, extractor }| MessageSelector::try_from_ext_spec(extractor, top).map(|selector| (name.clone(), selector))).collect::<Result<HashMap<_, _>, _>>()?;
+        todo!()
     }
 }
