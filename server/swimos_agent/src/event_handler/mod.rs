@@ -1641,7 +1641,7 @@ pub struct ScheduleTimerEvent {
 impl ScheduleTimerEvent {
     /// # Arguments
     /// * `at` - The time at which the event should trigger. If this is in the past, the event will trigger immediately.
-    /// * `id` - The ID to to be passed to the event handler.
+    /// * `id` - The ID to be passed to the event handler.
     pub fn new(at: Instant, id: u64) -> ScheduleTimerEvent {
         ScheduleTimerEvent { at: Some(at), id }
     }
