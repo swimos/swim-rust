@@ -38,6 +38,8 @@ pub mod agent_lifecycle;
 /// and stores.
 pub mod agent_model;
 
+pub mod commander;
+
 /// Configuration types for downlinks that are started from agent lifecycles.
 pub mod config;
 

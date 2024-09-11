@@ -152,7 +152,7 @@ where
         if let Some(on_done) = on_done.take() {
             match action_context.open_lane(name, *kind, on_done) {
                 Ok(_) => StepResult::done(()),
-                Err(err) => StepResult::Fail(EventHandlerError::FailedRegistration(err)),
+                Err(err) => StepResult::Fail(EventHandlerError::FailedLaneRegistration(err)),
             }
         } else {
             StepResult::after_done()

@@ -20,13 +20,13 @@ use std::collections::HashMap;
 use std::{convert::Infallible, sync::Arc};
 use swimos_agent::agent_model::downlink::BoxDownlinkChannelFactory;
 use swimos_agent::event_handler::{
-    ActionContext, DownlinkSpawnOnDone, DownlinkSpawner, EventHandler, HandlerAction,
-    HandlerFuture, LaneSpawnOnDone, LaneSpawner, Spawner, StepResult,
+    ActionContext, DownlinkSpawnOnDone, EventHandler, HandlerAction, HandlerFuture,
+    LaneSpawnOnDone, LaneSpawner, LinkSpawner, Spawner, StepResult,
 };
 use swimos_agent::AgentMetadata;
 use swimos_api::address::Address;
 use swimos_api::agent::WarpLaneKind;
-use swimos_api::error::DynamicRegistrationError;
+use swimos_api::error::{CommanderRegistrationError, DynamicRegistrationError};
 use swimos_model::Text;
 
 use crate::test_support::{make_meta, make_uri};
@@ -106,7 +106,7 @@ impl Spawner<ConnectorAgent> for TestSpawner {
     }
 }
 
-impl DownlinkSpawner<ConnectorAgent> for TestSpawner {
+impl LinkSpawner<ConnectorAgent> for TestSpawner {
     fn spawn_downlink(
         &self,
         _path: Address<Text>,
@@ -114,6 +114,10 @@ impl DownlinkSpawner<ConnectorAgent> for TestSpawner {
         _on_done: DownlinkSpawnOnDone<ConnectorAgent>,
     ) {
         panic!("Spawning downlinks not supported.");
+    }
+
+    fn register_commander(&self, _path: Address<Text>) -> Result<u16, CommanderRegistrationError> {
+        panic!("Registering commanders not supported.");
     }
 }
 
@@ -137,14 +141,14 @@ where
     let meta = make_meta(&uri, &route_params);
 
     let mut join_lane_init = HashMap::new();
-    let mut ad_hoc_buffer = BytesMut::new();
+    let mut command_buffer = BytesMut::new();
 
     let mut action_context = ActionContext::new(
         spawner,
         spawner,
         spawner,
         &mut join_lane_init,
-        &mut ad_hoc_buffer,
+        &mut command_buffer,
     );
 
     loop {

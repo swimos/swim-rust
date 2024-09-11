@@ -23,6 +23,7 @@ use futures::stream::unfold;
 use futures::{Future, FutureExt, Stream, StreamExt};
 use swimos_api::agent::WarpLaneKind;
 use swimos_api::error::LaneSpawnError;
+use swimos_model::Text;
 use tokio::time::Instant;
 
 use swimos_api::address::Address;
@@ -35,12 +36,13 @@ use crate::agent_model::downlink::{EventDownlinkHandle, MapDownlinkHandle, Value
 use crate::agent_model::downlink::{
     OpenEventDownlinkAction, OpenMapDownlinkAction, OpenValueDownlinkAction,
 };
+use crate::commander::{Commander, RegisterCommander};
 use crate::config::{MapDownlinkConfig, SimpleDownlinkConfig};
 use crate::downlink_lifecycle::ValueDownlinkLifecycle;
 use crate::downlink_lifecycle::{EventDownlinkLifecycle, MapDownlinkLifecycle};
 use crate::event_handler::{
     run_after, run_schedule, run_schedule_async, ConstHandler, EventHandler, Fail, GetParameter,
-    HandlerActionExt, ScheduleTimeout, SendCommand, Sequentially, Stop, Suspend, UnitHandler,
+    HandlerActionExt, ScheduleTimerEvent, SendCommand, Sequentially, Stop, Suspend, UnitHandler,
     WithParameters,
 };
 use crate::event_handler::{GetAgentUri, HandlerAction, SideEffect};
@@ -926,32 +928,55 @@ impl<Agent: 'static> HandlerContext<Agent> {
         OpenLane::new(name.to_string(), WarpLaneKind::Map, on_done)
     }
 
-    /// Schedule the agent's `on_timeout` event to be called at some time in the future.
+    /// Create a [`Commander`] to repeatedly send messages to a remote lane. This is more efficient than
+    /// [sending ad hoc messages](Self::send_command), if you need to send many commands to the same lane. Note that
+    /// creating a commander does not guarantee that the remote endpoint is resolvable and any messages sent to lanes
+    /// that do not exist or cannot be reached will be dropped.
+    ///
+    /// # Arguments
+    /// * `host` - The target remote host or [`None`] for an agent in the same plane.
+    /// * `node` - The target node hosting the lane.
+    /// * `lane` - The name of the target lane.
+    pub fn create_commander(
+        &self,
+        host: Option<impl Into<Text>>,
+        node: impl Into<Text>,
+        lane: impl Into<Text>,
+    ) -> impl HandlerAction<Agent, Completion = Commander<Agent>> + 'static {
+        let address = Address::new(host.map(Into::into), node.into(), lane.into());
+        RegisterCommander::new(address)
+    }
+
+    /// Schedule the agent's `on_timer` event to be called at some time in the future. This can be used as an
+    /// alternative to suspending a future where the resulting handler needs to have access to the agent
+    /// lifecycle (suspending futures must have a static lifetime).
     ///
     /// # Arguments
     /// * `duration` - Duration after the current time for the event to trigger. If this is non-positive, the event
     ///    will be triggered immediately.
     /// * `id` - The ID to pass to the event handler.
-    pub fn schedule_agent_timeout(
+    pub fn schedule_timer_event(
         &self,
         duration: Duration,
         id: u64,
     ) -> impl EventHandler<Agent> + Send + 'static {
-        self.schedule_agent_timeout_at(Instant::now() + duration, id)
+        self.schedule_timer_event_at(Instant::now() + duration, id)
     }
 
-    /// Schedule the agent's `on_timeout` event to be called at some time in the future.
+    /// Schedule the agent's `on_timer` event to be called at some time in the future. This can be used as an
+    /// alternative to suspending a future where the resulting handler needs to have access to the agent
+    /// lifecycle (suspending futures must have a static lifetime).
     ///
     /// # Arguments
     /// * `at` - The time at which to trigger the event handler. If this is in the past, the event will be triggered
     ///   immediately.
     /// * `id` - The ID to pass to the event handler.
-    pub fn schedule_agent_timeout_at(
+    pub fn schedule_timer_event_at(
         &self,
         at: Instant,
         id: u64,
     ) -> impl EventHandler<Agent> + Send + 'static {
-        ScheduleTimeout::new(at, id)
+        ScheduleTimerEvent::new(at, id)
     }
 }
 

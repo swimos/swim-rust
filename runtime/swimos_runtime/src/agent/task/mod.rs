@@ -154,27 +154,27 @@ impl StoreRuntimeSpec {
 }
 
 #[derive(Debug)]
-pub struct AdHocChannelRequest {
+pub struct CommandChannelRequest {
     pub promise: oneshot::Sender<Result<ByteWriter, DownlinkRuntimeError>>,
 }
 
-impl AdHocChannelRequest {
+impl CommandChannelRequest {
     pub fn new(promise: oneshot::Sender<Result<ByteWriter, DownlinkRuntimeError>>) -> Self {
-        AdHocChannelRequest { promise }
+        CommandChannelRequest { promise }
     }
 }
 
 #[derive(Debug)]
 pub enum ExternalLinkRequest {
-    AdHoc(AdHocChannelRequest),
+    Command(CommandChannelRequest),
     Downlink(DownlinkRequest),
 }
 
 /// Type for requests that can be sent to the agent runtime task by an agent implementation.
 #[derive(Debug)]
 pub enum AgentRuntimeRequest {
-    /// Attempt to open a channel for ad-hoc commands.
-    AdHoc(AdHocChannelRequest),
+    /// Attempt to open a channel for direct commands.
+    Command(CommandChannelRequest),
     /// Attempt to open a new lane for the agent.
     AddLane(LaneRuntimeSpec),
     /// Attempt to open a new lane for the agent.
@@ -542,9 +542,9 @@ where
         );
 
         let ext_link_config = LinksTaskConfig {
-            buffer_size: config.ad_hoc_buffer_size,
-            retry_strategy: config.ad_hoc_output_retry,
-            timeout_delay: config.ad_hoc_output_timeout,
+            buffer_size: config.command_msg_buffer,
+            retry_strategy: config.command_output_retry,
+            timeout_delay: config.command_output_timeout,
         };
 
         let ext_links = external_links::external_links_task::<NoReport>(
@@ -643,7 +643,7 @@ async fn attachment_task<F>(
                                 AgentRuntimeRequest::AddLane(req) => write_tx.send(WriteTaskMessage::Lane(req)).await.is_ok(),
                                 AgentRuntimeRequest::AddHttpLane(req) => http_tx.send(req).await.is_ok(),
                                 AgentRuntimeRequest::AddStore(req) => write_tx.send(WriteTaskMessage::Store(req)).await.is_ok(),
-                                AgentRuntimeRequest::AdHoc(request) => ext_link_tx.send(ExternalLinkRequest::AdHoc(request)).await.is_ok(),
+                                AgentRuntimeRequest::Command(request) => ext_link_tx.send(ExternalLinkRequest::Command(request)).await.is_ok(),
                                 AgentRuntimeRequest::OpenDownlink(req) => ext_link_tx.send(ExternalLinkRequest::Downlink(req)).await.is_ok(),
                             };
                             if !succeeded {

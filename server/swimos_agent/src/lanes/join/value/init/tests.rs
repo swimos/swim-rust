@@ -149,14 +149,14 @@ async fn successfully_create_action() {
     let route_params = HashMap::new();
     let meta = make_meta(&uri, &route_params);
     let mut inits = HashMap::new();
-    let mut ad_hoc_buffer = BytesMut::new();
+    let mut command_buffer = BytesMut::new();
 
     run_with_futures(
         &context,
         &agent,
         meta,
         &mut inits,
-        &mut ad_hoc_buffer,
+        &mut command_buffer,
         handler,
     )
     .await;

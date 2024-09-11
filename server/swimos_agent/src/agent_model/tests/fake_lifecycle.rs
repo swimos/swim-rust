@@ -210,7 +210,7 @@ impl HandlerAction<TestAgent> for LifecycleHandler {
                             1 => {
                                 let address =
                                     Address::new(Some(AD_HOC_HOST), AD_HOC_NODE, AD_HOC_LANE);
-                                action_context.send_command(address, "content", true);
+                                action_context.send_ad_hoc_command(address, "content", true);
                             }
                             _ => {
                                 action_context.schedule_timer(

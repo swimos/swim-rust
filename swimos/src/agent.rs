@@ -228,6 +228,11 @@ pub use swimos_agent::downlink_lifecycle;
 pub use swimos_agent::event_handler;
 pub use swimos_agent::reexport;
 
+/// A handle for sending multiple command messages to a fixed lane.
+pub mod commander {
+    pub use swimos_agent::commander::{Commander, SendCommandById};
+}
+
 /// Configuration types for downlinks that are started from agent lifecycles.
 pub mod config {
     pub use swimos_agent::config::{MapDownlinkConfig, SimpleDownlinkConfig};

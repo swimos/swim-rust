@@ -173,8 +173,8 @@ where
         panic!("Handler probably diverged.");
     }
     let mut join_lane_init = Default::default();
-    let mut ad_hoc = Default::default();
-    let action_context = &mut dummy_context(&mut join_lane_init, &mut ad_hoc);
+    let mut cmd_buffer = Default::default();
+    let action_context = &mut dummy_context(&mut join_lane_init, &mut cmd_buffer);
     let mut result = HandlerResult(ModificationFlags::empty());
     loop {
         match handler.step(action_context, meta, agent) {

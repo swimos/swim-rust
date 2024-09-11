@@ -191,9 +191,9 @@ pub type HttpLaneRequestChannel = mpsc::Receiver<HttpLaneRequest>;
 
 /// Trait for the context that is passed to an agent to allow it to interact with the runtime.
 pub trait AgentContext: Sync {
-    /// Open a channel for sending ad-hoc commands. Only one channel can be open at one time
+    /// Open a channel for sending direct commands. Only one channel can be open at one time
     /// and requesting a second will result in the first being closed.
-    fn ad_hoc_commands(&self) -> BoxFuture<'static, Result<ByteWriter, DownlinkRuntimeError>>;
+    fn command_channel(&self) -> BoxFuture<'static, Result<ByteWriter, DownlinkRuntimeError>>;
 
     /// Add a new lane endpoint to the runtime for this agent.
     /// # Arguments

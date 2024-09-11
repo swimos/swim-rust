@@ -35,7 +35,7 @@ use crate::{
 };
 
 use super::{
-    join, ActionContext, Decode, HandlerAction, HandlerFuture, Modification, ScheduleTimeout,
+    join, ActionContext, Decode, HandlerAction, HandlerFuture, Modification, ScheduleTimerEvent,
     SideEffect, Spawner, StepResult,
 };
 
@@ -1050,7 +1050,7 @@ fn schedule_timeout() {
     );
 
     let t = Instant::now();
-    let mut handler = ScheduleTimeout::new(t, 3);
+    let mut handler = ScheduleTimerEvent::new(t, 3);
 
     assert!(matches!(
         handler.step(&mut action_context, meta, &agent),

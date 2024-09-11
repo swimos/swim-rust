@@ -235,10 +235,15 @@ async fn join_map_lane_add_downlinks_event_handler() {
     let context = TestDownlinkContext::new(DownlinkKind::MapEvent);
     let spawner = TestSpawner::<TestAgent>::default();
     let mut inits = HashMap::new();
-    let mut ad_hoc_buffer = BytesMut::new();
+    let mut command_buffer = BytesMut::new();
 
-    let mut action_context =
-        ActionContext::new(&spawner, &context, &context, &mut inits, &mut ad_hoc_buffer);
+    let mut action_context = ActionContext::new(
+        &spawner,
+        &context,
+        &context,
+        &mut inits,
+        &mut command_buffer,
+    );
     let result = handler.step(&mut action_context, meta, &agent);
     check_result(result, false, false, Some(()));
 
@@ -253,7 +258,7 @@ async fn join_map_lane_add_downlinks_event_handler() {
         &agent,
         meta,
         &mut inits,
-        &mut ad_hoc_buffer,
+        &mut command_buffer,
         spawner,
     )
     .await;
@@ -304,13 +309,18 @@ async fn open_downlink_from_registered() {
 
     let context = TestDownlinkContext::new(DownlinkKind::MapEvent);
     let mut inits = HashMap::new();
-    let mut ad_hoc_buffer = BytesMut::new();
+    let mut command_buffer = BytesMut::new();
 
     let count = Arc::new(AtomicUsize::new(0));
 
     let spawner = TestSpawner::<TestAgent>::default();
-    let mut action_context =
-        ActionContext::new(&spawner, &context, &context, &mut inits, &mut ad_hoc_buffer);
+    let mut action_context = ActionContext::new(
+        &spawner,
+        &context,
+        &context,
+        &mut inits,
+        &mut command_buffer,
+    );
     register_lifecycle(&mut action_context, &agent, count.clone());
     assert!(spawner.is_empty());
 
@@ -319,7 +329,7 @@ async fn open_downlink_from_registered() {
         &agent,
         meta,
         &mut inits,
-        &mut ad_hoc_buffer,
+        &mut command_buffer,
         handler,
     )
     .await;
@@ -389,13 +399,18 @@ async fn stop_downlink() {
 
     let context = TestDownlinkContext::new(DownlinkKind::MapEvent);
     let mut inits = HashMap::new();
-    let mut ad_hoc_buffer = BytesMut::new();
+    let mut command_buffer = BytesMut::new();
 
     let count = Arc::new(AtomicUsize::new(0));
 
     let spawner = TestSpawner::<TestAgent>::default();
-    let mut action_context =
-        ActionContext::new(&spawner, &context, &context, &mut inits, &mut ad_hoc_buffer);
+    let mut action_context = ActionContext::new(
+        &spawner,
+        &context,
+        &context,
+        &mut inits,
+        &mut command_buffer,
+    );
     register_lifecycle(&mut action_context, &agent, count.clone());
     assert!(spawner.is_empty());
 
@@ -404,7 +419,7 @@ async fn stop_downlink() {
         &agent,
         meta,
         &mut inits,
-        &mut ad_hoc_buffer,
+        &mut command_buffer,
         handler,
     )
     .await;

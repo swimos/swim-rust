@@ -23,7 +23,7 @@ use futures::{
 use parking_lot::Mutex;
 use std::{collections::HashMap, io::ErrorKind, sync::Arc, time::Duration};
 use swimos_agent_protocol::{
-    encoding::ad_hoc::AdHocCommandDecoder, AdHocCommand, MapMessage, MapOperation,
+    encoding::command::CommandMessageDecoder, CommandMessage, MapMessage, MapOperation,
 };
 use swimos_api::{
     address::Address,
@@ -58,7 +58,7 @@ use super::{
     AgentModel, HostedDownlink, ItemDescriptor, ItemModelFactory,
 };
 
-mod downlinks;
+mod external_links;
 mod fake_agent;
 mod fake_context;
 mod fake_lifecycle;
@@ -144,7 +144,7 @@ fn make_uri() -> RouteUri {
     RouteUri::try_from(NODE_URI).expect("Bad URI.")
 }
 
-type CommandReceiver = FramedRead<ByteReader, AdHocCommandDecoder<BytesStr, Text>>;
+type CommandReceiver = FramedRead<ByteReader, CommandMessageDecoder<BytesStr, Text>>;
 
 struct TestContext {
     test_event_rx: UnboundedReceiverStream<TestEvent>,
@@ -1135,8 +1135,8 @@ async fn suspend_future() {
 
 #[tokio::test]
 async fn trigger_ad_hoc_command() {
-    let (ad_hoc_tx, ad_hoc_rx) = oneshot::channel();
-    let context = Box::new(TestAgentContext::new(ad_hoc_tx));
+    let (cmd_tx, cmd_rx) = oneshot::channel();
+    let context = Box::new(TestAgentContext::new(cmd_tx));
     let (
         task,
         TestContext {
@@ -1167,10 +1167,10 @@ async fn trigger_ad_hoc_command() {
         let (mut sender, receiver) = cmd_lane_io;
 
         let mut cmd_receiver = CommandReceiver::new(
-            ad_hoc_rx
+            cmd_rx
                 .await
                 .expect("Ad hoc command channel not registered."),
-            AdHocCommandDecoder::default(),
+            CommandMessageDecoder::default(),
         );
 
         let n = AD_HOC_CMD_VALUE;
@@ -1191,7 +1191,7 @@ async fn trigger_ad_hoc_command() {
 
         //... and then issue an outgoing command.
 
-        let expected = AdHocCommand::new(
+        let expected = CommandMessage::ad_hoc(
             Address::new(
                 Some(BytesStr::from_static_str(AD_HOC_HOST)),
                 BytesStr::from_static_str(AD_HOC_NODE),
