@@ -20,6 +20,8 @@ use super::utility::HandlerContext;
 
 /// Lifecycle event for the `on_timer` event of an agent.
 pub trait OnTimer<Context>: Send {
+    /// # Arguments
+    /// * `timer_id` - An arbitrary ID to distinguish between different timer events.
     fn on_timer(&self, timer_id: u64) -> impl EventHandler<Context> + '_;
 }
 
@@ -34,6 +36,7 @@ pub trait OnTimerShared<Context, Shared>: Send {
     /// # Arguments
     /// * `shared` - The shared state.
     /// * `handler_context` - Utility for constructing event handlers.
+    /// * `timer_id` - An arbitrary ID to distinguish between different timer events.
     fn on_timer<'a>(
         &'a self,
         shared: &'a Shared,
