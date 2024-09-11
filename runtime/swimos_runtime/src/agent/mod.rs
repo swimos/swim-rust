@@ -23,8 +23,8 @@ use swimos_api::{
         LaneConfig, LaneKind, StoreKind, WarpLaneKind,
     },
     error::{
-        AgentInitError, AgentRuntimeError, AgentTaskError, DownlinkRuntimeError, OpenStoreError,
-        StoreError,
+        AgentInitError, AgentRuntimeError, AgentTaskError, DownlinkFailureReason,
+        DownlinkRuntimeError, OpenStoreError, StoreError,
     },
     persistence::NodePersistence,
 };
@@ -55,8 +55,8 @@ use self::{
     reporting::{UplinkReportReader, UplinkReporter},
     store::{StoreInitError, StorePersistence},
     task::{
-        AdHocChannelRequest, AgentInitTask, AgentRuntimeTask, HttpLaneRuntimeSpec, InitTaskConfig,
-        LaneRuntimeSpec, LinksTaskConfig, NodeDescriptor, StoreRuntimeSpec,
+        AgentInitTask, AgentRuntimeTask, CommandChannelRequest, HttpLaneRuntimeSpec,
+        InitTaskConfig, LaneRuntimeSpec, LinksTaskConfig, NodeDescriptor, StoreRuntimeSpec,
     },
 };
 
@@ -187,12 +187,12 @@ impl AgentRuntimeContext {
 }
 
 impl AgentContext for AgentRuntimeContext {
-    fn ad_hoc_commands(&self) -> BoxFuture<'static, Result<ByteWriter, DownlinkRuntimeError>> {
+    fn command_channel(&self) -> BoxFuture<'static, Result<ByteWriter, DownlinkRuntimeError>> {
         let sender = self.tx.clone();
         async move {
             let (tx, rx) = oneshot::channel();
             sender
-                .send(AgentRuntimeRequest::AdHoc(AdHocChannelRequest::new(tx)))
+                .send(AgentRuntimeRequest::Command(CommandChannelRequest::new(tx)))
                 .await?;
             rx.await?
         }
@@ -236,7 +236,7 @@ impl AgentContext for AgentRuntimeContext {
                 Ok(r) => r,
                 Err(_) => {
                     return Err(DownlinkRuntimeError::DownlinkConnectionFailed(
-                        swimos_api::error::DownlinkFailureReason::InvalidUrl,
+                        DownlinkFailureReason::InvalidUrl,
                     ))
                 }
             };
@@ -499,12 +499,12 @@ pub struct AgentRuntimeConfig {
     pub shutdown_timeout: Duration,
     /// If initializing an item from the store takes longer than this, the agent will fail.
     pub item_init_timeout: Duration,
-    /// Timeout for outgoing channels to send ad hoc commands.
-    pub ad_hoc_output_timeout: Duration,
-    /// Retry strategy for opening outgoing channels for ad hoc commands.
-    pub ad_hoc_output_retry: RetryStrategy,
-    /// The size of the buffer used by the agent to send ad hoc commands to the runtime.
-    pub ad_hoc_buffer_size: NonZeroUsize,
+    /// Timeout for outgoing channels to send commands.
+    pub command_output_timeout: Duration,
+    /// Retry strategy for opening outgoing channels for commands.
+    pub command_output_retry: RetryStrategy,
+    /// The size of the buffer used by the agent to send commands to the runtime.
+    pub command_msg_buffer: NonZeroUsize,
     /// The size of the channel used by the agent to pass requests to an HTTP lane.
     pub lane_http_request_channel_size: NonZeroUsize,
 }
@@ -523,9 +523,9 @@ impl Default for AgentRuntimeConfig {
             prune_remote_delay: DEFAULT_TIMEOUT,
             shutdown_timeout: DEFAULT_TIMEOUT,
             item_init_timeout: DEFAULT_INIT_TIMEOUT,
-            ad_hoc_output_timeout: DEFAULT_TIMEOUT,
-            ad_hoc_output_retry: RetryStrategy::none(),
-            ad_hoc_buffer_size: DEFAULT_BUFFER_SIZE,
+            command_output_timeout: DEFAULT_TIMEOUT,
+            command_output_retry: RetryStrategy::none(),
+            command_msg_buffer: DEFAULT_BUFFER_SIZE,
             lane_http_request_channel_size: DEFAULT_CHANNEL_SIZE,
         }
     }
@@ -666,10 +666,10 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
         let (runtime_tx, runtime_rx) = mpsc::channel(runtime_config.attachment_queue_size.get());
         let (init_tx, init_rx) = trigger::trigger();
 
-        let ad_hoc_config = LinksTaskConfig {
-            buffer_size: runtime_config.ad_hoc_buffer_size,
-            retry_strategy: runtime_config.ad_hoc_output_retry,
-            timeout_delay: runtime_config.ad_hoc_output_timeout,
+        let cmd_config = LinksTaskConfig {
+            buffer_size: runtime_config.command_msg_buffer,
+            retry_strategy: runtime_config.command_output_retry,
+            timeout_delay: runtime_config.command_output_timeout,
         };
 
         let runtime_init_task = AgentInitTask::new(
@@ -678,9 +678,9 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
             link_tx,
             init_rx,
             InitTaskConfig {
-                ad_hoc_queue_size: runtime_config.attachment_queue_size,
+                command_queue_size: runtime_config.attachment_queue_size,
                 item_init_timeout: runtime_config.item_init_timeout,
-                external_links: ad_hoc_config,
+                external_links: cmd_config,
                 http_lane_channel_size: runtime_config.lane_http_request_channel_size,
             },
             reporting,
@@ -755,10 +755,10 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
                 info_span!("Agent initialization task.", id = %identity, route = %node_uri),
             );
 
-        let ad_hoc_config = LinksTaskConfig {
-            buffer_size: runtime_config.ad_hoc_buffer_size,
-            retry_strategy: runtime_config.ad_hoc_output_retry,
-            timeout_delay: runtime_config.ad_hoc_output_timeout,
+        let cmd_config = LinksTaskConfig {
+            buffer_size: runtime_config.command_msg_buffer,
+            retry_strategy: runtime_config.command_output_retry,
+            timeout_delay: runtime_config.command_output_timeout,
         };
 
         async move {
@@ -769,9 +769,9 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
                 link_tx.clone(),
                 init_rx,
                 InitTaskConfig {
-                    ad_hoc_queue_size: runtime_config.attachment_queue_size,
+                    command_queue_size: runtime_config.attachment_queue_size,
                     item_init_timeout: runtime_config.item_init_timeout,
-                    external_links: ad_hoc_config,
+                    external_links: cmd_config,
                     http_lane_channel_size: runtime_config.lane_http_request_channel_size,
                 },
                 reporting,

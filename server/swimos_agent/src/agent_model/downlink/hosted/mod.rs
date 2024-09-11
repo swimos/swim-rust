@@ -175,7 +175,7 @@ mod test_support {
 
     use bytes::BytesMut;
 
-    use swimos_api::{address::Address, agent::AgentConfig};
+    use swimos_api::{address::Address, agent::AgentConfig, error::CommanderRegistrationError};
     use swimos_model::Text;
     use swimos_utilities::routing::RouteUri;
     use tokio::time::Instant;
@@ -183,8 +183,8 @@ mod test_support {
     use crate::{
         agent_model::downlink::BoxDownlinkChannelFactory,
         event_handler::{
-            ActionContext, DownlinkSpawnOnDone, DownlinkSpawner, HandlerFuture,
-            LocalBoxEventHandler, Spawner, StepResult,
+            ActionContext, DownlinkSpawnOnDone, HandlerFuture, LinkSpawner, LocalBoxEventHandler,
+            Spawner, StepResult,
         },
         meta::AgentMetadata,
         test_context::NoDynamicLanes,
@@ -202,7 +202,7 @@ mod test_support {
         }
     }
 
-    impl<FakeAgent> DownlinkSpawner<FakeAgent> for NoSpawn {
+    impl<FakeAgent> LinkSpawner<FakeAgent> for NoSpawn {
         fn spawn_downlink(
             &self,
             _path: Address<Text>,
@@ -210,6 +210,13 @@ mod test_support {
             _on_done: DownlinkSpawnOnDone<FakeAgent>,
         ) {
             panic!("Opening downlinks not supported.");
+        }
+
+        fn register_commander(
+            &self,
+            _path: Address<Text>,
+        ) -> Result<u16, CommanderRegistrationError> {
+            panic!("Registering commanders not supported.");
         }
     }
 
@@ -237,13 +244,13 @@ mod test_support {
         let no_spawn = NoSpawn;
         let no_dyn_lanes = NoDynamicLanes;
         let mut join_lane_init = HashMap::new();
-        let mut ad_hoc_buffer = BytesMut::new();
+        let mut command_buffer = BytesMut::new();
         let mut context = ActionContext::new(
             &no_spawn,
             &no_spawn,
             &no_dyn_lanes,
             &mut join_lane_init,
-            &mut ad_hoc_buffer,
+            &mut command_buffer,
         );
         loop {
             match handler.step(&mut context, meta, agent) {

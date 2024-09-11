@@ -20,6 +20,7 @@ use std::{error::Error, sync::Arc};
 use swimos_form::read::ReadError;
 use swimos_model::Text;
 use swimos_recon::parser::AsyncParseError;
+use swimos_utilities::trigger::TriggerError;
 use swimos_utilities::{errors::Recoverable, routing::UnapplyError, trigger::promise};
 use thiserror::Error;
 use tokio::sync::{mpsc, oneshot, watch};
@@ -101,6 +102,29 @@ pub enum AgentRuntimeError {
     Stopping,
     #[error("The agent runtime has terminated.")]
     Terminated,
+}
+
+/// Error type for registering point to point command channels.
+#[derive(Error, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CommanderRegistrationError {
+    /// The registration could not be completed because the agent is stopping.
+    #[error(transparent)]
+    RuntimeError(#[from] AgentRuntimeError),
+    /// The limit on the number of registrations for the agent was exceeded.
+    #[error("Too many commander IDs were requested for the agent.")]
+    CommanderIdOverflow,
+}
+
+impl<T> From<mpsc::error::SendError<T>> for CommanderRegistrationError {
+    fn from(_: mpsc::error::SendError<T>) -> Self {
+        CommanderRegistrationError::RuntimeError(AgentRuntimeError::Terminated)
+    }
+}
+
+impl From<TriggerError> for CommanderRegistrationError {
+    fn from(_: TriggerError) -> Self {
+        CommanderRegistrationError::RuntimeError(AgentRuntimeError::Terminated)
+    }
 }
 
 /// Error type for the operation of spawning a new downlink on the runtime.
@@ -251,6 +275,8 @@ pub enum AgentTaskError {
     UserCodeError(Box<dyn std::error::Error + Send>),
     #[error("The agent failed to generate a required output: {0}")]
     OutputFailed(std::io::Error),
+    #[error("Attempting to register a commander failed.")]
+    CommanderRegistrationFailed,
 }
 
 /// Error type that is returned by implementations of the agent interface trait during the initialization phase.

@@ -12,18 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+mod commander_lifecycle;
 mod empty_agent;
 mod start_dl_lifecycle;
 
 use std::{collections::HashMap, num::NonZeroUsize, sync::Arc, time::Duration};
 
+use commander_lifecycle::CommanderLifecycle;
 use empty_agent::EmptyAgent;
 use futures::{
     future::{join, ready, BoxFuture},
-    FutureExt,
+    FutureExt, StreamExt,
 };
 use parking_lot::Mutex;
 use start_dl_lifecycle::StartDownlinkLifecycle;
+use swimos_agent_protocol::{encoding::command::CommandMessageDecoder, CommandMessage};
 use swimos_api::{
     address::Address,
     agent::{
@@ -32,18 +35,19 @@ use swimos_api::{
     },
     error::{AgentRuntimeError, DownlinkFailureReason, DownlinkRuntimeError, OpenStoreError},
 };
-use swimos_model::Text;
+use swimos_model::{Text, Value};
 use swimos_utilities::{
     byte_channel::{byte_channel, ByteReader, ByteWriter},
     future::{IntervalStrategy, Quantity, RetryStrategy},
-    non_zero_usize,
+    non_zero_usize, trigger,
 };
 use tokio::sync::mpsc;
+use tokio_util::codec::FramedRead;
 
 use crate::{
     agent_lifecycle::HandlerContext,
     agent_model::AgentModel,
-    event_handler::{EventHandler, HandlerActionExt},
+    event_handler::{BoxEventHandler, HandlerActionExt},
 };
 
 use super::make_uri;
@@ -75,7 +79,7 @@ struct DlTestContext {
     expected_address: Address<Text>,
     expected_kind: DownlinkKind,
     responses: Arc<Mutex<DownlinkResponses>>,
-    ad_hoc_channel: Arc<Mutex<(ByteReader, Option<ByteWriter>)>>,
+    cmd_channel: Arc<Mutex<(Option<ByteReader>, Option<ByteWriter>)>>,
 }
 
 impl DlTestContext {
@@ -84,13 +88,17 @@ impl DlTestContext {
         expected_kind: DownlinkKind,
         io: (ByteWriter, ByteReader),
     ) -> Self {
-        let (ad_hoc_writer, ad_hoc_reader) = byte_channel(BUFFER_SIZE);
+        let (cmd_writer, cmd_reader) = byte_channel(BUFFER_SIZE);
         DlTestContext {
             expected_address,
             expected_kind,
             responses: Arc::new(Mutex::new(DownlinkResponses::new(vec![], Some(io)))),
-            ad_hoc_channel: Arc::new(Mutex::new((ad_hoc_reader, Some(ad_hoc_writer)))),
+            cmd_channel: Arc::new(Mutex::new((Some(cmd_reader), Some(cmd_writer)))),
         }
+    }
+
+    fn take_reader(&self) -> ByteReader {
+        self.cmd_channel.lock().0.take().expect("Already taken.")
     }
 
     fn with_errors(
@@ -99,20 +107,20 @@ impl DlTestContext {
         errors: Vec<DownlinkRuntimeError>,
         io: Option<(ByteWriter, ByteReader)>,
     ) -> Self {
-        let (ad_hoc_writer, ad_hoc_reader) = byte_channel(BUFFER_SIZE);
+        let (cmd_writer, cmd_reader) = byte_channel(BUFFER_SIZE);
         DlTestContext {
             expected_address,
             expected_kind,
             responses: Arc::new(Mutex::new(DownlinkResponses::new(errors, io))),
-            ad_hoc_channel: Arc::new(Mutex::new((ad_hoc_reader, Some(ad_hoc_writer)))),
+            cmd_channel: Arc::new(Mutex::new((Some(cmd_reader), Some(cmd_writer)))),
         }
     }
 }
 
 impl AgentContext for DlTestContext {
-    fn ad_hoc_commands(&self) -> BoxFuture<'static, Result<ByteWriter, DownlinkRuntimeError>> {
-        let DlTestContext { ad_hoc_channel, .. } = self;
-        ready(Ok(ad_hoc_channel
+    fn command_channel(&self) -> BoxFuture<'static, Result<ByteWriter, DownlinkRuntimeError>> {
+        let DlTestContext { cmd_channel, .. } = self;
+        ready(Ok(cmd_channel
             .lock()
             .1
             .take()
@@ -165,9 +173,14 @@ impl AgentContext for DlTestContext {
     }
 }
 
-struct TestContext {
+struct TestContextDl {
     _tx: mpsc::UnboundedSender<DlResult>,
     rx: mpsc::UnboundedReceiver<DlResult>,
+}
+
+struct TestContextCmd {
+    rx: ByteReader,
+    stop_tx: trigger::Sender,
 }
 
 fn config() -> AgentConfig {
@@ -180,7 +193,7 @@ fn config() -> AgentConfig {
     }
 }
 
-async fn init_agent(context: Box<DlTestContext>) -> (AgentTask, TestContext) {
+async fn init_agent_dl(context: Box<DlTestContext>) -> (AgentTask, TestContextDl) {
     let address = addr();
 
     let (tx, rx) = mpsc::unbounded_channel();
@@ -195,11 +208,29 @@ async fn init_agent(context: Box<DlTestContext>) -> (AgentTask, TestContext) {
         .initialize_agent(make_uri(), HashMap::new(), config(), context)
         .await
         .expect("Initialization failed.");
-    (task, TestContext { rx, _tx: tx_cpy })
+    (task, TestContextDl { rx, _tx: tx_cpy })
+}
+
+async fn init_agent_cmd(context: Box<DlTestContext>) -> (AgentTask, TestContextCmd) {
+    let address = addr();
+    let (stop_tx, stop_rx) = trigger::trigger();
+
+    let model =
+        AgentModel::<EmptyAgent, CommanderLifecycle>::from_fn(EmptyAgent::default, move || {
+            CommanderLifecycle::new(address.clone(), stop_rx.clone())
+        });
+
+    let rx = context.take_reader();
+
+    let task = model
+        .initialize_agent(make_uri(), HashMap::new(), config(), context)
+        .await
+        .expect("Initialization failed.");
+    (task, TestContextCmd { stop_tx, rx })
 }
 
 type DlResult = Result<(), DownlinkRuntimeError>;
-type BoxEh = Box<dyn EventHandler<EmptyAgent> + Send + 'static>;
+type BoxEh = BoxEventHandler<'static, EmptyAgent>;
 
 fn on_done(tx: mpsc::UnboundedSender<DlResult>) -> impl FnOnce(DlResult) -> BoxEh + Send + 'static {
     move |result: DlResult| {
@@ -229,7 +260,8 @@ async fn immediately_successful_downlink() {
 
         let agent_context = DlTestContext::new(addr(), DownlinkKind::Value, (out_tx, in_rx));
 
-        let (agent_task, TestContext { mut rx, _tx }) = init_agent(Box::new(agent_context)).await;
+        let (agent_task, TestContextDl { mut rx, _tx }) =
+            init_agent_dl(Box::new(agent_context)).await;
 
         let check = async move {
             let result = rx.recv().await.expect("Result expected.");
@@ -255,7 +287,8 @@ async fn immediate_fatal_error_downlink() {
             None,
         );
 
-        let (agent_task, TestContext { mut rx, _tx }) = init_agent(Box::new(agent_context)).await;
+        let (agent_task, TestContextDl { mut rx, _tx }) =
+            init_agent_dl(Box::new(agent_context)).await;
 
         let check = async move {
             let result = rx.recv().await.expect("Result expected.");
@@ -290,7 +323,8 @@ async fn error_recovery_open_downlink() {
             Some((out_tx, in_rx)),
         );
 
-        let (agent_task, TestContext { mut rx, _tx }) = init_agent(Box::new(agent_context)).await;
+        let (agent_task, TestContextDl { mut rx, _tx }) =
+            init_agent_dl(Box::new(agent_context)).await;
 
         let check = async move {
             let result = rx.recv().await.expect("Result expected.");
@@ -320,7 +354,8 @@ async fn eventual_fatal_error_downlink() {
             None,
         );
 
-        let (agent_task, TestContext { mut rx, _tx }) = init_agent(Box::new(agent_context)).await;
+        let (agent_task, TestContextDl { mut rx, _tx }) =
+            init_agent_dl(Box::new(agent_context)).await;
 
         let check = async move {
             let result = rx.recv().await.expect("Result expected.");
@@ -363,7 +398,8 @@ async fn exhaust_open_downlink_retries() {
             Some((out_tx, in_rx)),
         );
 
-        let (agent_task, TestContext { mut rx, _tx }) = init_agent(Box::new(agent_context)).await;
+        let (agent_task, TestContextDl { mut rx, _tx }) =
+            init_agent_dl(Box::new(agent_context)).await;
 
         let check = async move {
             let result = rx.recv().await.expect("Result expected.");
@@ -374,6 +410,63 @@ async fn exhaust_open_downlink_retries() {
                     DownlinkFailureReason::DownlinkStopped
                 ))
             ));
+        };
+
+        let (result, _) = join(agent_task, check).await;
+        assert!(result.is_ok());
+    })
+    .await
+    .expect("Test timed out.");
+}
+
+#[tokio::test]
+async fn agent_with_commander() {
+    tokio::time::timeout(TEST_TIMEOUT, async {
+        let (_in_tx, in_rx) = byte_channel(BUFFER_SIZE);
+        let (out_tx, _out_rx) = byte_channel(BUFFER_SIZE);
+
+        let agent_context = DlTestContext::new(addr(), DownlinkKind::Value, (out_tx, in_rx));
+
+        let (agent_task, TestContextCmd { rx, stop_tx }) =
+            init_agent_cmd(Box::new(agent_context)).await;
+
+        let mut cmd_msgs = FramedRead::new(rx, CommandMessageDecoder::<Text, Value>::default());
+
+        let check = async move {
+            let msg = cmd_msgs
+                .next()
+                .await
+                .expect("Result expected.")
+                .expect("Invalid message.");
+            let id = match msg {
+                CommandMessage::Register { address, id } => {
+                    assert_eq!(address, addr());
+                    id
+                }
+                ow => panic!("Unexpected message: {:?}", ow),
+            };
+
+            let msg1 = cmd_msgs
+                .next()
+                .await
+                .expect("Result expected.")
+                .expect("Invalid message.");
+            let msg2 = cmd_msgs
+                .next()
+                .await
+                .expect("Result expected.")
+                .expect("Invalid message.");
+
+            assert_eq!(
+                msg1,
+                CommandMessage::<Text, Value>::registered(id, Value::from(7), true)
+            );
+            assert_eq!(
+                msg2,
+                CommandMessage::<Text, Value>::registered(id, Value::from(22), true)
+            );
+
+            assert!(stop_tx.trigger());
         };
 
         let (result, _) = join(agent_task, check).await;

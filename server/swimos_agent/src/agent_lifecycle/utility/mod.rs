@@ -23,6 +23,7 @@ use futures::stream::unfold;
 use futures::{Future, FutureExt, Stream, StreamExt};
 use swimos_api::agent::WarpLaneKind;
 use swimos_api::error::LaneSpawnError;
+use swimos_model::Text;
 use tokio::time::Instant;
 
 use swimos_api::address::Address;
@@ -35,6 +36,7 @@ use crate::agent_model::downlink::{EventDownlinkHandle, MapDownlinkHandle, Value
 use crate::agent_model::downlink::{
     OpenEventDownlinkAction, OpenMapDownlinkAction, OpenValueDownlinkAction,
 };
+use crate::commander::{Commander, RegisterCommander};
 use crate::config::{MapDownlinkConfig, SimpleDownlinkConfig};
 use crate::downlink_lifecycle::ValueDownlinkLifecycle;
 use crate::downlink_lifecycle::{EventDownlinkLifecycle, MapDownlinkLifecycle};
@@ -913,6 +915,25 @@ impl<Agent: 'static> HandlerContext<Agent> {
         H: EventHandler<Agent> + Send + 'static,
     {
         OpenLane::new(name.to_string(), WarpLaneKind::Map, on_done)
+    }
+
+    /// Create a [`Commander`] to repeatedly send messages to a remote lane. This is more efficient than
+    /// [sending ad hoc messages](Self::send_command), if you need to send many commands to the same lane. Note that
+    /// creating a commander does not guarantee that the remote endpoint is resolvable and any messages sent to lanes
+    /// that do not exist or cannot be reached will be dropped.
+    ///
+    /// # Arguments
+    /// * `host` - The target remote host or [`None`] for an agent in the same plane.
+    /// * `node` - The target node hosting the lane.
+    /// * `lane` - The name of the target lane.
+    pub fn create_commander(
+        &self,
+        host: Option<impl Into<Text>>,
+        node: impl Into<Text>,
+        lane: impl Into<Text>,
+    ) -> impl HandlerAction<Agent, Completion = Commander<Agent>> + 'static {
+        let address = Address::new(host.map(Into::into), node.into(), lane.into());
+        RegisterCommander::new(address)
     }
 
     /// Schedule the agent's `on_timer` event to be called at some time in the future. This can be used as an

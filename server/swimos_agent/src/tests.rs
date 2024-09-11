@@ -73,14 +73,14 @@ const NO_SPAWN: NoSpawn = NoSpawn;
 
 pub fn dummy_context<'a, Context>(
     join_lane_init: &'a mut HashMap<u64, BoxJoinLaneInit<'static, Context>>,
-    ad_hoc_buffer: &'a mut BytesMut,
+    command_buffer: &'a mut BytesMut,
 ) -> ActionContext<'a, Context> {
     ActionContext::new(
         &NO_SPAWN,
         &NO_DOWNLINKS,
         &NO_DYN_LANES,
         join_lane_init,
-        ad_hoc_buffer,
+        command_buffer,
     )
 }
 
@@ -95,7 +95,7 @@ impl<Context> Spawner<Context> for NoSpawn {
 }
 
 impl AgentContext for DummyAgentContext {
-    fn ad_hoc_commands(&self) -> BoxFuture<'static, Result<ByteWriter, DownlinkRuntimeError>> {
+    fn command_channel(&self) -> BoxFuture<'static, Result<ByteWriter, DownlinkRuntimeError>> {
         panic!("Dummy context used.");
     }
 
@@ -244,11 +244,11 @@ fn run_handler_mod<Agent, H: EventHandler<Agent>>(
     let route_params = HashMap::new();
     let meta = make_meta(&uri, &route_params);
     let mut join_lane_init = HashMap::new();
-    let mut ad_hoc_buffer = BytesMut::new();
+    let mut command_buffer = BytesMut::new();
     let mut seen_mod = None;
     loop {
         match handler.step(
-            &mut dummy_context(&mut join_lane_init, &mut ad_hoc_buffer),
+            &mut dummy_context(&mut join_lane_init, &mut command_buffer),
             meta,
             agent,
         ) {
@@ -276,7 +276,7 @@ fn run_handler_mod<Agent, H: EventHandler<Agent>>(
     }
     assert_eq!(seen_mod, modified);
     assert!(join_lane_init.is_empty());
-    assert!(ad_hoc_buffer.is_empty());
+    assert!(command_buffer.is_empty());
 }
 
 fn run_handler<Agent, H: EventHandler<Agent>>(agent: &Agent, handler: H) {
@@ -1605,8 +1605,8 @@ fn register_join_value_lifecycle() {
     let lifecycle = template.into_lifecycle();
 
     let mut join_lane_init = HashMap::new();
-    let mut ad_hoc_buffer = BytesMut::new();
-    let mut action_context = dummy_context(&mut join_lane_init, &mut ad_hoc_buffer);
+    let mut command_buffer = BytesMut::new();
+    let mut action_context = dummy_context(&mut join_lane_init, &mut command_buffer);
     let uri = make_uri();
     let route_params = HashMap::new();
     let meta = make_meta(&uri, &route_params);
@@ -1617,7 +1617,7 @@ fn register_join_value_lifecycle() {
 
     assert_eq!(join_lane_init.len(), 1);
     assert!(join_lane_init.contains_key(&lane_id));
-    assert!(ad_hoc_buffer.is_empty());
+    assert!(command_buffer.is_empty());
 }
 
 #[test]
@@ -1642,8 +1642,8 @@ fn register_join_map_lifecycle() {
     let lifecycle = template.into_lifecycle();
 
     let mut join_lane_init = HashMap::new();
-    let mut ad_hoc_buffer = BytesMut::new();
-    let mut action_context = dummy_context(&mut join_lane_init, &mut ad_hoc_buffer);
+    let mut command_buffer = BytesMut::new();
+    let mut action_context = dummy_context(&mut join_lane_init, &mut command_buffer);
     let uri = make_uri();
     let route_params = HashMap::new();
     let meta = make_meta(&uri, &route_params);
@@ -1654,7 +1654,7 @@ fn register_join_map_lifecycle() {
 
     assert_eq!(join_lane_init.len(), 1);
     assert!(join_lane_init.contains_key(&lane_id));
-    assert!(ad_hoc_buffer.is_empty());
+    assert!(command_buffer.is_empty());
 }
 
 #[derive(AgentLaneModel)]
@@ -1694,8 +1694,8 @@ fn register_two_join_value_lifecycles() {
     let lifecycle = template.into_lifecycle();
 
     let mut join_lane_init = HashMap::new();
-    let mut ad_hoc_buffer = BytesMut::new();
-    let mut action_context = dummy_context(&mut join_lane_init, &mut ad_hoc_buffer);
+    let mut command_buffer = BytesMut::new();
+    let mut action_context = dummy_context(&mut join_lane_init, &mut command_buffer);
     let uri = make_uri();
     let route_params = HashMap::new();
     let meta = make_meta(&uri, &route_params);
@@ -1708,7 +1708,7 @@ fn register_two_join_value_lifecycles() {
     assert_eq!(join_lane_init.len(), 2);
     assert!(join_lane_init.contains_key(&lane_id1));
     assert!(join_lane_init.contains_key(&lane_id2));
-    assert!(ad_hoc_buffer.is_empty());
+    assert!(command_buffer.is_empty());
 }
 
 #[derive(AgentLaneModel)]
@@ -1748,8 +1748,8 @@ fn register_two_join_map_lifecycles() {
     let lifecycle = template.into_lifecycle();
 
     let mut join_lane_init = HashMap::new();
-    let mut ad_hoc_buffer = BytesMut::new();
-    let mut action_context = dummy_context(&mut join_lane_init, &mut ad_hoc_buffer);
+    let mut command_buffer = BytesMut::new();
+    let mut action_context = dummy_context(&mut join_lane_init, &mut command_buffer);
     let uri = make_uri();
     let route_params = HashMap::new();
     let meta = make_meta(&uri, &route_params);
@@ -1762,7 +1762,7 @@ fn register_two_join_map_lifecycles() {
     assert_eq!(join_lane_init.len(), 2);
     assert!(join_lane_init.contains_key(&lane_id1));
     assert!(join_lane_init.contains_key(&lane_id2));
-    assert!(ad_hoc_buffer.is_empty());
+    assert!(command_buffer.is_empty());
 }
 
 #[test]

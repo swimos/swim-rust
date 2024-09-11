@@ -1275,7 +1275,7 @@ impl DlTestContext {
 }
 
 impl AgentContext for DlTestContext {
-    fn ad_hoc_commands(&self) -> BoxFuture<'static, Result<ByteWriter, DownlinkRuntimeError>> {
+    fn command_channel(&self) -> BoxFuture<'static, Result<ByteWriter, DownlinkRuntimeError>> {
         panic!("Unexpected call.");
     }
 

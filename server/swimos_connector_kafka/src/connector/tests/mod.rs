@@ -29,12 +29,16 @@ use swimos_agent::{
         downlink::BoxDownlinkChannelFactory, AgentSpec, ItemDescriptor, ItemFlags, WarpLaneKind,
     },
     event_handler::{
-        ActionContext, DownlinkSpawnOnDone, DownlinkSpawner, EventHandler, HandlerFuture,
-        LaneSpawnOnDone, LaneSpawner, Spawner, StepResult,
+        ActionContext, DownlinkSpawnOnDone, EventHandler, HandlerFuture, LaneSpawnOnDone,
+        LaneSpawner, LinkSpawner, Spawner, StepResult,
     },
     AgentMetadata,
 };
-use swimos_api::{address::Address, agent::AgentConfig, error::DynamicRegistrationError};
+use swimos_api::{
+    address::Address,
+    agent::AgentConfig,
+    error::{CommanderRegistrationError, DynamicRegistrationError},
+};
 use swimos_connector::ConnectorAgent;
 use swimos_model::{Item, Text, Value};
 use swimos_recon::print_recon_compact;
@@ -86,7 +90,7 @@ impl Spawner<ConnectorAgent> for TestSpawner {
     }
 }
 
-impl DownlinkSpawner<ConnectorAgent> for TestSpawner {
+impl LinkSpawner<ConnectorAgent> for TestSpawner {
     fn spawn_downlink(
         &self,
         _path: Address<Text>,
@@ -94,6 +98,10 @@ impl DownlinkSpawner<ConnectorAgent> for TestSpawner {
         _on_done: DownlinkSpawnOnDone<ConnectorAgent>,
     ) {
         panic!("Opening downlinks not supported.");
+    }
+
+    fn register_commander(&self, _path: Address<Text>) -> Result<u16, CommanderRegistrationError> {
+        panic!("Registering commanders not supported.");
     }
 }
 
@@ -187,14 +195,14 @@ fn run_handler<H: EventHandler<ConnectorAgent>>(
     let uri = make_uri();
     let meta = make_meta(&uri, &route_params);
     let mut join_lane_init = HashMap::new();
-    let mut ad_hoc_buffer = BytesMut::new();
+    let mut command_buffer = BytesMut::new();
 
     let mut action_context = ActionContext::new(
         spawner,
         spawner,
         spawner,
         &mut join_lane_init,
-        &mut ad_hoc_buffer,
+        &mut command_buffer,
     );
 
     let mut modified = HashSet::new();

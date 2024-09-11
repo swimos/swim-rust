@@ -20,7 +20,7 @@ use parking_lot::Mutex;
 use swimos_api::{
     address::Address,
     agent::{AgentConfig, WarpLaneKind},
-    error::DynamicRegistrationError,
+    error::{CommanderRegistrationError, DynamicRegistrationError},
 };
 use swimos_model::Text;
 use swimos_utilities::routing::RouteUri;
@@ -31,8 +31,8 @@ use crate::{
     config::{MapDownlinkConfig, SimpleDownlinkConfig},
     downlink_lifecycle::{StatefulMapDownlinkLifecycle, StatefulValueDownlinkLifecycle},
     event_handler::{
-        ActionContext, BoxJoinLaneInit, DownlinkSpawnOnDone, DownlinkSpawner, HandlerAction,
-        HandlerFuture, LaneSpawnOnDone, LaneSpawner, Spawner, StepResult,
+        ActionContext, BoxJoinLaneInit, DownlinkSpawnOnDone, HandlerAction, HandlerFuture,
+        LaneSpawnOnDone, LaneSpawner, LinkSpawner, Spawner, StepResult,
     },
     meta::AgentMetadata,
 };
@@ -62,7 +62,7 @@ impl Spawner<TestAgent> for TestSpawner {
     }
 }
 
-impl DownlinkSpawner<TestAgent> for TestSpawner {
+impl LinkSpawner<TestAgent> for TestSpawner {
     fn spawn_downlink(
         &self,
         path: Address<Text>,
@@ -77,6 +77,10 @@ impl DownlinkSpawner<TestAgent> for TestSpawner {
             make_channel,
             on_done,
         });
+    }
+
+    fn register_commander(&self, _path: Address<Text>) -> Result<u16, CommanderRegistrationError> {
+        panic!("Registering commanders not supported.");
     }
 }
 
@@ -115,19 +119,19 @@ async fn run_all_and_check(
     join_lane_init: &mut HashMap<u64, BoxJoinLaneInit<'static, TestAgent>>,
     agent: &TestAgent,
 ) {
-    let mut ad_hoc_buffer = BytesMut::new();
+    let mut command_buffer = BytesMut::new();
     while let Some(handler) = spawner.futures.next().await {
         let mut action_context = ActionContext::new(
             &spawner,
             &spawner,
             &spawner,
             join_lane_init,
-            &mut ad_hoc_buffer,
+            &mut command_buffer,
         );
         run_handler(handler, &mut action_context, agent, meta);
     }
     assert!(join_lane_init.is_empty());
-    assert!(ad_hoc_buffer.is_empty());
+    assert!(command_buffer.is_empty());
     spawner
         .inner
         .lock()
@@ -168,7 +172,7 @@ async fn open_value_downlink() {
     let route_params = HashMap::new();
     let meta = make_meta(&uri, &route_params);
     let mut join_lane_init = HashMap::new();
-    let mut ad_hoc_buffer = BytesMut::new();
+    let mut command_buffer = BytesMut::new();
     let lifecycle = StatefulValueDownlinkLifecycle::<TestAgent, _, i32>::new(());
 
     let handler = OpenValueDownlinkAction::<i32, _>::new(
@@ -185,7 +189,7 @@ async fn open_value_downlink() {
         &spawner,
         &spawner,
         &mut join_lane_init,
-        &mut ad_hoc_buffer,
+        &mut command_buffer,
     );
     let _handle = run_handler(handler, &mut action_context, &agent, meta);
 
@@ -198,7 +202,7 @@ async fn open_map_downlink() {
     let route_params = HashMap::new();
     let meta = make_meta(&uri, &route_params);
     let mut join_lane_init = HashMap::new();
-    let mut ad_hoc_buffer = BytesMut::new();
+    let mut command_buffer = BytesMut::new();
     let lifecycle = StatefulMapDownlinkLifecycle::<TestAgent, _, i32, Text>::new(());
 
     let handler = OpenMapDownlinkAction::<i32, Text, _>::new(
@@ -215,7 +219,7 @@ async fn open_map_downlink() {
         &spawner,
         &spawner,
         &mut join_lane_init,
-        &mut ad_hoc_buffer,
+        &mut command_buffer,
     );
     let _handle = run_handler(handler, &mut action_context, &agent, meta);
 

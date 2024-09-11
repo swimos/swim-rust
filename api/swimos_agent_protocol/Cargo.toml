@@ -18,3 +18,4 @@ swimos_form = { workspace = true }
 swimos_recon = { workspace = true }
 thiserror = { workspace = true }
 swimos_utilities = { workspace = true, features = ["encoding"] }
+bitflags = { workspace = true }
