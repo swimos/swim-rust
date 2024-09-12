@@ -33,7 +33,6 @@ impl AvroSerializer {
 impl MessageSerializer for AvroSerializer {
     fn serialize(
         &self,
-        _name: &str,
         message: &Value,
         target: &mut bytes::BytesMut,
     ) -> Result<(), SerializationError> {

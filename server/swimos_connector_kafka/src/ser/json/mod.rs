@@ -25,12 +25,7 @@ pub struct JsonSerializer;
 use super::{RESERVE_INIT, RESERVE_MULT};
 
 impl MessageSerializer for JsonSerializer {
-    fn serialize(
-        &self,
-        _name: &str,
-        message: &Value,
-        target: &mut BytesMut,
-    ) -> Result<(), SerializationError> {
+    fn serialize(&self, message: &Value, target: &mut BytesMut) -> Result<(), SerializationError> {
         let json_value = convert_recon_value(message)?;
         let mut next_res = RESERVE_INIT.max(target.remaining_mut().saturating_mul(RESERVE_MULT));
         let body_offset = target.remaining();

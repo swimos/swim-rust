@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use bytes::{Buf, BufMut, BytesMut};
-use std::fmt::Write;
+use std::{fmt::Write, sync::Arc};
 use swimos_model::{Item, Value, ValueKind};
 use swimos_recon::print_recon_compact;
 use thiserror::Error;
@@ -45,18 +45,13 @@ pub enum SerializationError {
 }
 
 pub trait MessageSerializer {
-    fn serialize(
-        &self,
-        name: &str,
-        message: &Value,
-        target: &mut BytesMut,
-    ) -> Result<(), SerializationError>;
+    fn serialize(&self, message: &Value, target: &mut BytesMut) -> Result<(), SerializationError>;
 
-    fn boxed(self) -> BoxMessageSerializer
+    fn shared(self) -> SharedMessageSerializer
     where
         Self: Sized + Send + Sync + 'static,
     {
-        Box::new(self)
+        Arc::new(self)
     }
 }
 
@@ -68,12 +63,7 @@ pub struct ReconSerializer;
 pub struct BytesSerializer;
 
 impl MessageSerializer for StringSerializer {
-    fn serialize(
-        &self,
-        _name: &str,
-        message: &Value,
-        target: &mut BytesMut,
-    ) -> Result<(), SerializationError> {
+    fn serialize(&self, message: &Value, target: &mut BytesMut) -> Result<(), SerializationError> {
         if let Value::Text(text) = message {
             let bytes = text.as_bytes();
             target.reserve(bytes.len());
@@ -89,12 +79,7 @@ const RESERVE_INIT: usize = 256;
 const RESERVE_MULT: usize = 2;
 
 impl MessageSerializer for ReconSerializer {
-    fn serialize(
-        &self,
-        _name: &str,
-        message: &Value,
-        target: &mut BytesMut,
-    ) -> Result<(), SerializationError> {
+    fn serialize(&self, message: &Value, target: &mut BytesMut) -> Result<(), SerializationError> {
         let mut next_res = RESERVE_INIT.max(target.remaining_mut().saturating_mul(RESERVE_MULT));
         let body_offset = target.remaining();
         loop {
@@ -110,12 +95,7 @@ impl MessageSerializer for ReconSerializer {
 }
 
 impl MessageSerializer for BytesSerializer {
-    fn serialize(
-        &self,
-        _name: &str,
-        message: &Value,
-        target: &mut BytesMut,
-    ) -> Result<(), SerializationError> {
+    fn serialize(&self, message: &Value, target: &mut BytesMut) -> Result<(), SerializationError> {
         if let Value::Data(blob) = message {
             let bytes = blob.as_ref();
             target.reserve(bytes.len());
@@ -182,12 +162,7 @@ impl F64Serializer {
 }
 
 impl MessageSerializer for I32Serializer {
-    fn serialize(
-        &self,
-        _name: &str,
-        message: &Value,
-        target: &mut BytesMut,
-    ) -> Result<(), SerializationError> {
+    fn serialize(&self, message: &Value, target: &mut BytesMut) -> Result<(), SerializationError> {
         if let Some(n) = match message {
             Value::Int32Value(n) => Some(*n),
             Value::Int64Value(n) => i32::try_from(*n).ok(),
@@ -211,12 +186,7 @@ impl MessageSerializer for I32Serializer {
 }
 
 impl MessageSerializer for I64Serializer {
-    fn serialize(
-        &self,
-        _name: &str,
-        message: &Value,
-        target: &mut BytesMut,
-    ) -> Result<(), SerializationError> {
+    fn serialize(&self, message: &Value, target: &mut BytesMut) -> Result<(), SerializationError> {
         if let Some(n) = match message {
             Value::Int32Value(n) => Some(*n as i64),
             Value::Int64Value(n) => Some(*n),
@@ -240,12 +210,7 @@ impl MessageSerializer for I64Serializer {
 }
 
 impl MessageSerializer for U32Serializer {
-    fn serialize(
-        &self,
-        _name: &str,
-        message: &Value,
-        target: &mut BytesMut,
-    ) -> Result<(), SerializationError> {
+    fn serialize(&self, message: &Value, target: &mut BytesMut) -> Result<(), SerializationError> {
         if let Some(n) = match message {
             Value::Int32Value(n) => u32::try_from(*n).ok(),
             Value::Int64Value(n) => u32::try_from(*n).ok(),
@@ -269,12 +234,7 @@ impl MessageSerializer for U32Serializer {
 }
 
 impl MessageSerializer for U64Serializer {
-    fn serialize(
-        &self,
-        _name: &str,
-        message: &Value,
-        target: &mut BytesMut,
-    ) -> Result<(), SerializationError> {
+    fn serialize(&self, message: &Value, target: &mut BytesMut) -> Result<(), SerializationError> {
         if let Some(n) = match message {
             Value::Int32Value(n) => u64::try_from(*n).ok(),
             Value::Int64Value(n) => u64::try_from(*n).ok(),
@@ -298,12 +258,7 @@ impl MessageSerializer for U64Serializer {
 }
 
 impl MessageSerializer for F32Serializer {
-    fn serialize(
-        &self,
-        _name: &str,
-        message: &Value,
-        target: &mut BytesMut,
-    ) -> Result<(), SerializationError> {
+    fn serialize(&self, message: &Value, target: &mut BytesMut) -> Result<(), SerializationError> {
         if let Value::Float64Value(x) = message {
             let Self(endianness) = self;
             target.reserve(std::mem::size_of::<f32>());
@@ -319,12 +274,7 @@ impl MessageSerializer for F32Serializer {
 }
 
 impl MessageSerializer for F64Serializer {
-    fn serialize(
-        &self,
-        _name: &str,
-        message: &Value,
-        target: &mut BytesMut,
-    ) -> Result<(), SerializationError> {
+    fn serialize(&self, message: &Value, target: &mut BytesMut) -> Result<(), SerializationError> {
         if let Value::Float64Value(x) = message {
             let Self(endianness) = self;
             target.reserve(std::mem::size_of::<f64>());
@@ -343,12 +293,7 @@ impl MessageSerializer for F64Serializer {
 pub struct UuidSerializer;
 
 impl MessageSerializer for UuidSerializer {
-    fn serialize(
-        &self,
-        _name: &str,
-        message: &Value,
-        target: &mut BytesMut,
-    ) -> Result<(), SerializationError> {
+    fn serialize(&self, message: &Value, target: &mut BytesMut) -> Result<(), SerializationError> {
         if let Some(n) = match message {
             Value::BigInt(n) => u128::try_from(n).ok(),
             Value::BigUint(n) => u128::try_from(n).ok(),
@@ -377,19 +322,14 @@ fn is_record(items: &[Item]) -> bool {
         .all(|item| matches!(item, Item::Slot(key, _) if key.kind() == ValueKind::Text))
 }
 
-pub type BoxMessageSerializer = Box<dyn MessageSerializer + Send + Sync + 'static>;
+pub type SharedMessageSerializer = Arc<dyn MessageSerializer + Send + Sync + 'static>;
 
-impl MessageSerializer for BoxMessageSerializer {
-    fn serialize(
-        &self,
-        name: &str,
-        message: &Value,
-        target: &mut BytesMut,
-    ) -> Result<(), SerializationError> {
-        (**self).serialize(name, message, target)
+impl MessageSerializer for SharedMessageSerializer {
+    fn serialize(&self, message: &Value, target: &mut BytesMut) -> Result<(), SerializationError> {
+        (**self).serialize(message, target)
     }
 
-    fn boxed(self) -> BoxMessageSerializer
+    fn shared(self) -> SharedMessageSerializer
     where
         Self: Sized + Send + Sync + 'static,
     {

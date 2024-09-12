@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use std::collections::HashMap;
-
+use swimos_api::address::Address;
 use swimos_form::Form;
 
 use super::{DataFormat, KafkaLogLevel};
@@ -36,6 +36,7 @@ pub struct KafkaEgressConfiguration {
     pub map_lanes: Vec<EgressMapLaneSpec>,
     pub value_downlinks: Vec<ValueDownlinkSpec>,
     pub map_downlinks: Vec<MapDownlinkSpec>,
+    pub retry_timeout_ms: u64,
 }
 
 /// Instructions to derive the topic for a Kafka message from a value posted to a lane.
@@ -81,6 +82,13 @@ pub struct DownlinkAddress {
     pub host: Option<String>,
     pub node: String,
     pub lane: String,
+}
+
+impl From<&DownlinkAddress> for Address<String> {
+    fn from(value: &DownlinkAddress) -> Self {
+        let DownlinkAddress { host, node, lane } = value;
+        Address::new(host.clone(), node.clone(), lane.clone())
+    }
 }
 
 #[derive(Clone, Debug, Form, PartialEq, Eq)]

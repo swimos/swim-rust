@@ -33,7 +33,7 @@ use crate::{
 };
 use swimos_agent::lanes::{MapLaneSelectRemove, MapLaneSelectUpdate, ValueLaneSelectSet};
 
-pub use message::{KeyOrValue, MessageSelector, FieldSelector, TopicSelector};
+pub use message::MessageSelector;
 
 /// Enumeration of the components of a Kafka message.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -456,9 +456,7 @@ impl<'a> SelectorDescriptor<'a> {
         match self {
             SelectorDescriptor::Part {
                 index, components, ..
-            } => {
-                Some(make_chain_selector(*index, components))
-            }
+            } => Some(make_chain_selector(*index, components)),
             SelectorDescriptor::Topic => None,
         }
     }

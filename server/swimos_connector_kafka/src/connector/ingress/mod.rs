@@ -25,11 +25,8 @@ use crate::facade::{ConsumerFactory, KafkaConsumer, KafkaFactory, KafkaMessage};
 use crate::selector::{Computed, MapLaneSelector, ValueLaneSelector};
 use crate::{IngressMapLaneSpec, IngressValueLaneSpec, InvalidLanes};
 use futures::{stream::unfold, Future};
-use swimos_agent::{
-    agent_lifecycle::HandlerContext,
-    event_handler::{
-        EventHandler, HandlerActionExt, Sequentially, TryHandlerActionExt, UnitHandler,
-    },
+use swimos_agent::event_handler::{
+    EventHandler, HandlerActionExt, Sequentially, TryHandlerActionExt, UnitHandler,
 };
 use swimos_model::Value;
 use swimos_utilities::trigger;
@@ -38,7 +35,7 @@ use tracing::{debug, error, info, trace};
 
 use swimos_connector::{BaseConnector, ConnectorAgent, ConnectorStream, IngressConnector};
 
-type ConnHandlerContext = HandlerContext<ConnectorAgent>;
+use super::ConnHandlerContext;
 
 /// A [connector](Connector) to ingest a stream of Kafka messages into a Swim application. This should be used to
 /// provide a lifecycle for a [connector agent](ConnectorAgent).

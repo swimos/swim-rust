@@ -12,33 +12,149 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::HashMap;
+use std::{cell::RefCell, collections::HashMap, sync::Arc, time::Duration};
 
+use bytes::BytesMut;
+use futures::{channel::oneshot, FutureExt};
 use rdkafka::error::KafkaError;
-use swimos_agent::event_handler::{EventHandler, UnitHandler};
+use swimos_agent::event_handler::{
+    EventHandler, HandlerActionExt, Sequentially, TryHandlerActionExt, UnitHandler,
+};
 use swimos_api::address::Address;
 use swimos_connector::{
     BaseConnector, ConnectorAgent, ConnectorFuture, EgressConnector, EgressConnectorSender,
+    EgressContext, MessageSource, SendResult,
 };
 use swimos_model::Value;
-use swimos_utilities::trigger::Sender;
+use swimos_utilities::trigger;
+use thiserror::Error;
+use tokio::sync::Semaphore;
 
 use crate::{
-    config::{EgressValueLaneSpec, KafkaEgressConfiguration},
-    facade::{KafkaProducer, ProducerFactory}, selector::MessageSelector, BadSelector,
+    config::{
+        EgressMapLaneSpec, EgressValueLaneSpec, KafkaEgressConfiguration, MapDownlinkSpec,
+        ValueDownlinkSpec,
+    },
+    facade::{KafkaProducer, ProduceResult, ProducerFactory},
+    selector::MessageSelector,
+    ser::{SerializationError, SharedMessageSerializer},
+    InvalidExtractors, LoadError,
 };
 
-pub struct KafkaEgressConnector<F> {
+use super::ConnHandlerContext;
+
+pub struct KafkaEgressConnector<F: ProducerFactory> {
     factory: F,
     configuration: KafkaEgressConfiguration,
+    state: RefCell<Option<ConnectorState>>,
+}
+
+struct ConnectorState {
+    serializers: Serializers,
+    extractors: Arc<Extractors>,
+}
+
+impl ConnectorState {
+    fn new(rx: oneshot::Receiver<LoadedSerializers>, extractors: Extractors) -> Self {
+        ConnectorState {
+            serializers: Serializers::Pending(rx),
+            extractors: Arc::new(extractors),
+        }
+    }
+}
+
+struct LoadedSerializers {
+    key_serializer: SharedMessageSerializer,
+    payload_serializer: SharedMessageSerializer,
+}
+
+enum Serializers {
+    Pending(oneshot::Receiver<LoadedSerializers>),
+    Loaded(LoadedSerializers),
+}
+
+impl Serializers {
+    fn get(&mut self) -> &LoadedSerializers {
+        match self {
+            Serializers::Pending(rx) => match rx.try_recv() {
+                Ok(Some(ser)) => {
+                    *self = Serializers::Loaded(ser);
+                    match self {
+                        Self::Loaded(loaded) => loaded,
+                        _ => unreachable!(),
+                    }
+                }
+                _ => panic!("Not provided."),
+            },
+            Serializers::Loaded(loaded) => loaded,
+        }
+    }
+}
+
+async fn load_serializers(
+    config: KafkaEgressConfiguration,
+) -> Result<LoadedSerializers, LoadError> {
+    let KafkaEgressConfiguration {
+        key_serializer,
+        payload_serializer,
+        ..
+    } = config;
+    let key = key_serializer.load_serializer().await?;
+    let payload = payload_serializer.load_serializer().await?;
+    Ok(LoadedSerializers {
+        key_serializer: key,
+        payload_serializer: payload,
+    })
+}
+
+impl<F: ProducerFactory> KafkaEgressConnector<F> {
+    /* fn open_producer(&self) -> Result<(), KafkaError> {
+        let KafkaEgressConnector { factory, configuration, sender } = self;
+        let KafkaEgressConfiguration { properties, log_level, retry_timeout_ms, key_serializer, payload_serializer, .. } = self;
+        let producer = factory.create(properties, *log_level)?;
+        let key_ser = key_serializer.load_serializer()
+
+    } */
 }
 
 impl<F> BaseConnector for KafkaEgressConnector<F>
 where
     F: ProducerFactory + Send + 'static,
 {
-    fn on_start(&self, init_complete: Sender) -> impl EventHandler<ConnectorAgent> + '_ {
-        UnitHandler::default()
+    fn on_start(&self, init_complete: trigger::Sender) -> impl EventHandler<ConnectorAgent> + '_ {
+        let KafkaEgressConnector {
+            configuration,
+            state,
+            ..
+        } = self;
+        let context: ConnHandlerContext = Default::default();
+        let (ser_tx, ser_rx) = oneshot::channel();
+        let semaphore = Arc::new(Semaphore::new(0));
+        let ser_done = semaphore.clone();
+        let ser_fut = load_serializers(configuration.clone()).map(move |loaded| {
+            context
+                .effect(move || match ser_tx.send(loaded?) {
+                    Ok(_) => {
+                        ser_done.add_permits(1);
+                        Ok(())
+                    }
+                    Err(_) => Err(LoadError::Cancelled),
+                })
+                .try_handler()
+        });
+        let suspend_ser = context.suspend(ser_fut);
+
+        let setup_agent = context
+            .value(Extractors::try_from(configuration))
+            .try_handler()
+            .and_then(move |extractors: Extractors| {
+                let open_lanes = extractors.open_lanes(init_complete, semaphore);
+                let set_state = context.effect(move || {
+                    *(state.borrow_mut()) = Some(ConnectorState::new(ser_rx, extractors));
+                });
+                open_lanes.followed_by(set_state)
+            });
+        suspend_ser.followed_by(setup_agent)
     }
 
     fn on_stop(&self) -> impl EventHandler<ConnectorAgent> + '_ {
@@ -50,34 +166,63 @@ impl<F> EgressConnector for KafkaEgressConnector<F>
 where
     F: ProducerFactory + Send + 'static,
 {
-    type SendError = KafkaError;
+    type SendError = KafkaSenderError;
 
-    type Sender = ProducerSender<F::Producer>;
+    type Sender = KafkaSender<F::Producer>;
 
     fn make_sender(
         &self,
-        agent_params: &HashMap<String, String>,
+        _agent_params: &HashMap<String, String>,
     ) -> Result<Self::Sender, Self::SendError> {
-        todo!()
+        let KafkaEgressConnector {
+            factory,
+            configuration,
+            state,
+        } = self;
+        let KafkaEgressConfiguration {
+            properties,
+            log_level,
+            retry_timeout_ms,
+            ..
+        } = configuration;
+        let mut guard = state.borrow_mut();
+        let ConnectorState {
+            serializers,
+            extractors,
+        } = guard.as_mut().ok_or(KafkaSenderError::NotInitialized)?;
+        let LoadedSerializers {
+            key_serializer,
+            payload_serializer,
+        } = serializers.get();
+        let producer = factory.create(properties, *log_level)?;
+        let ser_producer =
+            SerializingProducer::new(producer, key_serializer.clone(), payload_serializer.clone());
+        let sender = KafkaSender::new(
+            ser_producer,
+            extractors.clone(),
+            Duration::from_millis(*retry_timeout_ms),
+        );
+        Ok(sender)
     }
-}
 
-#[derive(Clone, Copy, Debug)]
-pub struct ProducerSender<P> {
-    producer: P,
-}
-
-impl<P> EgressConnectorSender<KafkaError> for ProducerSender<P>
-where
-    P: KafkaProducer + Clone + Send + Sync + 'static,
-{
-    fn send(
-        &self,
-        name: &str,
-        key: Option<&Value>,
-        value: &Value,
-    ) -> impl ConnectorFuture<KafkaError> {
-        Box::pin(async { Ok(UnitHandler::default()) })
+    fn open_downlinks(&self, context: &mut dyn EgressContext) {
+        let KafkaEgressConnector {
+            configuration:
+                KafkaEgressConfiguration {
+                    value_downlinks,
+                    map_downlinks,
+                    ..
+                },
+            ..
+        } = self;
+        for value_dl in value_downlinks {
+            let addr = Address::from(&value_dl.address);
+            context.open_value_downlink(addr);
+        }
+        for map_dl in map_downlinks {
+            let addr = Address::from(&map_dl.address);
+            context.open_value_downlink(addr);
+        }
     }
 }
 
@@ -86,15 +231,423 @@ pub struct Extractors {
     map_lanes: HashMap<String, MessageSelector>,
     value_downlinks: HashMap<Address<String>, MessageSelector>,
     map_downlinks: HashMap<Address<String>, MessageSelector>,
+    total_lanes: u32,
+}
+
+const ADDITIONAL_PARTIES: u32 = 1;
+
+impl Extractors {
+    pub fn select_source(&self, source: MessageSource<'_>) -> Option<&MessageSelector> {
+        let Extractors {
+            value_lanes,
+            map_lanes,
+            value_downlinks,
+            map_downlinks,
+            ..
+        } = self;
+        match source {
+            MessageSource::Lane(name) => value_lanes.get(name).or_else(|| map_lanes.get(name)),
+            MessageSource::Downlink(addr) => value_downlinks
+                .get(addr)
+                .or_else(|| map_downlinks.get(addr)),
+        }
+    }
+
+    fn open_lanes(
+        &self,
+        init_complete: trigger::Sender,
+        semaphore: Arc<Semaphore>,
+    ) -> impl EventHandler<ConnectorAgent> + 'static {
+        let handler_context = ConnHandlerContext::default();
+        let Extractors {
+            value_lanes,
+            map_lanes,
+            total_lanes,
+            ..
+        } = self;
+
+        let wait_handle = semaphore.clone();
+        let total = *total_lanes;
+        let await_done = async move {
+            let result = wait_handle
+                .acquire_many(ADDITIONAL_PARTIES + total)
+                .await
+                .map(|_| ());
+            handler_context
+                .value(result)
+                .try_handler()
+                .followed_by(handler_context.effect(|| {
+                    let _ = init_complete.trigger();
+                }))
+        };
+
+        let mut open_value_lanes = Vec::with_capacity(value_lanes.len());
+        let mut open_map_lanes = Vec::with_capacity(map_lanes.len());
+
+        for name in value_lanes.keys() {
+            let sem_cpy = semaphore.clone();
+            open_value_lanes.push(handler_context.open_value_lane(name, move |_| {
+                handler_context.effect(move || sem_cpy.add_permits(1))
+            }));
+        }
+
+        for name in map_lanes.keys() {
+            let sem_cpy = semaphore.clone();
+            open_map_lanes.push(handler_context.open_map_lane(name, move |_| {
+                handler_context.effect(move || sem_cpy.add_permits(1))
+            }));
+        }
+
+        handler_context
+            .suspend(await_done)
+            .followed_by(Sequentially::new(open_value_lanes))
+            .followed_by(Sequentially::new(open_map_lanes))
+            .discard()
+    }
 }
 
 impl TryFrom<&KafkaEgressConfiguration> for Extractors {
-    type Error = BadSelector;
+    type Error = InvalidExtractors;
 
     fn try_from(value: &KafkaEgressConfiguration) -> Result<Self, Self::Error> {
-        let KafkaEgressConfiguration { fixed_topic, value_lanes, map_lanes, value_downlinks, map_downlinks, .. } = value;
-        let top = fixed_topic.as_ref().map(|s| s.as_str()).unwrap_or_default();
-        let value_lanes = value_lanes.iter().map(|EgressValueLaneSpec { name, extractor }| MessageSelector::try_from_ext_spec(extractor, top).map(|selector| (name.clone(), selector))).collect::<Result<HashMap<_, _>, _>>()?;
-        todo!()
+        let KafkaEgressConfiguration {
+            fixed_topic,
+            value_lanes,
+            map_lanes,
+            value_downlinks,
+            map_downlinks,
+            ..
+        } = value;
+        let top = fixed_topic.as_ref().map(|s| s.as_str());
+        let value_lanes = value_lanes
+            .iter()
+            .map(|EgressValueLaneSpec { name, extractor }| {
+                MessageSelector::try_from_ext_spec(extractor, top)
+                    .map(|selector| (name.clone(), selector))
+            })
+            .collect::<Result<HashMap<_, _>, _>>()?;
+        let map_lanes = map_lanes
+            .iter()
+            .map(|EgressMapLaneSpec { name, extractor }| {
+                MessageSelector::try_from_ext_spec(extractor, top)
+                    .map(|selector| (name.clone(), selector))
+            })
+            .collect::<Result<HashMap<_, _>, _>>()?;
+        let value_downlinks = value_downlinks
+            .iter()
+            .map(|ValueDownlinkSpec { address, extractor }| {
+                MessageSelector::try_from_ext_spec(extractor, top)
+                    .map(|selector| (Address::<String>::from(address), selector))
+            })
+            .collect::<Result<HashMap<_, _>, _>>()?;
+        let map_downlinks = map_downlinks
+            .iter()
+            .map(|MapDownlinkSpec { address, extractor }| {
+                MessageSelector::try_from_ext_spec(extractor, top)
+                    .map(|selector| (Address::<String>::from(address), selector))
+            })
+            .collect::<Result<HashMap<_, _>, _>>()?;
+        let total = value_lanes.len() + map_lanes.len();
+        let total_lanes = if let Ok(n) = u32::try_from(total) {
+            n
+        } else {
+            return Err(InvalidExtractors::TooManyLanes(total));
+        };
+        Ok(Extractors {
+            value_lanes,
+            map_lanes,
+            value_downlinks,
+            map_downlinks,
+            total_lanes,
+        })
+    }
+}
+
+#[derive(Default)]
+struct Buffers {
+    key_buffer: BytesMut,
+    payload_buffer: BytesMut,
+}
+
+struct SerializingProducer<P> {
+    producer: P,
+    key_format: SharedMessageSerializer,
+    payload_format: SharedMessageSerializer,
+    buffers: RefCell<Buffers>,
+}
+
+impl<P: Clone> Clone for SerializingProducer<P> {
+    fn clone(&self) -> Self {
+        Self {
+            producer: self.producer.clone(),
+            key_format: self.key_format.clone(),
+            payload_format: self.payload_format.clone(),
+            buffers: Default::default(),
+        }
+    }
+}
+
+impl<P> SerializingProducer<P> {
+    fn new(
+        producer: P,
+        key_format: SharedMessageSerializer,
+        payload_format: SharedMessageSerializer,
+    ) -> Self {
+        SerializingProducer {
+            producer,
+            key_format,
+            payload_format,
+            buffers: Default::default(),
+        }
+    }
+}
+
+#[derive(Debug, Error)]
+pub enum KafkaSenderError {
+    #[error(transparent)]
+    Kafka(#[from] KafkaError),
+    #[error(transparent)]
+    Serialization(#[from] SerializationError),
+    #[error("The connector was not initialized.")]
+    NotInitialized,
+}
+
+impl<P> SerializingProducer<P>
+where
+    P: KafkaProducer + 'static,
+{
+    fn send(
+        &self,
+        topic: &str,
+        key: &Value,
+        payload: &Value,
+    ) -> Result<Option<P::Fut>, SerializationError> {
+        let SerializingProducer {
+            producer,
+            key_format,
+            payload_format,
+            buffers,
+        } = self;
+        let mut guard = buffers.borrow_mut();
+        let Buffers {
+            key_buffer,
+            payload_buffer,
+        } = &mut *guard;
+        key_buffer.clear();
+        payload_buffer.clear();
+        key_format.serialize(key, key_buffer)?;
+        payload_format.serialize(payload, payload_buffer)?;
+        match producer.send(topic, Some(key_buffer.as_ref()), payload_buffer.as_ref()) {
+            ProduceResult::ResultFuture(fut) => Ok(Some(fut)),
+            ProduceResult::QueueFull => Ok(None),
+        }
+    }
+}
+
+pub struct KafkaSender<P> {
+    producer: SerializingProducer<P>,
+    extractors: Arc<Extractors>,
+    timeout: Duration,
+    pending: RefCell<Pending>,
+}
+
+impl<P> KafkaSender<P> {
+    fn new(
+        producer: SerializingProducer<P>,
+        extractors: Arc<Extractors>,
+        timeout: Duration,
+    ) -> Self {
+        KafkaSender {
+            producer,
+            extractors,
+            timeout,
+            pending: Default::default(),
+        }
+    }
+}
+
+impl<P> Clone for KafkaSender<P>
+where
+    P: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            producer: self.producer.clone(),
+            extractors: self.extractors.clone(),
+            timeout: self.timeout,
+            pending: Default::default(),
+        }
+    }
+}
+
+impl<P> EgressConnectorSender<KafkaSenderError> for KafkaSender<P>
+where
+    P: KafkaProducer + Clone + Send + 'static,
+{
+    fn send(
+        &self,
+        source: MessageSource<'_>,
+        key: Option<&Value>,
+        value: &Value,
+    ) -> Option<SendResult<impl ConnectorFuture<KafkaSenderError>, KafkaSenderError>> {
+        let KafkaSender {
+            producer,
+            extractors,
+            timeout,
+            pending,
+        } = self;
+        extractors.select_source(source).and_then(|selector| {
+            selector.select_topic(key, value).and_then(|topic| {
+                let msg_key = selector.select_key(key, value).unwrap_or(&Value::Extant);
+                let payload = selector
+                    .select_payload(key, value)
+                    .unwrap_or(&Value::Extant);
+                match producer.send(topic, msg_key, payload) {
+                    Ok(Some(fut)) => Some(SendResult::Suspend(Box::pin(fut.map(|r| match r {
+                        Ok(_) => Ok(UnitHandler::default()),
+                        Err(err) => Err(KafkaSenderError::Kafka(err)),
+                    })))),
+                    Ok(None) => pending
+                        .borrow_mut()
+                        .push(
+                            topic.to_string(),
+                            source.into(),
+                            key.cloned(),
+                            value.clone(),
+                        )
+                        .map(|id| SendResult::RequestCallback(*timeout, id)),
+                    Err(err) => Some(SendResult::Fail(KafkaSenderError::Serialization(err))),
+                }
+            })
+        })
+    }
+
+    fn timer_event(
+        &self,
+        timer_id: u64,
+    ) -> Option<SendResult<impl ConnectorFuture<KafkaSenderError>, KafkaSenderError>> {
+        if let Some(record) = self.pending.borrow_mut().take(timer_id) {
+            let (name, key, value) = record;
+            self.send_owned(name, key, value)
+        } else {
+            None
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+enum OwnedSource {
+    Lane(String),
+    Downlink(Address<String>),
+}
+
+impl OwnedSource {
+    fn borrow_parts(&self) -> MessageSource<'_> {
+        match self {
+            OwnedSource::Lane(s) => MessageSource::Lane(s.as_str()),
+            OwnedSource::Downlink(addr) => MessageSource::Downlink(addr),
+        }
+    }
+}
+
+impl<'a> From<MessageSource<'a>> for OwnedSource {
+    fn from(value: MessageSource<'a>) -> Self {
+        match value {
+            MessageSource::Lane(s) => OwnedSource::Lane(s.to_string()),
+            MessageSource::Downlink(addr) => OwnedSource::Downlink(addr.clone()),
+        }
+    }
+}
+
+impl<P> KafkaSender<P>
+where
+    P: KafkaProducer + Clone + Send + 'static,
+{
+    fn send_owned(
+        &self,
+        source: OwnedSource,
+        key: Option<Value>,
+        value: Value,
+    ) -> Option<SendResult<impl ConnectorFuture<KafkaSenderError>, KafkaSenderError>> {
+        let KafkaSender {
+            producer,
+            extractors,
+            timeout,
+            pending,
+        } = self;
+        if let Some(selector) = extractors.select_source(source.borrow_parts()) {
+            let topic = if let Some(topic) = selector.select_topic(key.as_ref(), &value) {
+                let msg_key = selector
+                    .select_key(key.as_ref(), &value)
+                    .unwrap_or(&Value::Extant);
+                let payload = selector
+                    .select_payload(key.as_ref(), &value)
+                    .unwrap_or(&Value::Extant);
+                match producer.send(topic, msg_key, payload) {
+                    Ok(Some(fut)) => {
+                        return Some(SendResult::Suspend(Box::pin(fut.map(|r| match r {
+                            Ok(_) => Ok(UnitHandler::default()),
+                            Err(err) => Err(KafkaSenderError::Kafka(err)),
+                        }))))
+                    }
+                    Ok(None) => topic.to_string(),
+                    Err(err) => {
+                        return Some(SendResult::Fail(KafkaSenderError::Serialization(err)))
+                    }
+                }
+            } else {
+                return None;
+            };
+            pending
+                .borrow_mut()
+                .push(topic, source, key, value)
+                .map(|id| SendResult::RequestCallback(*timeout, id))
+        } else {
+            None
+        }
+    }
+}
+
+type PendingRecord = (OwnedSource, Option<Value>, Value);
+
+#[derive(Default, Debug)]
+struct Pending {
+    counter: u64,
+    topics: HashMap<u64, String>,
+    records: HashMap<String, PendingRecord>,
+}
+
+impl Pending {
+    fn push(
+        &mut self,
+        topic: String,
+        source: OwnedSource,
+        key: Option<Value>,
+        value: Value,
+    ) -> Option<u64> {
+        let Pending {
+            counter,
+            topics,
+            records,
+        } = self;
+        if let Some((rec_name, rec_key, rec_value)) = records.get_mut(&topic) {
+            *rec_name = source;
+            *rec_key = key;
+            *rec_value = value;
+            None
+        } else {
+            let id = *counter;
+            *counter += 1;
+            topics.insert(id, topic.clone());
+            records.insert(topic, (source, key, value));
+            Some(id)
+        }
+    }
+
+    fn take(&mut self, id: u64) -> Option<PendingRecord> {
+        let Pending {
+            topics, records, ..
+        } = self;
+        topics.remove(&id).and_then(|topic| records.remove(&topic))
     }
 }

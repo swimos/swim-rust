@@ -42,6 +42,8 @@ pub enum LoadError {
     InvalidDescriptor(#[from] Box<dyn std::error::Error + Send + 'static>),
     #[error("The configuration provided for the serializer or deserializer is invalid: {0}")]
     InvalidConfiguration(String),
+    #[error("Loading of the configuration was cancelled.")]
+    Cancelled,
 }
 
 /// Errors that can be produced by the Kafka connector.
@@ -126,3 +128,32 @@ impl From<ParseIntError> for BadSelector {
         BadSelector::IndexOutOfRange
     }
 }
+
+/// Error type for an invalid egress extractor specification.
+#[derive(Clone, Copy, Debug, Error, PartialEq, Eq)]
+pub enum InvalidExtractor {
+    /// A string describing a selector was invalid.
+    #[error(transparent)]
+    Selector(#[from] BadSelector),
+    /// No topic specified for an extractor.
+    #[error("An extractor did not provide a topic and no global topic was specified.")]
+    NoTopic,
+}
+
+/// Error type produced for invalid egress extractors.
+#[derive(Clone, Debug, Error, PartialEq, Eq)]
+pub enum InvalidExtractors {
+    /// The specification of an extractor was not valid.
+    #[error(transparent)]
+    Spec(#[from] InvalidExtractor),
+    /// A connector has too many lanes.
+    #[error("The connector has {0} lanes which cannot fit in a u32.")]
+    TooManyLanes(usize),
+    /// There are lane extractors with the same name.
+    #[error("The lane name {0} occurs more than once.")]
+    NameCollision(String),
+}
+
+#[derive(Clone, Copy, Default, Debug, PartialEq, Eq, Error)]
+#[error("Connector agent initialized twice.")]
+pub struct DoubleInitialization;

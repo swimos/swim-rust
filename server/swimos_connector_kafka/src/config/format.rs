@@ -21,9 +21,9 @@ use crate::{
         StringDeserializer, U32Deserializer, U64Deserializer, UuidDeserializer,
     },
     ser::{
-        BoxMessageSerializer, BytesSerializer, F32Serializer, F64Serializer, I32Serializer,
-        I64Serializer, MessageSerializer, ReconSerializer, StringSerializer, U32Serializer,
-        U64Serializer, UuidSerializer,
+        BytesSerializer, F32Serializer, F64Serializer, I32Serializer, I64Serializer,
+        MessageSerializer, ReconSerializer, SharedMessageSerializer, StringSerializer,
+        U32Serializer, U64Serializer, UuidSerializer,
     },
     Endianness, LoadError,
 };
@@ -79,20 +79,20 @@ impl DataFormat {
         }
     }
 
-    pub async fn load_serializer(&self) -> Result<BoxMessageSerializer, LoadError> {
+    pub async fn load_serializer(&self) -> Result<SharedMessageSerializer, LoadError> {
         match self {
-            DataFormat::Bytes => Ok(BytesSerializer.boxed()),
-            DataFormat::String => Ok(StringSerializer.boxed()),
-            DataFormat::Int32(endianness) => Ok(I32Serializer::new(*endianness).boxed()),
-            DataFormat::Int64(endianness) => Ok(I64Serializer::new(*endianness).boxed()),
-            DataFormat::UInt32(endianness) => Ok(U32Serializer::new(*endianness).boxed()),
-            DataFormat::UInt64(endianness) => Ok(U64Serializer::new(*endianness).boxed()),
-            DataFormat::Float32(endianness) => Ok(F32Serializer::new(*endianness).boxed()),
-            DataFormat::Float64(endianness) => Ok(F64Serializer::new(*endianness).boxed()),
-            DataFormat::Uuid => Ok(UuidSerializer.boxed()),
-            DataFormat::Recon => Ok(ReconSerializer.boxed()),
+            DataFormat::Bytes => Ok(BytesSerializer.shared()),
+            DataFormat::String => Ok(StringSerializer.shared()),
+            DataFormat::Int32(endianness) => Ok(I32Serializer::new(*endianness).shared()),
+            DataFormat::Int64(endianness) => Ok(I64Serializer::new(*endianness).shared()),
+            DataFormat::UInt32(endianness) => Ok(U32Serializer::new(*endianness).shared()),
+            DataFormat::UInt64(endianness) => Ok(U64Serializer::new(*endianness).shared()),
+            DataFormat::Float32(endianness) => Ok(F32Serializer::new(*endianness).shared()),
+            DataFormat::Float64(endianness) => Ok(F64Serializer::new(*endianness).shared()),
+            DataFormat::Uuid => Ok(UuidSerializer.shared()),
+            DataFormat::Recon => Ok(ReconSerializer.shared()),
             #[cfg(feature = "json")]
-            DataFormat::Json => Ok(crate::ser::JsonSerializer.boxed()),
+            DataFormat::Json => Ok(crate::ser::JsonSerializer.shared()),
             #[cfg(feature = "avro")]
             DataFormat::Avro { schema_path } => {
                 let schema = if let Some(path) = schema_path {
@@ -102,7 +102,7 @@ impl DataFormat {
                         "A schema is required.".to_string(),
                     ));
                 };
-                Ok(crate::ser::AvroSerializer::new(schema).boxed())
+                Ok(crate::ser::AvroSerializer::new(schema).shared())
             }
         }
     }

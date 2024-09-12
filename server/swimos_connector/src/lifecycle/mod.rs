@@ -28,20 +28,22 @@ use swimos_agent::{
         on_timer::OnTimer,
         HandlerContext,
     },
+    config::{MapDownlinkConfig, SimpleDownlinkConfig},
     event_handler::{
-        ActionContext, BoxHandlerAction, EventHandler, HandlerActionExt, TryHandlerActionExt,
-        UnitHandler,
+        ActionContext, EventHandler, HandlerActionExt, LocalBoxHandlerAction, Sequentially,
+        TryHandlerActionExt, UnitHandler,
     },
     lanes::map::MapLaneEvent,
     AgentMetadata,
 };
+use swimos_api::address::Address;
 use swimos_model::Value;
 use swimos_utilities::trigger;
 
 use crate::{
     connector::{suspend_connector, EgressConnector, EgressConnectorSender},
     error::ConnectorInitError,
-    ConnectorAgent, IngressConnector,
+    ConnectorAgent, EgressContext, IngressConnector, MessageSource, SendResult,
 };
 
 /// An [agent lifecycle](swimos_agent::agent_lifecycle::AgentLifecycle) implementation that serves as an adapter for
@@ -163,6 +165,22 @@ bitflags! {
 
 }
 
+#[derive(Default, Debug)]
+struct DownlinkCollector {
+    value_downlinks: Vec<Address<String>>,
+    map_downlinks: Vec<Address<String>>,
+}
+
+impl EgressContext for DownlinkCollector {
+    fn open_value_downlink(&mut self, address: Address<String>) {
+        self.value_downlinks.push(address);
+    }
+
+    fn open_map_downlink(&mut self, address: Address<String>) {
+        self.map_downlinks.push(address);
+    }
+}
+
 impl<C> OnStart<ConnectorAgent> for EgressConnectorLifecycle<C>
 where
     C: EgressConnector + Send,
@@ -171,7 +189,9 @@ where
         let EgressConnectorLifecycle { lifecycle, sender } = self;
         let (tx, rx) = trigger::trigger();
         let context: HandlerContext<ConnectorAgent> = Default::default();
+        let mut collector = DownlinkCollector::default();
         let on_start = lifecycle.on_start(tx);
+        lifecycle.open_downlinks(&mut collector);
         let create_sender = context
             .with_parameters(|params| lifecycle.make_sender(params))
             .try_handler()
@@ -186,7 +206,11 @@ where
                 .try_handler()
                 .followed_by(ConnectorAgent::set_flags(EgressFlags::INITIALIZED.bits()))
         });
-        await_init.followed_by(on_start).followed_by(create_sender)
+        let open_downlinks = self.open_downlinks(collector);
+        await_init
+            .followed_by(on_start)
+            .followed_by(create_sender)
+            .followed_by(open_downlinks)
     }
 }
 
@@ -219,11 +243,11 @@ impl<C> DynamicLifecycle<ConnectorAgent> for EgressConnectorLifecycle<C>
 where
     C: EgressConnector,
 {
-    type ValueHandler<'a> = BoxHandlerAction<'static, ConnectorAgent, ()>
+    type ValueHandler<'a> = LocalBoxHandlerAction<'a, ConnectorAgent, ()>
     where
         Self: 'a;
 
-    type MapHandler<'a> = BoxHandlerAction<'static, ConnectorAgent, ()>
+    type MapHandler<'a> = LocalBoxHandlerAction<'a, ConnectorAgent, ()>
     where
         Self: 'a;
 
@@ -236,16 +260,10 @@ where
         let EgressConnectorLifecycle { sender, .. } = self;
         if let Some(sender) = sender.get() {
             let context: HandlerContext<ConnectorAgent> = Default::default();
-            let fut = sender
-                .send(lane_name, None, value)
-                .into_future()
-                .map(move |h: Result<_, _>| context.value(h).try_handler().and_then(|h| h));
-            Some(context.suspend(fut))
+            handle_value_event(sender, MessageSource::Lane(lane_name), context, value)
         } else {
-            None
+            UnitHandler::default().boxed_local()
         }
-        .discard()
-        .boxed()
     }
 
     fn map_lane<'a>(
@@ -263,19 +281,189 @@ where
             }
             MapLaneEvent::Remove(k, _) => Some((k, None)),
         };
-        sender
-            .get()
-            .and_then(|sender| {
-                let context: HandlerContext<ConnectorAgent> = Default::default();
-                kv.map(|(k, v)| {
-                    let fut = sender
-                        .send(lane_name, Some(k), v.unwrap_or(&Value::Extant))
+        if let (Some(sender), Some((k, v))) = (sender.get(), kv) {
+            let context: HandlerContext<ConnectorAgent> = Default::default();
+            handle_map_event(sender, lane_name, context, k, v)
+        } else {
+            UnitHandler::default().boxed_local()
+        }
+    }
+}
+
+impl<C> OnTimer<ConnectorAgent> for EgressConnectorLifecycle<C>
+where
+    C: EgressConnector + Send,
+{
+    fn on_timer(&self, timer_id: u64) -> impl EventHandler<ConnectorAgent> + '_ {
+        let EgressConnectorLifecycle { sender, .. } = self;
+        if let Some(sender) = sender.get() {
+            let context: HandlerContext<ConnectorAgent> = Default::default();
+            match sender.timer_event(timer_id) {
+                Some(SendResult::Suspend(f)) => {
+                    let fut = f
                         .into_future()
                         .map(move |h: Result<_, _>| context.value(h).try_handler().and_then(|h| h));
-                    context.suspend(fut)
-                })
+                    context.suspend(fut).boxed_local()
+                }
+                Some(SendResult::RequestCallback(delay, id)) => {
+                    context.schedule_timer_event(delay, id).boxed_local()
+                }
+                _ => UnitHandler::default().boxed_local(),
+            }
+        } else {
+            UnitHandler::default().boxed_local()
+        }
+    }
+}
+
+impl<C> EgressConnectorLifecycle<C>
+where
+    C: EgressConnector,
+{
+    fn open_downlinks(
+        &self,
+        collector: DownlinkCollector,
+    ) -> impl EventHandler<ConnectorAgent> + '_ {
+        let EgressConnectorLifecycle { sender, .. } = self;
+        let context: HandlerContext<ConnectorAgent> = Default::default();
+        context
+            .value(sender.get().ok_or(ConnectorInitError))
+            .try_handler()
+            .and_then(move |sender: &C::Sender| {
+                let DownlinkCollector {
+                    value_downlinks,
+                    map_downlinks,
+                } = collector;
+                let mut open_value_dls = vec![];
+                let mut open_map_dls = vec![];
+                for address in value_downlinks {
+                    let open_dl = context
+                        .value_downlink_builder::<Value>(
+                            address.host.as_deref(),
+                            &address.node,
+                            &address.lane,
+                            SimpleDownlinkConfig::default(),
+                        )
+                        .with_shared_state((address, sender.clone()))
+                        .on_event(handle_value_event_dl)
+                        .done()
+                        .discard();
+                    open_value_dls.push(open_dl);
+                }
+                for Address { host, node, lane } in map_downlinks {
+                    let open_dl = context
+                        .map_downlink_builder::<Value, Value>(
+                            host.as_deref(),
+                            &node,
+                            &lane,
+                            MapDownlinkConfig::default(),
+                        )
+                        .with_state(("dl".to_string(), sender.clone()))
+                        .on_update(handle_update)
+                        .on_remove(handle_remove)
+                        .done()
+                        .discard();
+
+                    open_map_dls.push(open_dl);
+                }
+                Sequentially::new(open_value_dls).followed_by(Sequentially::new(open_map_dls))
             })
-            .discard()
-            .boxed()
+    }
+}
+
+fn handle_value_event_dl<'a, S, E>(
+    state: &'a (Address<String>, S),
+    context: HandlerContext<ConnectorAgent>,
+    value: &Value,
+) -> impl EventHandler<ConnectorAgent> + 'a
+where
+    S: EgressConnectorSender<E>,
+    E: std::error::Error + Send + 'static,
+{
+    let (addr, sender) = state;
+    handle_value_event(sender, MessageSource::Downlink(addr), context, value)
+}
+
+fn handle_update<'a, S, E>(
+    state: &'a (String, S),
+    context: HandlerContext<ConnectorAgent>,
+    _map: &HashMap<Value, Value>,
+    key: Value,
+    _previous: Option<Value>,
+    new_value: &Value,
+) -> impl EventHandler<ConnectorAgent> + 'a
+where
+    S: EgressConnectorSender<E>,
+    E: std::error::Error + Send + 'static,
+{
+    let (name, sender) = state;
+    handle_map_event(sender, name, context, &key, Some(new_value))
+}
+
+fn handle_remove<'a, S, E>(
+    state: &'a (String, S),
+    context: HandlerContext<ConnectorAgent>,
+    _map: &HashMap<Value, Value>,
+    key: Value,
+    _previous: Value,
+) -> impl EventHandler<ConnectorAgent> + 'a
+where
+    S: EgressConnectorSender<E>,
+    E: std::error::Error + Send + 'static,
+{
+    let (name, sender) = state;
+    handle_map_event(sender, name, context, &key, None)
+}
+fn handle_map_event<'a, S, E>(
+    sender: &'a S,
+    name: &'a str,
+    context: HandlerContext<ConnectorAgent>,
+    key: &Value,
+    value: Option<&Value>,
+) -> LocalBoxHandlerAction<'a, ConnectorAgent, ()>
+where
+    S: EgressConnectorSender<E>,
+    E: std::error::Error + Send + 'static,
+{
+    match sender.send(
+        MessageSource::Lane(name),
+        Some(key),
+        value.unwrap_or(&Value::Extant),
+    ) {
+        Some(SendResult::Suspend(f)) => {
+            let fut = f
+                .into_future()
+                .map(move |h: Result<_, _>| context.value(h).try_handler().and_then(|h| h));
+            context.suspend(fut).boxed_local()
+        }
+        Some(SendResult::RequestCallback(delay, id)) => {
+            context.schedule_timer_event(delay, id).boxed_local()
+        }
+        _ => UnitHandler::default().boxed_local(),
+    }
+}
+
+fn handle_value_event<'a, S, E>(
+    sender: &'a S,
+    source: MessageSource<'_>,
+    context: HandlerContext<ConnectorAgent>,
+    value: &Value,
+) -> LocalBoxHandlerAction<'a, ConnectorAgent, ()>
+where
+    S: EgressConnectorSender<E>,
+    E: std::error::Error + Send + 'static,
+{
+    match sender.send(source, None, value) {
+        Some(SendResult::Suspend(f)) => {
+            let fut = f
+                .into_future()
+                .map(move |h: Result<_, _>| context.value(h).try_handler().and_then(|h| h));
+            context.suspend(fut).boxed_local()
+        }
+        Some(SendResult::RequestCallback(delay, id)) => {
+            context.schedule_timer_event(delay, id).boxed_local()
+        }
+        Some(SendResult::Fail(err)) => context.fail(err).boxed_local(),
+        _ => UnitHandler::default().boxed_local(),
     }
 }

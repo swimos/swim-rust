@@ -19,8 +19,8 @@ mod format;
 mod ingress;
 
 pub use egress::{
-    EgressMapLaneSpec, EgressValueLaneSpec, KafkaEgressConfiguration, MapDownlinkSpec,
-    ValueDownlinkSpec, TopicSpecifier, ExtractionSpec,
+    EgressMapLaneSpec, EgressValueLaneSpec, ExtractionSpec, KafkaEgressConfiguration,
+    MapDownlinkSpec, TopicSpecifier, ValueDownlinkSpec,
 };
 pub use format::DataFormat;
 pub use ingress::{IngressMapLaneSpec, IngressValueLaneSpec, KafkaIngressConfiguration};
