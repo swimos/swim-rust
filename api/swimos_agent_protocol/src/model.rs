@@ -147,7 +147,7 @@ impl<T> From<StoreResponse<T>> for LaneResponse<T> {
 }
 
 /// Message type for agents to send ad hoc commands to the runtime.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Form)]
 pub struct AdHocCommand<S, T> {
     pub address: Address<S>,
     pub command: T,

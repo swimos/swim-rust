@@ -15,6 +15,8 @@
 #[cfg(test)]
 mod tests;
 
+use crate::connectors::suspend_connector;
+use crate::{Connector, ConnectorInitError};
 use swimos_agent::{
     agent_lifecycle::{
         item_event::ItemEvent, on_init::OnInit, on_start::OnStart, on_stop::OnStop, HandlerContext,
@@ -25,8 +27,6 @@ use swimos_agent::{
     AgentMetadata,
 };
 use swimos_utilities::trigger;
-
-use crate::{connector::suspend_connector, error::ConnectorInitError, Connector};
 
 /// An [agent lifecycle](swimos_agent::agent_lifecycle::AgentLifecycle) implementation that serves as an adapter for
 /// a [connector](Connector).

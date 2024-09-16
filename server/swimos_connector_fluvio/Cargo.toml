@@ -10,6 +10,8 @@ repository = "https://github.com/swimos/swim-rust/tree/main/server/swimos_connec
 
 [features]
 default = []
+json = ["swimos_connector/json"]
+avro = ["swimos_connector/avro"]
 
 [dependencies]
 swimos = { workspace = true, features = ["server", "agent"] }
@@ -22,7 +24,6 @@ thiserror = { workspace = true }
 swimos_connector = { workspace = true }
 fluvio = { workspace = true }
 
-
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread"] }
 example-util = { path = "../../example_apps/example_util" }
@@ -32,4 +33,9 @@ tracing = { workspace = true }
 serde_json = { workspace = true }
 
 [[example]]
-name = "example"
+name = "fluvio_relay"
+required-features = ["json"]
+
+[[example]]
+name = "fluvio_generic"
+required-features = ["json"]

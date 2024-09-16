@@ -22,22 +22,21 @@ use futures::{future::join, TryStreamExt};
 use parking_lot::Mutex;
 use rand::{rngs::ThreadRng, Rng};
 use rdkafka::error::KafkaError;
-use swimos_connector::{Connector, GenericConnectorAgent};
+use swimos_connector::Connector;
 use swimos_model::{Item, Value};
 use swimos_recon::print_recon_compact;
 use swimos_utilities::trigger;
 use tokio::sync::mpsc;
 
-use crate::{
-    config::KafkaLogLevel,
-    connector::{message_to_handler, Lanes, MessageSelector, MessageState, MessageTasks},
-    deser::{MessageDeserializer, MessageView, ReconDeserializer},
-    error::KafkaConnectorError,
-    facade::{ConsumerFactory, KafkaConsumer, KafkaMessage},
-    DeserializationFormat, KafkaConnector, KafkaConnectorConfiguration, MapLaneSpec, ValueLaneSpec,
-};
-
 use super::{run_handler_with_futures, setup_agent};
+use crate::{
+    connector::{message_to_handler, Lanes, MessageSelector, MessageState, MessageTasks},
+    facade::{ConsumerFactory, KafkaConsumer, KafkaMessage},
+    DeserializationFormat, KafkaConnector, KafkaConnectorConfiguration, KafkaConnectorError,
+    KafkaLogLevel, MapLaneSpec, ValueLaneSpec,
+};
+use swimos_connector::deserialization::{MessageDeserializer, MessageView, ReconDeserializer};
+use swimos_connector::generic::GenericConnectorAgent;
 
 fn props() -> HashMap<String, String> {
     [("key".to_string(), "value".to_string())]

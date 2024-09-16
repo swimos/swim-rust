@@ -14,6 +14,7 @@
 
 use std::collections::HashMap;
 
+use crate::KafkaLogLevel;
 use futures::Future;
 use rdkafka::{
     config::RDKafkaLogLevel,
@@ -22,9 +23,8 @@ use rdkafka::{
     message::BorrowedMessage,
     ClientConfig, ClientContext, Message, Statistics, TopicPartitionList,
 };
+use swimos_connector::deserialization::MessageView;
 use tracing::{debug, error, info, warn};
-
-use crate::{config::KafkaLogLevel, deser::MessageView};
 
 pub trait KafkaMessage {
     fn view(&self) -> MessageView<'_>;

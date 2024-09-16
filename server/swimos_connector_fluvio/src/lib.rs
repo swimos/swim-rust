@@ -12,29 +12,36 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use fluvio::{
-    consumer::{ConsumerConfigExt, Record},
-    dataplane::link::ErrorCode,
-    Fluvio, FluvioConfig, FluvioError, Offset,
-};
-use futures::stream::unfold;
-use futures::{Stream, StreamExt};
+pub mod generic;
+pub mod relay;
 
-use swimos_agent::event_handler::{Either, EventHandler, UnitHandler};
-use swimos_connector::{
-    simple::{
-        ConnectorHandlerContext, Relay, RelayError, SimpleConnectorAgent, SimpleConnectorHandler,
-    },
-    Connector, ConnectorStream,
+use crate::generic::GenericModel;
+use crate::relay::RelayModel;
+use fluvio::consumer::{ConsumerConfigExt, ConsumerStream};
+use fluvio::dataplane::link::ErrorCode;
+use fluvio::dataplane::record::ConsumerRecord;
+use fluvio::{Fluvio, FluvioConfig, FluvioError, Offset};
+use swimos_connector::generic::{
+    DerserializerLoadError, DeserializationFormat, InvalidLanes, LaneSelectorError, MapLaneSpec,
+    ValueLaneSpec,
 };
-use swimos_utilities::trigger::Sender;
+use swimos_connector::relay::RelayError;
 
+/// Errors that can be produced by the Fluvio connector.
 #[derive(thiserror::Error, Debug)]
 pub enum FluvioConnectorError {
+    /// Fluvio Library Error.
     #[error(transparent)]
     Native(FluvioError),
+    /// An error produced by the configured relay.
     #[error(transparent)]
     Relay(#[from] RelayError),
+    /// Failed to load the deserializers required to interpret the Fluvio messages.
+    #[error(transparent)]
+    Configuration(#[from] DerserializerLoadError),
+    /// Attempting to select the required components of a Fluvio message failed.
+    #[error(transparent)]
+    Lane(#[from] LaneSelectorError),
 }
 
 impl FluvioConnectorError {
@@ -43,150 +50,105 @@ impl FluvioConnectorError {
     }
 }
 
+/// Configuration parameters for the Fluvio connector.
 #[derive(Debug, Clone)]
 pub struct FluvioConnectorConfiguration {
+    /// The topic to consume from.
     pub topic: String,
-    pub relay: Relay,
+    /// Fluvio library configuration.
     pub fluvio: FluvioConfig,
+    /// The partition to consume from.
     pub partition: u32,
+    /// The offset to start consuming from.
     pub offset: Offset,
 }
 
+/// A [connector](`Connector`) to ingest a stream of Fluvio record into a Swim application. This
+/// should be used to provide a lifecycle for either a [`GenericConnectorAgent`] or a [`RelayConnectorAgent`].
 #[derive(Debug, Clone)]
-pub struct FluvioConnector {
-    config: FluvioConnectorConfiguration,
+pub struct FluvioConnector<R> {
+    inner: R,
 }
 
-impl FluvioConnector {
-    pub fn new(config: FluvioConnectorConfiguration) -> FluvioConnector {
-        FluvioConnector { config }
+impl<I> FluvioConnector<I> {
+    pub fn new(inner: I) -> FluvioConnector<I> {
+        FluvioConnector { inner }
     }
 }
 
-impl Connector<SimpleConnectorAgent> for FluvioConnector {
-    type StreamError = FluvioConnectorError;
+impl<R> FluvioConnector<RelayModel<R>> {
+    /// Constructs a new Fluvio connector which will operate as a [`Relay`].
+    ///
+    /// # Arguments
+    /// * `config` - Fluvio connector configuration.
+    /// * `relay` - the [`Relay`] which will be invoked each time a record is received.
+    pub fn relay(config: FluvioConnectorConfiguration, relay: R) -> FluvioConnector<RelayModel<R>> {
+        FluvioConnector::new(RelayModel::new(config, relay))
+    }
+}
 
-    fn create_stream(
-        &self,
-    ) -> Result<impl ConnectorStream<SimpleConnectorAgent, Self::StreamError>, Self::StreamError>
-    {
-        let FluvioConnector { config } = self;
-        Ok(unfold(ConnectorState::Uninit(config.clone()), |state| {
-            let fut = async move {
-                match state {
-                    ConnectorState::Uninit(config) => {
-                        let FluvioConnectorConfiguration {
-                            topic,
-                            relay,
-                            fluvio,
-                            partition,
-                            offset,
-                        } = config;
+impl FluvioConnector<GenericModel> {
+    /// Constructs a new Fluvio connector which will operate as a [`GenericConnectorAgent`]. Returns
+    /// either a Fluvio connector or an error if there are too many lanes or overlapping lane URIs.
+    ///
+    /// # Arguments
+    /// * `config` - Fluvio connector configuration.
+    /// * `key_deserializer` - deserializer for keys.
+    /// * `payload_deserializer` - deserializer for payloads.
+    /// * `value_lanes` - specification of the value lanes for the connector.
+    /// * `map_lanes` - specification of the map lane for the connector.
+    pub fn generic(
+        config: FluvioConnectorConfiguration,
+        key_deserializer: DeserializationFormat,
+        payload_deserializer: DeserializationFormat,
+        value_lanes: Vec<ValueLaneSpec>,
+        map_lanes: Vec<MapLaneSpec>,
+    ) -> Result<FluvioConnector<GenericModel>, InvalidLanes> {
+        Ok(FluvioConnector::new(GenericModel::new(
+            config,
+            key_deserializer,
+            payload_deserializer,
+            value_lanes,
+            map_lanes,
+        )?))
+    }
+}
 
-                        match Fluvio::connect_with_config(&fluvio).await {
-                            Ok(handle) => {
-                                let consumer_config = match ConsumerConfigExt::builder()
-                                    .topic(topic)
-                                    .offset_start(offset)
-                                    .partition(partition)
-                                    .build()
-                                {
-                                    Ok(config) => config,
-                                    Err(e) => {
-                                        return Some((
-                                            Err(FluvioConnectorError::other(e)),
-                                            ConnectorState::Failed,
-                                        ));
-                                    }
-                                };
+async fn open(
+    config: FluvioConnectorConfiguration,
+) -> Result<
+    (
+        Fluvio,
+        impl ConsumerStream<Item = Result<ConsumerRecord, ErrorCode>> + Sized,
+    ),
+    FluvioConnectorError,
+> {
+    let FluvioConnectorConfiguration {
+        topic,
+        fluvio,
+        partition,
+        offset,
+    } = config;
 
-                                match handle.consumer_with_config(consumer_config).await {
-                                    Ok(consumer) => Some((
-                                        Ok(Either::Left(UnitHandler::default())),
-                                        ConnectorState::Running {
-                                            fluvio: handle,
-                                            consumer,
-                                            relay,
-                                        },
-                                    )),
-                                    Err(e) => Some((
-                                        Err(FluvioConnectorError::other(e)),
-                                        ConnectorState::Failed,
-                                    )),
-                                }
-                            }
-                            Err(e) => {
-                                Some((Err(FluvioConnectorError::other(e)), ConnectorState::Failed))
-                            }
-                        }
-                    }
-                    ConnectorState::Running {
-                        fluvio,
-                        mut consumer,
-                        relay,
-                    } => match poll_dispatch(&mut consumer, relay.clone()).await {
-                        Some(Ok(handler)) => Some((
-                            Ok(Either::Right(handler)),
-                            ConnectorState::Running {
-                                fluvio,
-                                consumer,
-                                relay,
-                            },
-                        )),
-                        Some(Err(e)) => Some((Err(e), ConnectorState::Failed)),
-                        None => None,
-                    },
-                    ConnectorState::Failed => None,
+    match Fluvio::connect_with_config(&fluvio).await {
+        Ok(handle) => {
+            let consumer_config = match ConsumerConfigExt::builder()
+                .topic(topic)
+                .offset_start(offset)
+                .partition(partition)
+                .build()
+            {
+                Ok(config) => config,
+                Err(e) => {
+                    return Err(FluvioConnectorError::other(e));
                 }
             };
-            Box::pin(fut)
-        }))
-    }
 
-    fn on_start(&self, init_complete: Sender) -> impl EventHandler<SimpleConnectorAgent> + '_ {
-        let handler_context = ConnectorHandlerContext::default();
-        handler_context.effect(|| {
-            init_complete.trigger();
-        })
-    }
-
-    fn on_stop(&self) -> impl EventHandler<SimpleConnectorAgent> + '_ {
-        UnitHandler::default()
-    }
-}
-
-async fn poll_dispatch<C>(
-    consumer: &mut C,
-    relay: Relay,
-) -> Option<Result<impl SimpleConnectorHandler, FluvioConnectorError>>
-where
-    C: Stream<Item = Result<Record, ErrorCode>> + Unpin,
-{
-    match consumer.next().await {
-        Some(Ok(record)) => {
-            let handler_context = ConnectorHandlerContext::default();
-            let result = relay
-                .on_record(
-                    record.key().unwrap_or_default(),
-                    record.value(),
-                    handler_context,
-                )
-                .map_err(Into::into);
-            Some(result)
+            match handle.consumer_with_config(consumer_config).await {
+                Ok(consumer) => Ok((handle, consumer)),
+                Err(e) => Err(FluvioConnectorError::other(e)),
+            }
         }
-        Some(Err(code)) => Some(Err(FluvioConnectorError::Native(FluvioError::Other(
-            code.to_string(),
-        )))),
-        None => None,
+        Err(e) => Err(FluvioConnectorError::other(e)),
     }
-}
-
-enum ConnectorState<C> {
-    Uninit(FluvioConnectorConfiguration),
-    Running {
-        fluvio: Fluvio,
-        consumer: C,
-        relay: Relay,
-    },
-    Failed,
 }

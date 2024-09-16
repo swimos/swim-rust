@@ -37,9 +37,10 @@ use swimos_api::{
 use swimos_utilities::trigger;
 use thiserror::Error;
 
+use crate::generic::GenericConnectorAgent;
 use crate::{
     test_support::{make_meta, make_uri, TestContext},
-    Connector, ConnectorInitError, ConnectorLifecycle, ConnectorStream, GenericConnectorAgent,
+    Connector, ConnectorInitError, ConnectorLifecycle, ConnectorStream,
 };
 
 #[derive(Default)]

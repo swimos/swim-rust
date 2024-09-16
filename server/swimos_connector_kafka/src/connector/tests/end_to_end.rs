@@ -13,11 +13,13 @@
 // limitations under the License.
 
 use crate::{
-    DeserializationFormat, Endianness, KafkaConnector, KafkaConnectorConfiguration, KafkaLogLevel,
-    MapLaneSpec, ValueLaneSpec,
+    DeserializationFormat, KafkaConnector, KafkaConnectorConfiguration, KafkaLogLevel, MapLaneSpec,
+    ValueLaneSpec,
 };
 use futures::{future::join, TryStreamExt};
-use swimos_connector::{Connector, GenericConnectorAgent};
+use swimos_connector::deserialization::Endianness;
+use swimos_connector::generic::GenericConnectorAgent;
+use swimos_connector::Connector;
 use swimos_utilities::trigger;
 
 use crate::connector::tests::{run_handler, run_handler_with_futures, TestSpawner};

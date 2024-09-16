@@ -8,6 +8,11 @@ license.workspace = true
 repository = "https://github.com/swimos/swim-rust/tree/main/server/swimos_connector"
 homepage.workspace = true
 
+[features]
+default = []
+json = ["dep:serde_json"]
+avro = ["dep:apache-avro", "dep:chrono"]
+
 [dependencies]
 futures = { workspace = true }
 swimos_utilities = { workspace = true }
@@ -23,13 +28,17 @@ swimos_agent_protocol = { workspace = true }
 tokio-stream = { workspace = true }
 tracing = { workspace = true }
 frunk = { workspace = true }
-uuid = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }
 thiserror = { workspace = true }
-serde_json = { workspace = true }
-serde = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
 nom = { workspace = true }
 nom_locate = { workspace = true }
+serde_json = { workspace = true, optional = true }
+apache-avro = { workspace = true, optional = true }
+chrono = { workspace = true, optional = true }
+regex = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt", "test-util", "time"] }
 parking_lot = { workspace = true }
+serde_json = { workspace = true }

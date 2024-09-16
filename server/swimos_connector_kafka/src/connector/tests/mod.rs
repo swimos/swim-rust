@@ -22,12 +22,16 @@ use std::{
     time::Duration,
 };
 
+use super::Lanes;
+use crate::{connector::MessageSelector, MapLaneSpec, ValueLaneSpec};
 use bytes::BytesMut;
 use futures::{
     future::{join, BoxFuture},
     stream::FuturesUnordered,
     StreamExt,
 };
+use swimos_agent::agent_lifecycle::HandlerContext;
+use swimos_agent::event_handler::HandlerActionExt;
 use swimos_agent::{
     agent_model::{
         downlink::BoxDownlinkChannel, AgentSpec, ItemDescriptor, ItemFlags, WarpLaneKind,
@@ -44,7 +48,13 @@ use swimos_api::{
     },
     error::{AgentRuntimeError, DownlinkRuntimeError, DynamicRegistrationError, OpenStoreError},
 };
-use swimos_connector::{Deferred, DeserializationError, GenericConnectorAgent};
+use swimos_connector::deserialization::{
+    Deferred, DeserializationError, MessageDeserializer, MessageView, ReconDeserializer,
+};
+use swimos_connector::generic::{
+    GenericConnectorAgent, InvalidLanes, LaneSelectorError, MapLaneSelector, ValueLaneSelector,
+};
+use swimos_connector::selector::{BasicSelector, ChainSelector, SlotSelector, ValueSelector};
 use swimos_model::{Item, Value};
 use swimos_recon::print_recon_compact;
 use swimos_utilities::{
@@ -53,19 +63,6 @@ use swimos_utilities::{
     trigger,
 };
 use tokio::time::timeout;
-
-use crate::{
-    connector::{InvalidLanes, MessageSelector},
-    deser::{MessageDeserializer, MessageView, ReconDeserializer},
-    error::LaneSelectorError,
-    selector::{
-        BasicSelector, ChainSelector, LaneSelector, MapLaneSelector, SlotSelector,
-        ValueLaneSelector,
-    },
-    MapLaneSpec, ValueLaneSpec,
-};
-
-use super::Lanes;
 
 struct LaneRequest {
     name: String,
@@ -278,14 +275,10 @@ fn lanes_from_spec() {
     let lanes =
         Lanes::try_from_lane_specs(&value_lanes, &map_lanes).expect("Invalid specification.");
 
-    assert_eq!(lanes.total_lanes, 3);
+    assert_eq!(lanes.total(), 3);
 
-    let value_lanes = lanes
-        .value_lanes
-        .iter()
-        .map(|l| l.name())
-        .collect::<Vec<_>>();
-    let map_lanes = lanes.map_lanes.iter().map(|l| l.name()).collect::<Vec<_>>();
+    let value_lanes = lanes.value().iter().map(|l| l.name()).collect::<Vec<_>>();
+    let map_lanes = lanes.map().iter().map(|l| l.name()).collect::<Vec<_>>();
 
     assert_eq!(&value_lanes, &["key", "name"]);
     assert_eq!(&map_lanes, &["map"]);
@@ -394,14 +387,8 @@ impl From<Value> for TestDeferred {
 }
 
 impl Deferred for TestDeferred {
-    type Out = Value;
-
     fn get(&mut self) -> Result<&Value, DeserializationError> {
         Ok(&self.value)
-    }
-
-    fn take(self) -> Result<Self::Out, DeserializationError> {
-        Ok(self.value.clone())
     }
 }
 
@@ -419,7 +406,7 @@ fn value_lane_selector_handler() {
 
     let selector = ValueLaneSelector::new(
         "key".to_string(),
-        LaneSelector::Key(ChainSelector::default()),
+        ValueSelector::Key(ChainSelector::default()),
         true,
     );
 
@@ -442,7 +429,7 @@ fn value_lane_selector_handler() {
 fn value_lane_selector_handler_optional_field() {
     let (agent, _) = setup_agent();
 
-    let selector = LaneSelector::Payload(ChainSelector::new(vec![BasicSelector::Slot(
+    let selector = ValueSelector::Payload(ChainSelector::new(vec![BasicSelector::Slot(
         SlotSelector::for_field("other"),
     )]));
 
@@ -463,7 +450,7 @@ fn value_lane_selector_handler_optional_field() {
 
 #[test]
 fn value_lane_selector_handler_missing_field() {
-    let selector = LaneSelector::Payload(ChainSelector::new(vec![BasicSelector::Slot(
+    let selector = ValueSelector::Payload(ChainSelector::new(vec![BasicSelector::Slot(
         SlotSelector::for_field("other"),
     )]));
 
@@ -483,10 +470,10 @@ fn value_lane_selector_handler_missing_field() {
 fn map_lane_selector_handler() {
     let (mut agent, ids) = setup_agent();
 
-    let key = LaneSelector::Payload(ChainSelector::new(vec![BasicSelector::Slot(
+    let key = ValueSelector::Payload(ChainSelector::new(vec![BasicSelector::Slot(
         SlotSelector::for_field("key"),
     )]));
-    let value = LaneSelector::Payload(ChainSelector::new(vec![BasicSelector::Slot(
+    let value = ValueSelector::Payload(ChainSelector::new(vec![BasicSelector::Slot(
         SlotSelector::for_field("value"),
     )]));
 
@@ -516,10 +503,10 @@ fn map_lane_selector_handler() {
 fn map_lane_selector_handler_optional_field() {
     let (agent, _) = setup_agent();
 
-    let key = LaneSelector::Payload(ChainSelector::new(vec![BasicSelector::Slot(
+    let key = ValueSelector::Payload(ChainSelector::new(vec![BasicSelector::Slot(
         SlotSelector::for_field("key"),
     )]));
-    let value = LaneSelector::Payload(ChainSelector::new(vec![BasicSelector::Slot(
+    let value = ValueSelector::Payload(ChainSelector::new(vec![BasicSelector::Slot(
         SlotSelector::for_field("value"),
     )]));
 
@@ -540,10 +527,10 @@ fn map_lane_selector_handler_optional_field() {
 
 #[test]
 fn map_lane_selector_handler_missing_field() {
-    let key = LaneSelector::Payload(ChainSelector::new(vec![BasicSelector::Slot(
+    let key = ValueSelector::Payload(ChainSelector::new(vec![BasicSelector::Slot(
         SlotSelector::for_field("key"),
     )]));
-    let value = LaneSelector::Payload(ChainSelector::new(vec![BasicSelector::Slot(
+    let value = ValueSelector::Payload(ChainSelector::new(vec![BasicSelector::Slot(
         SlotSelector::for_field("value"),
     )]));
 
@@ -563,10 +550,10 @@ fn map_lane_selector_handler_missing_field() {
 fn map_lane_selector_remove() {
     let (mut agent, ids) = setup_agent();
 
-    let key = LaneSelector::Payload(ChainSelector::new(vec![BasicSelector::Slot(
+    let key = ValueSelector::Payload(ChainSelector::new(vec![BasicSelector::Slot(
         SlotSelector::for_field("key"),
     )]));
-    let value = LaneSelector::Payload(ChainSelector::new(vec![BasicSelector::Slot(
+    let value = ValueSelector::Payload(ChainSelector::new(vec![BasicSelector::Slot(
         SlotSelector::for_field("value"),
     )]));
 
@@ -638,7 +625,12 @@ async fn handle_message() {
     let (tx, rx) = trigger::trigger();
 
     let handler = selector
-        .handle_message(&message, tx)
+        .handle_message(&message)
+        .map(|handler| {
+            handler.followed_by(HandlerContext::default().effect(move || {
+                let _ = tx.trigger();
+            }))
+        })
         .expect("Selector failed.");
 
     let handler_task = run_handler_with_futures(&agent, handler);
@@ -678,9 +670,7 @@ async fn handle_message_missing_field() {
         payload: payload_str.as_bytes(),
     };
 
-    let (tx, _rx) = trigger::trigger();
-
-    let result = selector.handle_message(&message, tx);
+    let result = selector.handle_message(&message);
     assert!(matches!(result, Err(LaneSelectorError::MissingRequiredLane(name)) if name == "map"));
 }
 
@@ -709,9 +699,7 @@ async fn handle_message_bad_data() {
         payload: b"^*$&@*@",
     };
 
-    let (tx, _rx) = trigger::trigger();
-
-    let result = selector.handle_message(&message, tx);
+    let result = selector.handle_message(&message);
     assert!(matches!(
         result,
         Err(LaneSelectorError::DeserializationFailed(_))
