@@ -42,7 +42,8 @@ use thiserror::Error;
 use crate::{
     connector::BaseConnector,
     test_support::{make_meta, make_uri},
-    ConnectorAgent, ConnectorInitError, ConnectorLifecycle, ConnectorStream, IngressConnector,
+    ConnectorAgent, ConnectorInitError, ConnectorStream, IngressConnector,
+    IngressConnectorLifecycle,
 };
 
 #[derive(Default)]
@@ -239,7 +240,7 @@ impl IngressConnector for TestConnector {
 #[tokio::test]
 async fn connector_lifecycle_start() {
     let connector = TestConnector::default();
-    let lifecycle = ConnectorLifecycle::new(connector.clone());
+    let lifecycle = IngressConnectorLifecycle::new(connector.clone());
     let handler = lifecycle.on_start();
     let agent = ConnectorAgent::default();
     assert!(run_handle_with_futs(&agent, handler).await.is_ok());
@@ -260,7 +261,7 @@ async fn connector_lifecycle_start() {
 #[tokio::test]
 async fn connector_lifecycle_stop() {
     let connector = TestConnector::default();
-    let lifecycle = ConnectorLifecycle::new(connector.clone());
+    let lifecycle = IngressConnectorLifecycle::new(connector.clone());
     let handler = lifecycle.on_stop();
     let agent = ConnectorAgent::default();
     assert!(run_handle_with_futs(&agent, handler).await.is_ok());
@@ -276,7 +277,7 @@ async fn connector_lifecycle_drop_trigger() {
         ..Default::default()
     };
 
-    let lifecycle = ConnectorLifecycle::new(connector.clone());
+    let lifecycle = IngressConnectorLifecycle::new(connector.clone());
     let handler = lifecycle.on_start();
     let agent = ConnectorAgent::default();
     let result = run_handle_with_futs(&agent, handler).await;
@@ -293,7 +294,7 @@ async fn connector_lifecycle_fail_init() {
         ..Default::default()
     };
 
-    let lifecycle = ConnectorLifecycle::new(connector.clone());
+    let lifecycle = IngressConnectorLifecycle::new(connector.clone());
     let handler = lifecycle.on_start();
     let agent = ConnectorAgent::default();
     let result = run_handle_with_futs(&agent, handler).await;
@@ -309,7 +310,7 @@ async fn connector_lifecycle_fail_stream() {
         ..Default::default()
     };
 
-    let lifecycle = ConnectorLifecycle::new(connector.clone());
+    let lifecycle = IngressConnectorLifecycle::new(connector.clone());
     let handler = lifecycle.on_start();
     let agent = ConnectorAgent::default();
     let result = run_handle_with_futs(&agent, handler).await;

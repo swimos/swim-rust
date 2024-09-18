@@ -19,7 +19,7 @@ use swimos_agent::agent_model::AgentModel;
 use swimos_api::agent::{Agent, AgentConfig, AgentContext, AgentInitResult};
 use swimos_utilities::routing::RouteUri;
 
-use crate::{ConnectorAgent, ConnectorLifecycle, IngressConnector};
+use crate::{ConnectorAgent, IngressConnector, IngressConnectorLifecycle};
 
 /// A convenience type to register a [connector](Connector) as an agent route.
 pub struct ConnectorModel<F> {
@@ -96,7 +96,7 @@ where
     ) -> BoxFuture<'static, AgentInitResult> {
         let fac = self.connector_fac.clone();
         let agent_model = AgentModel::from_fn(ConnectorAgent::default, move || {
-            ConnectorLifecycle::new(fac.make_connector())
+            IngressConnectorLifecycle::new(fac.make_connector())
         });
         agent_model.run(route, route_params, config, context)
     }
