@@ -13,6 +13,8 @@
 // limitations under the License.
 
 mod egress;
+#[cfg(test)]
+mod fixture;
 mod ingress;
 
 pub use egress::EgressConnectorLifecycle;

@@ -43,9 +43,21 @@ use crate::{
     ConnectorAgent, EgressContext, MessageSource, SendResult,
 };
 
+#[cfg(test)]
+mod tests;
+
 pub struct EgressConnectorLifecycle<C: EgressConnector> {
     lifecycle: C,
     sender: OnceCell<C::Sender>,
+}
+
+impl<C: EgressConnector> EgressConnectorLifecycle<C> {
+    pub fn new(lifecycle: C) -> Self {
+        EgressConnectorLifecycle {
+            lifecycle,
+            sender: OnceCell::new(),
+        }
+    }
 }
 
 impl<C> OnInit<ConnectorAgent> for EgressConnectorLifecycle<C>
@@ -66,7 +78,7 @@ where
     C: EgressConnector + Send,
 {
     fn on_stop(&self) -> impl EventHandler<ConnectorAgent> + '_ {
-        UnitHandler::default()
+        self.lifecycle.on_stop()
     }
 }
 
@@ -242,7 +254,7 @@ where
         let EgressConnectorLifecycle { sender, .. } = self;
         let context: HandlerContext<ConnectorAgent> = Default::default();
         context
-            .value(sender.get().ok_or(ConnectorInitError))
+            .effect(|| sender.get().ok_or(ConnectorInitError))
             .try_handler()
             .and_then(move |sender: &C::Sender| {
                 let DownlinkCollector {
