@@ -21,12 +21,12 @@ use parking_lot::Mutex;
 use swimos_agent::agent_lifecycle::on_start::OnStart;
 use swimos_agent::agent_lifecycle::on_stop::OnStop;
 use swimos_agent::agent_lifecycle::HandlerContext;
+use swimos_agent::agent_model::AgentSpec;
 use swimos_agent::agent_model::{ItemDescriptor, ItemFlags};
 use swimos_agent::event_handler::{
     ActionContext, EventHandler, HandlerAction, HandlerActionExt, StepResult,
 };
 use swimos_agent::AgentMetadata;
-use swimos_agent::agent_model::AgentSpec;
 use swimos_api::address::Address;
 use swimos_api::agent::{DownlinkKind, WarpLaneKind};
 use swimos_model::Value;
@@ -246,11 +246,13 @@ impl EgressConnectorSender<TestError> for TestSender {
     }
 }
 
-async fn init_connector(agent: &ConnectorAgent,
+async fn init_connector(
+    agent: &ConnectorAgent,
     connector: &TestConnector,
-    lifecycle: &EgressConnectorLifecycle<TestConnector>) {
+    lifecycle: &EgressConnectorLifecycle<TestConnector>,
+) {
     let handler = lifecycle.on_start();
-    
+
     let downlinks = run_handle_with_futs(agent, handler)
         .await
         .expect("Handler failed.");
@@ -264,13 +266,13 @@ async fn init_connector(agent: &ConnectorAgent,
                 path, make_channel, ..
             } = first;
             assert_eq!(path, &value_lane_addr());
-            assert_eq!(make_channel.kind(), DownlinkKind::Value);
+            assert_eq!(make_channel.kind(), DownlinkKind::Event);
 
             let DownlinkRecord {
                 path, make_channel, ..
             } = second;
             assert_eq!(path, &map_lane_addr());
-            assert_eq!(make_channel.kind(), DownlinkKind::Map);
+            assert_eq!(make_channel.kind(), DownlinkKind::MapEvent);
         }
         _ => panic!("Expected 2 downlinks, found {}.", downlinks.len()),
     }
@@ -280,10 +282,20 @@ const VALUE_LANE: &str = "value_lane";
 const MAP_LANE: &str = "map_lane";
 
 fn create_lanes(agent: &ConnectorAgent) {
-    let value_desc = ItemDescriptor::WarpLane { kind: WarpLaneKind::Value, flags: ItemFlags::TRANSIENT };
-    let map_desc = ItemDescriptor::WarpLane { kind: WarpLaneKind::Map, flags: ItemFlags::TRANSIENT };
-    agent.register_dynamic_item(VALUE_LANE, value_desc).expect("Value lane registration failed.");
-    agent.register_dynamic_item(MAP_LANE, map_desc).expect("Map lane registration failed.");
+    let value_desc = ItemDescriptor::WarpLane {
+        kind: WarpLaneKind::Value,
+        flags: ItemFlags::TRANSIENT,
+    };
+    let map_desc = ItemDescriptor::WarpLane {
+        kind: WarpLaneKind::Map,
+        flags: ItemFlags::TRANSIENT,
+    };
+    agent
+        .register_dynamic_item(VALUE_LANE, value_desc)
+        .expect("Value lane registration failed.");
+    agent
+        .register_dynamic_item(MAP_LANE, map_desc)
+        .expect("Map lane registration failed.");
 }
 
 #[tokio::test]

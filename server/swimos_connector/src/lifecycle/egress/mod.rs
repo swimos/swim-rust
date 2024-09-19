@@ -25,7 +25,7 @@ use swimos_agent::{
         on_timer::OnTimer,
         HandlerContext,
     },
-    config::{MapDownlinkConfig, SimpleDownlinkConfig},
+    config::SimpleDownlinkConfig,
     event_handler::{
         ActionContext, EventHandler, HandlerActionExt, LocalBoxHandlerAction, Sequentially,
         TryHandlerActionExt, UnitHandler,
@@ -33,6 +33,7 @@ use swimos_agent::{
     lanes::map::MapLaneEvent,
     AgentMetadata,
 };
+use swimos_agent_protocol::MapMessage;
 use swimos_api::address::Address;
 use swimos_model::Value;
 use swimos_utilities::trigger;
@@ -210,7 +211,7 @@ where
         };
         if let (Some(sender), Some((k, v))) = (sender.get(), kv) {
             let context: HandlerContext<ConnectorAgent> = Default::default();
-            handle_map_event(sender, lane_name, context, k, v)
+            handle_map_event(sender, MessageSource::Lane(lane_name), context, k, v)
         } else {
             UnitHandler::default().boxed_local()
         }
@@ -265,7 +266,7 @@ where
                 let mut open_map_dls = vec![];
                 for address in value_downlinks {
                     let open_dl = context
-                        .value_downlink_builder::<Value>(
+                        .event_downlink_builder::<Value>(
                             address.host.as_deref(),
                             &address.node,
                             &address.lane,
@@ -277,17 +278,16 @@ where
                         .discard();
                     open_value_dls.push(open_dl);
                 }
-                for Address { host, node, lane } in map_downlinks {
+                for address in map_downlinks {
                     let open_dl = context
-                        .map_downlink_builder::<Value, Value>(
-                            host.as_deref(),
-                            &node,
-                            &lane,
-                            MapDownlinkConfig::default(),
+                        .map_event_downlink_builder::<Value, Value>(
+                            address.host.as_deref(),
+                            &address.node,
+                            &address.lane,
+                            SimpleDownlinkConfig::default(),
                         )
-                        .with_state(("dl".to_string(), sender.clone()))
-                        .on_update(handle_update)
-                        .on_remove(handle_remove)
+                        .with_shared_state((address, sender.clone()))
+                        .on_event(handle_map_event_dl)
                         .done()
                         .discard();
 
@@ -298,52 +298,41 @@ where
     }
 }
 
-fn handle_value_event_dl<'a, S, E>(
-    state: &'a (Address<String>, S),
+fn handle_value_event_dl<S, E>(
+    state: &(Address<String>, S),
     context: HandlerContext<ConnectorAgent>,
-    value: &Value,
-) -> impl EventHandler<ConnectorAgent> + 'a
+    value: Value,
+) -> impl EventHandler<ConnectorAgent> + '_
 where
     S: EgressConnectorSender<E>,
     E: std::error::Error + Send + 'static,
 {
     let (addr, sender) = state;
-    handle_value_event(sender, MessageSource::Downlink(addr), context, value)
+    handle_value_event(sender, MessageSource::Downlink(addr), context, &value)
 }
 
-fn handle_update<'a, S, E>(
-    state: &'a (String, S),
+fn handle_map_event_dl<S, E>(
+    state: &(Address<String>, S),
     context: HandlerContext<ConnectorAgent>,
-    _map: &HashMap<Value, Value>,
-    key: Value,
-    _previous: Option<Value>,
-    new_value: &Value,
-) -> impl EventHandler<ConnectorAgent> + 'a
+    message: MapMessage<Value, Value>,
+) -> impl EventHandler<ConnectorAgent> + '_
 where
     S: EgressConnectorSender<E>,
     E: std::error::Error + Send + 'static,
 {
-    let (name, sender) = state;
-    handle_map_event(sender, name, context, &key, Some(new_value))
+    let (addr, sender) = state;
+    let kv = match &message {
+        MapMessage::Update { key, value } => Some((key, Some(value))),
+        MapMessage::Remove { key } => Some((key, None)),
+        _ => None,
+    };
+    kv.map(move |(k, v)| handle_map_event(sender, MessageSource::Downlink(addr), context, k, v))
+        .discard()
 }
 
-fn handle_remove<'a, S, E>(
-    state: &'a (String, S),
-    context: HandlerContext<ConnectorAgent>,
-    _map: &HashMap<Value, Value>,
-    key: Value,
-    _previous: Value,
-) -> impl EventHandler<ConnectorAgent> + 'a
-where
-    S: EgressConnectorSender<E>,
-    E: std::error::Error + Send + 'static,
-{
-    let (name, sender) = state;
-    handle_map_event(sender, name, context, &key, None)
-}
 fn handle_map_event<'a, S, E>(
     sender: &'a S,
-    name: &'a str,
+    source: MessageSource<'_>,
     context: HandlerContext<ConnectorAgent>,
     key: &Value,
     value: Option<&Value>,
@@ -352,11 +341,7 @@ where
     S: EgressConnectorSender<E>,
     E: std::error::Error + Send + 'static,
 {
-    match sender.send(
-        MessageSource::Lane(name),
-        Some(key),
-        value.unwrap_or(&Value::Extant),
-    ) {
+    match sender.send(source, Some(key), value.unwrap_or(&Value::Extant)) {
         Some(SendResult::Suspend(f)) => {
             let fut = f
                 .into_future()
