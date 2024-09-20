@@ -16,11 +16,11 @@ pub mod generic;
 pub mod relay;
 
 use crate::generic::GenericModel;
-use crate::relay::RelayModel;
 use fluvio::consumer::{ConsumerConfigExt, ConsumerStream};
 use fluvio::dataplane::link::ErrorCode;
 use fluvio::dataplane::record::ConsumerRecord;
 use fluvio::{Fluvio, FluvioConfig, FluvioError, Offset};
+use relay::RelayModel;
 use swimos_connector::generic::{
     DerserializerLoadError, DeserializationFormat, InvalidLanes, LaneSelectorError, MapLaneSpec,
     ValueLaneSpec,
@@ -63,8 +63,8 @@ pub struct FluvioConnectorConfiguration {
     pub offset: Offset,
 }
 
-/// A [connector](`Connector`) to ingest a stream of Fluvio record into a Swim application. This
-/// should be used to provide a lifecycle for either a [`GenericConnectorAgent`] or a [`RelayConnectorAgent`].
+/// A [connector](`swimos_connector::Connector`) to ingest a stream of Fluvio record into a Swim application. This
+/// should be used to provide a lifecycle for either a [`swimos_connector::generic::GenericConnectorAgent`] or a [`swimos_connector::relay::RelayConnectorAgent`].
 #[derive(Debug, Clone)]
 pub struct FluvioConnector<R> {
     inner: R,
@@ -77,18 +77,18 @@ impl<I> FluvioConnector<I> {
 }
 
 impl<R> FluvioConnector<RelayModel<R>> {
-    /// Constructs a new Fluvio connector which will operate as a [`Relay`].
+    /// Constructs a new Fluvio connector which will operate as a [`swimos_connector::relay::Relay`].
     ///
     /// # Arguments
     /// * `config` - Fluvio connector configuration.
-    /// * `relay` - the [`Relay`] which will be invoked each time a record is received.
+    /// * `relay` - the [`swimos_connector::relay::Relay`] which will be invoked each time a record is received.
     pub fn relay(config: FluvioConnectorConfiguration, relay: R) -> FluvioConnector<RelayModel<R>> {
         FluvioConnector::new(RelayModel::new(config, relay))
     }
 }
 
 impl FluvioConnector<GenericModel> {
-    /// Constructs a new Fluvio connector which will operate as a [`GenericConnectorAgent`]. Returns
+    /// Constructs a new Fluvio connector which will operate as a [`swimos_connector::generic::GenericConnectorAgent`]. Returns
     /// either a Fluvio connector or an error if there are too many lanes or overlapping lane URIs.
     ///
     /// # Arguments
