@@ -28,8 +28,8 @@ use std::str::FromStr;
 use swimos_agent::agent_lifecycle::HandlerContext;
 use swimos_agent::event_handler::EventHandler;
 use swimos_agent::{agent_model::AgentSpec, event_handler::EventHandlerError};
-use swimos_agent_protocol::encoding::ad_hoc::AdHocCommandDecoder;
-use swimos_agent_protocol::{AdHocCommand, MapMessage};
+use swimos_agent_protocol::encoding::command::CommandMessageDecoder;
+use swimos_agent_protocol::{CommandMessage, MapMessage};
 use swimos_api::address::Address;
 use swimos_form::Form;
 use swimos_model::{Item, Value};
@@ -151,7 +151,7 @@ fn relay(selectors: impl Into<RecordSelectors>) -> impl Relay {
 fn run_relay<R, H>(
     relay: &R,
     messages: Vec<MessageView<'_>>,
-    mut commands: Vec<AdHocCommand<String, Command>>,
+    mut commands: Vec<CommandMessage<String, Command>>,
 ) where
     R: Relay<Handler = H>,
     H: EventHandler<RelayConnectorAgent> + 'static,
@@ -175,40 +175,47 @@ fn run_relay<R, H>(
     }
 }
 
-fn decode_command(buf: &mut BytesMut) -> Option<AdHocCommand<String, Command>> {
-    let mut decoder = AdHocCommandDecoder::<String, MapMessage<Value, Value>>::default();
+fn decode_command(buf: &mut BytesMut) -> Option<CommandMessage<String, Command>> {
+    let mut decoder = CommandMessageDecoder::<String, MapMessage<Value, Value>>::default();
     let mut map_buf = buf.clone();
     let command = decoder.decode(&mut map_buf);
 
     match command {
-        Ok(Some(AdHocCommand {
-            address,
+        Ok(Some(CommandMessage::Addressed {
+            target,
             command,
             overwrite_permitted,
         })) => {
             buf.advance(buf.len() - map_buf.len());
-            Some(AdHocCommand {
-                address,
+            Some(CommandMessage::Addressed {
+                target,
                 command: Command::Map(command),
                 overwrite_permitted,
             })
         }
+        Ok(Some(c)) => {
+            panic!("Unexpected command: {c:?}")
+        }
         Ok(None) => None,
         Err(_) => {
-            let mut decoder = AdHocCommandDecoder::<String, Value>::default();
-            decoder.decode(buf).expect("Failed to decode command").map(
-                |AdHocCommand {
-                     address,
-                     command,
-                     overwrite_permitted,
-                 }| {
-                    AdHocCommand {
-                        address,
+            let mut decoder = CommandMessageDecoder::<String, Value>::default();
+            decoder
+                .decode(buf)
+                .expect("Failed to decode command")
+                .map(|command| match command {
+                    CommandMessage::Addressed {
+                        target,
+                        command,
+                        overwrite_permitted,
+                    } => CommandMessage::Addressed {
+                        target,
                         command: Command::Value(command),
                         overwrite_permitted,
+                    },
+                    c => {
+                        panic!("Unexpected command: {c:?}")
                     }
-                },
-            )
+                })
         }
     }
 }
@@ -233,11 +240,11 @@ fn value_command() {
             key: serde_json::to_vec(&json! {13}).unwrap().as_ref(),
             payload: serde_json::to_vec(&json! {13}).unwrap().as_ref(),
         }],
-        vec![AdHocCommand::new(
-            Address::new(None, "/node".to_string(), "lane".to_string()),
-            Command::Value(Value::Int64Value(13)),
-            false,
-        )],
+        vec![CommandMessage::Addressed {
+            target: Address::new(None, "/node".to_string(), "lane".to_string()),
+            command: Command::Value(Value::Int64Value(13)),
+            overwrite_permitted: false,
+        }],
     );
 }
 
@@ -255,14 +262,14 @@ fn map_update() {
             key: serde_json::to_vec(&json! {13}).unwrap().as_ref(),
             payload: serde_json::to_vec(&json! {"text"}).unwrap().as_ref(),
         }],
-        vec![AdHocCommand::new(
-            Address::new(None, "/node".to_string(), "lane".to_string()),
-            Command::Map(MapMessage::Update {
+        vec![CommandMessage::Addressed {
+            target: Address::new(None, "/node".to_string(), "lane".to_string()),
+            command: Command::Map(MapMessage::Update {
                 key: Value::Int64Value(13),
                 value: Value::from("text"),
             }),
-            false,
-        )],
+            overwrite_permitted: false,
+        }],
     );
 }
 
@@ -280,13 +287,13 @@ fn map_remove() {
             key: serde_json::to_vec(&json! {13}).unwrap().as_ref(),
             payload: &[],
         }],
-        vec![AdHocCommand::new(
-            Address::new(None, "/node".to_string(), "lane".to_string()),
-            Command::Map(MapMessage::Remove {
+        vec![CommandMessage::Addressed {
+            target: Address::new(None, "/node".to_string(), "lane".to_string()),
+            command: Command::Map(MapMessage::Remove {
                 key: Value::Int64Value(13),
             }),
-            false,
-        )],
+            overwrite_permitted: false,
+        }],
     );
 }
 
@@ -322,27 +329,27 @@ fn heterogeneous_selectors() {
             payload: serde_json::to_vec(&value).unwrap().as_ref(),
         }],
         vec![
-            AdHocCommand::new(
-                Address::new(None, "/node/3".to_string(), "lane".to_string()),
-                Command::Value(Value::from_vec(vec![("a", 1), ("b", 2)])),
-                false,
-            ),
-            AdHocCommand::new(
-                Address::new(None, "/node/2".to_string(), "lane".to_string()),
-                Command::Map(MapMessage::Update {
+            CommandMessage::Addressed {
+                target: Address::new(None, "/node/3".to_string(), "lane".to_string()),
+                command: Command::Value(Value::from_vec(vec![("a", 1), ("b", 2)])),
+                overwrite_permitted: false,
+            },
+            CommandMessage::Addressed {
+                target: Address::new(None, "/node/2".to_string(), "lane".to_string()),
+                command: Command::Map(MapMessage::Update {
                     key: Value::Int64Value(13),
                     value: Value::Int64Value(2),
                 }),
-                false,
-            ),
-            AdHocCommand::new(
-                Address::new(None, "/node/1".to_string(), "lane".to_string()),
-                Command::Map(MapMessage::Update {
+                overwrite_permitted: false,
+            },
+            CommandMessage::Addressed {
+                target: Address::new(None, "/node/1".to_string(), "lane".to_string()),
+                command: Command::Map(MapMessage::Update {
                     key: Value::Int64Value(13),
                     value: Value::Int64Value(1),
                 }),
-                false,
-            ),
+                overwrite_permitted: false,
+            },
         ],
     );
 }

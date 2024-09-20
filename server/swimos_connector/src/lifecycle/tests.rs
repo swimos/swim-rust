@@ -42,7 +42,7 @@ use thiserror::Error;
 use crate::generic::GenericConnectorAgent;
 use crate::{
     test_support::{make_meta, make_uri},
-    Connector, ConnectorAgent, ConnectorInitError, ConnectorLifecycle, ConnectorStream,
+    Connector, ConnectorInitError, ConnectorLifecycle, ConnectorStream,
 };
 
 #[derive(Default)]

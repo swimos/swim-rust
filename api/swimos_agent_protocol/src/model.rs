@@ -147,7 +147,7 @@ impl<T> From<StoreResponse<T>> for LaneResponse<T> {
 }
 
 /// Message type for agents to send commands to the runtime.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Form)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CommandMessage<S, T> {
     /// Register an endpoint so that it can be referred to by an integer ID.
     Register { address: Address<S>, id: u16 },

@@ -20,8 +20,8 @@ use std::collections::HashMap;
 use std::{convert::Infallible, sync::Arc};
 use swimos_agent::agent_model::downlink::BoxDownlinkChannelFactory;
 use swimos_agent::event_handler::{
-    ActionContext, DownlinkSpawnOnDone, EventHandler, HandlerAction, HandlerFuture,
-    LaneSpawnOnDone, LaneSpawner, LinkSpawner, Spawner, StepResult,
+    ActionContext, DownlinkSpawnOnDone, EventHandler, EventHandlerError, HandlerAction,
+    HandlerFuture, LaneSpawnOnDone, LaneSpawner, LinkSpawner, Spawner, StepResult,
 };
 use swimos_agent::AgentMetadata;
 use swimos_api::address::Address;
@@ -29,8 +29,9 @@ use swimos_api::agent::WarpLaneKind;
 use swimos_api::error::{CommanderRegistrationError, DynamicRegistrationError};
 use swimos_model::Text;
 
+use crate::generic::GenericConnectorAgent;
 use crate::test_support::{make_meta, make_uri};
-use crate::{ConnectorAgent, ConnectorStream};
+use crate::ConnectorStream;
 
 #[derive(Debug)]
 struct Handler {
@@ -61,7 +62,9 @@ impl HandlerAction<GenericConnectorAgent> for Handler {
     }
 }
 
-fn make_stream(state: &Arc<Mutex<Vec<usize>>>) -> impl ConnectorStream<GenericConnectorAgent,Infallible> + 'static {
+fn make_stream(
+    state: &Arc<Mutex<Vec<usize>>>,
+) -> impl ConnectorStream<GenericConnectorAgent, Infallible> + 'static {
     let handlers = vec![
         Ok(Handler::new(state, 1)),
         Ok(Handler::new(state, 2)),
@@ -106,7 +109,7 @@ impl<A> Spawner<A> for TestSpawner<A> {
     }
 }
 
-impl<A> LinkSpawner<A> for TestSpawner {
+impl<A> LinkSpawner<A> for TestSpawner<A> {
     fn spawn_downlink(
         &self,
         _path: Address<Text>,
@@ -138,7 +141,7 @@ pub fn fail(err: EventHandlerError) {
 
 pub fn run_handler<H, A, F>(
     spawner: &TestSpawner<A>,
-    ad_hoc_buffer: &mut BytesMut,
+    command_buffer: &mut BytesMut,
     agent: &A,
     mut handler: H,
     on_err: F,
@@ -151,14 +154,13 @@ pub fn run_handler<H, A, F>(
     let meta = make_meta(&uri, &route_params);
 
     let mut join_lane_init = HashMap::new();
-    let mut command_buffer = BytesMut::new();
 
     let mut action_context = ActionContext::new(
         spawner,
         spawner,
         spawner,
         &mut join_lane_init,
-        &mut command_buffer,
+        command_buffer,
     );
 
     loop {

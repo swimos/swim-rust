@@ -25,14 +25,9 @@ use std::{
 use super::Lanes;
 use crate::{connector::MessageSelector, MapLaneSpec, ValueLaneSpec};
 use bytes::BytesMut;
-use futures::{
-    future::{join, BoxFuture},
-    stream::FuturesUnordered,
-    StreamExt,
-};
+use futures::{future::join, stream::FuturesUnordered, StreamExt};
 use swimos_agent::agent_lifecycle::HandlerContext;
 use swimos_agent::event_handler::HandlerActionExt;
-use futures::{future::join, stream::FuturesUnordered, StreamExt};
 use swimos_agent::{
     agent_model::{
         downlink::BoxDownlinkChannelFactory, AgentSpec, ItemDescriptor, ItemFlags, WarpLaneKind,
@@ -55,7 +50,7 @@ use swimos_connector::generic::{
     GenericConnectorAgent, InvalidLanes, LaneSelectorError, MapLaneSelector, ValueLaneSelector,
 };
 use swimos_connector::selector::{BasicSelector, ChainSelector, SlotSelector, ValueSelector};
-use swimos_model::{Item, Value};
+use swimos_model::{Item, Text, Value};
 use swimos_recon::print_recon_compact;
 use swimos_utilities::{routing::RouteUri, trigger};
 use tokio::time::timeout;
@@ -97,7 +92,7 @@ impl LinkSpawner<GenericConnectorAgent> for TestSpawner {
         &self,
         _path: Address<Text>,
         _make_channel: BoxDownlinkChannelFactory<GenericConnectorAgent>,
-        _on_done: DownlinkSpawnOnDone<ConnectorAgent>,
+        _on_done: DownlinkSpawnOnDone<GenericConnectorAgent>,
     ) {
         panic!("Opening downlinks not supported.");
     }

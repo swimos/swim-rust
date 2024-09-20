@@ -115,7 +115,7 @@ pub enum DeserializationFormat {
 
 impl DeserializationFormat {
     /// Attempt to load a deserializer based on the format descriptor.
-    pub async fn load(&self) -> Result<BoxMessageDeserializer, DeserializerLoadError> {
+    pub async fn load(&self) -> Result<BoxMessageDeserializer, DerserializerLoadError> {
         match self {
             DeserializationFormat::Bytes => Ok(BytesDeserializer.boxed()),
             DeserializationFormat::String => Ok(StringDeserializer.boxed()),
@@ -149,7 +149,7 @@ impl DeserializationFormat {
                     let mut contents = String::new();
                     file.read_to_string(&mut contents).await?;
                     let schema = apache_avro::Schema::parse_str(&contents)
-                        .map_err(|e| DeserializerLoadError::InvalidDescriptor(Box::new(e)))?;
+                        .map_err(|e| DerserializerLoadError::InvalidDescriptor(Box::new(e)))?;
                     Ok(crate::deserialization::AvroDeserializer::new(schema).boxed())
                 } else {
                     Ok(crate::deserialization::AvroDeserializer::default().boxed())

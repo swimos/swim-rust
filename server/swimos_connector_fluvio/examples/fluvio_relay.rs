@@ -54,7 +54,6 @@ use swimos_agent::{
     event_handler::{EventHandler, HandlerActionExt},
     lanes::ValueLane,
 };
-use swimos_connector::relay::RelayConnectorAgent;
 use swimos_connector::{
     deserialization::JsonDeserializer,
     relay::{AgentRelay, LaneSelector, NodeSelector, PayloadSelector, Selectors},
@@ -145,17 +144,14 @@ async fn run_swim_server() -> Result<(), Box<dyn Error + Send + Sync>> {
         offset: Offset::end(),
     };
 
-    let connector_agent = ConnectorModel::new(
-        FluvioConnector::relay(
-            config,
-            AgentRelay::new(
-                [temperature_selectors()?, voltage_selectors()?],
-                JsonDeserializer,
-                JsonDeserializer,
-            ),
+    let connector_agent = ConnectorModel::new(FluvioConnector::relay(
+        config,
+        AgentRelay::new(
+            [temperature_selectors()?, voltage_selectors()?],
+            JsonDeserializer,
+            JsonDeserializer,
         ),
-        RelayConnectorAgent::default,
-    );
+    ));
     let sensor_agent = AgentModel::new(SensorAgent::default, SensorLifecycle.into_lifecycle());
 
     let server = ServerBuilder::with_plane_name("Sensor Plane")

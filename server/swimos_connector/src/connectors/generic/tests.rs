@@ -16,7 +16,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 
 use crate::generic::GenericConnectorAgent;
-use crate::test_support::{make_meta, make_uri, TestContext};
+use crate::test_support::{make_meta, make_uri};
 use bytes::BytesMut;
 use swimos_agent::agent_model::downlink::BoxDownlinkChannelFactory;
 use swimos_agent::event_handler::{
@@ -40,9 +40,6 @@ use swimos_model::{Text, Value};
 use swimos_recon::print_recon_compact;
 use tokio_util::codec::Decoder;
 use uuid::Uuid;
-
-use crate::test_support::{make_meta, make_uri};
-use crate::ConnectorAgent;
 
 use super::{GenericMapLane, GenericValueLane};
 
