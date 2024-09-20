@@ -18,28 +18,31 @@ use std::fmt::Write;
 use crate::generic::GenericConnectorAgent;
 use crate::test_support::{make_meta, make_uri, TestContext};
 use bytes::BytesMut;
-use swimos_agent::agent_model::downlink::BoxDownlinkChannel;
+use swimos_agent::agent_model::downlink::BoxDownlinkChannelFactory;
 use swimos_agent::event_handler::{
-    ActionContext, DownlinkSpawner, HandlerFuture, LaneSpawnOnDone, LaneSpawner, Spawner,
-    StepResult,
+    ActionContext, HandlerFuture, LaneSpawnOnDone, LaneSpawner, LinkSpawner, Spawner, StepResult,
 };
 use swimos_agent::lanes::LaneItem;
 use swimos_agent::{
     agent_model::{AgentSpec, ItemDescriptor, ItemFlags, WriteResult},
-    event_handler::EventHandler,
+    event_handler::{DownlinkSpawnOnDone, EventHandler},
     AgentItem,
 };
 use swimos_agent_protocol::encoding::lane::{MapLaneResponseDecoder, ValueLaneResponseDecoder};
 use swimos_agent_protocol::{LaneResponse, MapMessage, MapOperation};
-use swimos_api::error::DownlinkRuntimeError;
+use swimos_api::address::Address;
+use swimos_api::error::CommanderRegistrationError;
 use swimos_api::{
     agent::{StoreKind, WarpLaneKind},
     error::DynamicRegistrationError,
 };
-use swimos_model::Value;
+use swimos_model::{Text, Value};
 use swimos_recon::print_recon_compact;
 use tokio_util::codec::Decoder;
 use uuid::Uuid;
+
+use crate::test_support::{make_meta, make_uri};
+use crate::ConnectorAgent;
 
 use super::{GenericMapLane, GenericValueLane};
 
@@ -386,14 +389,24 @@ impl Spawner<GenericConnectorAgent> for NoSpawn {
     fn spawn_suspend(&self, _fut: HandlerFuture<GenericConnectorAgent>) {
         panic!("Spawning futures not supported.");
     }
+
+    fn schedule_timer(&self, _at: tokio::time::Instant, _id: u64) {
+        panic!("Unexpected timer.");
+    }
 }
 
-impl DownlinkSpawner<GenericConnectorAgent> for NoSpawn {
+impl LinkSpawner<GenericConnectorAgent> for NoSpawn {
     fn spawn_downlink(
         &self,
-        _dl_channel: BoxDownlinkChannel<GenericConnectorAgent>,
-    ) -> Result<(), DownlinkRuntimeError> {
+        _path: Address<Text>,
+        _make_channel: BoxDownlinkChannelFactory<GenericConnectorAgent>,
+        _on_done: DownlinkSpawnOnDone<GenericConnectorAgent>,
+    ) {
         panic!("Spawning downlinks not supported.");
+    }
+
+    fn register_commander(&self, _path: Address<Text>) -> Result<u16, CommanderRegistrationError> {
+        panic!("Registering commanders not supported.");
     }
 }
 
@@ -417,17 +430,15 @@ where
     let meta = make_meta(&uri, &route_params);
 
     let no_spawn = NoSpawn;
-    let context = TestContext;
     let mut join_lane_init = HashMap::new();
-    let mut ad_hoc_buffer = BytesMut::new();
+    let mut command_buffer = BytesMut::new();
 
     let mut action_context = ActionContext::new(
         &no_spawn,
-        &context,
         &no_spawn,
         &no_spawn,
         &mut join_lane_init,
-        &mut ad_hoc_buffer,
+        &mut command_buffer,
     );
 
     let mut ids = HashSet::new();

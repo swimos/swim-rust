@@ -48,7 +48,9 @@ use tokio::{io::AsyncWriteExt, sync::mpsc};
 use tokio_util::codec::{Encoder, FramedRead, FramedWrite};
 
 use crate::{
-    agent_model::downlink::{BoxDownlinkChannel, DownlinkChannelEvent, MapDownlinkHandle},
+    agent_model::downlink::{
+        BoxDownlinkChannel, DownlinkChannelEvent, DownlinkChannelFactory, MapDownlinkHandle,
+    },
     config::MapDownlinkConfig,
     downlink_lifecycle::{
         OnDownlinkClear, OnDownlinkRemove, OnDownlinkUpdate, OnFailed, OnLinked, OnSynced,

@@ -30,12 +30,10 @@ use swimos_utilities::routing::RouteUri;
 
 use crate::{
     event_handler::{DowncastError, JoinLaneInitializer},
-    lanes::{
-        join::test_util::TestDownlinkContext,
-        join_value::default_lifecycle::DefaultJoinValueLifecycle, JoinValueLane,
-    },
+    lanes::{join_value::default_lifecycle::DefaultJoinValueLifecycle, JoinValueLane},
     meta::AgentMetadata,
     test_context::run_with_futures,
+    test_util::TestDownlinkContext,
 };
 
 use super::LifecycleInitializer;
@@ -151,16 +149,14 @@ async fn successfully_create_action() {
     let route_params = HashMap::new();
     let meta = make_meta(&uri, &route_params);
     let mut inits = HashMap::new();
-    let mut ad_hoc_buffer = BytesMut::new();
+    let mut command_buffer = BytesMut::new();
 
     run_with_futures(
-        &context,
-        &context,
         &context,
         &agent,
         meta,
         &mut inits,
-        &mut ad_hoc_buffer,
+        &mut command_buffer,
         handler,
     )
     .await;

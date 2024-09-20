@@ -90,6 +90,19 @@ impl<T> From<RelativeAddress<T>> for Address<T> {
     }
 }
 
+impl<T> RelativeAddress<T> {
+    pub fn borrow_parts<R: ?Sized>(&self) -> RelativeAddress<&R>
+    where
+        T: AsRef<R>,
+    {
+        let RelativeAddress { node, lane } = self;
+        RelativeAddress {
+            node: node.as_ref(),
+            lane: lane.as_ref(),
+        }
+    }
+}
+
 impl RelativeAddress<Text> {
     pub fn text(node: &str, lane: &str) -> Self {
         RelativeAddress::new(Text::new(node), Text::new(lane))

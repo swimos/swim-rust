@@ -17,8 +17,6 @@ use swimos_api::address::Address;
 use crate::{agent_lifecycle::HandlerContext, event_handler::HandlerAction};
 
 pub mod map;
-#[cfg(test)]
-mod test_util;
 pub mod value;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

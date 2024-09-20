@@ -27,7 +27,7 @@ use swimos_utilities::routing::RouteUri;
 pub struct TestContext;
 
 impl AgentContext for TestContext {
-    fn ad_hoc_commands(&self) -> BoxFuture<'static, Result<ByteWriter, DownlinkRuntimeError>> {
+    fn command_channel(&self) -> BoxFuture<'static, Result<ByteWriter, DownlinkRuntimeError>> {
         panic!("Ad hoc commands not supported.");
     }
 

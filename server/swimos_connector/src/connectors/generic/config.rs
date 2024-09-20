@@ -21,7 +21,7 @@ use crate::generic::DerserializerLoadError;
 use swimos_form::Form;
 
 /// Specification of a value lane for the connector.
-#[derive(Clone, Debug, Form)]
+#[derive(Clone, Debug, Form, PartialEq, Eq)]
 pub struct ValueLaneSpec {
     /// A name to use for the lane. If not specified, the connector will attempt to infer one from the selector.
     pub name: Option<String>,
@@ -48,7 +48,7 @@ impl ValueLaneSpec {
 }
 
 /// Specification of a value lane for the connector.
-#[derive(Clone, Debug, Form)]
+#[derive(Clone, Debug, Form, PartialEq, Eq)]
 pub struct MapLaneSpec {
     /// The name of the lane.
     pub name: String,
@@ -90,8 +90,8 @@ impl MapLaneSpec {
     }
 }
 
-/// Supported deserialization formats to use to interpret a component of a message.
-#[derive(Clone, Form, Debug, Default)]
+/// Supported deserialization formats to use to interpret a component of a Kafka message.
+#[derive(Clone, Form, Debug, Default, PartialEq, Eq)]
 pub enum DeserializationFormat {
     #[default]
     Bytes,
@@ -115,7 +115,7 @@ pub enum DeserializationFormat {
 
 impl DeserializationFormat {
     /// Attempt to load a deserializer based on the format descriptor.
-    pub async fn load(&self) -> Result<BoxMessageDeserializer, DerserializerLoadError> {
+    pub async fn load(&self) -> Result<BoxMessageDeserializer, DeserializerLoadError> {
         match self {
             DeserializationFormat::Bytes => Ok(BytesDeserializer.boxed()),
             DeserializationFormat::String => Ok(StringDeserializer.boxed()),
@@ -149,7 +149,7 @@ impl DeserializationFormat {
                     let mut contents = String::new();
                     file.read_to_string(&mut contents).await?;
                     let schema = apache_avro::Schema::parse_str(&contents)
-                        .map_err(|e| DerserializerLoadError::InvalidDescriptor(Box::new(e)))?;
+                        .map_err(|e| DeserializerLoadError::InvalidDescriptor(Box::new(e)))?;
                     Ok(crate::deserialization::AvroDeserializer::new(schema).boxed())
                 } else {
                     Ok(crate::deserialization::AvroDeserializer::default().boxed())

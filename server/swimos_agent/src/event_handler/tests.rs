@@ -19,10 +19,12 @@ use bytes::BytesMut;
 use swimos_api::agent::AgentConfig;
 use swimos_recon::parser::AsyncParseError;
 use swimos_utilities::routing::RouteUri;
+use tokio::time::Instant;
 
 use crate::event_handler::check_step::{check_is_complete, check_is_continue};
 use crate::event_handler::{GetParameter, ModificationFlags};
 
+use crate::test_context::{NO_DOWNLINKS, NO_DYN_LANES};
 use crate::{
     event_handler::{
         ConstHandler, EventHandlerError, GetAgentUri, HandlerActionExt, Sequentially, SideEffects,
@@ -32,7 +34,10 @@ use crate::{
     test_context::dummy_context,
 };
 
-use super::{join, ActionContext, Decode, HandlerAction, Modification, SideEffect, StepResult};
+use super::{
+    join, ActionContext, Decode, HandlerAction, HandlerFuture, Modification, ScheduleTimerEvent,
+    SideEffect, Spawner, StepResult,
+};
 
 const CONFIG: AgentConfig = AgentConfig::DEFAULT;
 const NODE_URI: &str = "/node";
@@ -964,4 +969,67 @@ fn join3_handler_modify() {
     agent.lane1.read(|v| assert_eq!(*v, 2));
     agent.lane2.read(|v| assert_eq!(*v, 3));
     agent.lane3.read(|v| assert_eq!(*v, 4));
+}
+
+#[derive(Default)]
+struct TimeoutSpawner {
+    timers: RefCell<Vec<(Instant, u64)>>,
+}
+
+struct TimeoutAgent;
+
+impl Spawner<TimeoutAgent> for TimeoutSpawner {
+    fn spawn_suspend(&self, _fut: HandlerFuture<TimeoutAgent>) {
+        panic!("Unexpected future.");
+    }
+
+    fn schedule_timer(&self, at: Instant, id: u64) {
+        self.timers.borrow_mut().push((at, id));
+    }
+}
+
+impl TimeoutSpawner {
+    fn take(&self) -> Vec<(Instant, u64)> {
+        let mut guard = self.timers.borrow_mut();
+        std::mem::take(&mut *guard)
+    }
+}
+
+#[test]
+fn schedule_timeout() {
+    let mut join_lane_init = HashMap::new();
+    let mut ad_hoc_buffer = BytesMut::new();
+    let uri = make_uri();
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+
+    let agent = TimeoutAgent;
+    let spawner = TimeoutSpawner::default();
+
+    let mut action_context = ActionContext::new(
+        &spawner,
+        &NO_DOWNLINKS,
+        &NO_DYN_LANES,
+        &mut join_lane_init,
+        &mut ad_hoc_buffer,
+    );
+
+    let t = Instant::now();
+    let mut handler = ScheduleTimerEvent::new(t, 3);
+
+    assert!(matches!(
+        handler.step(&mut action_context, meta, &agent),
+        StepResult::Complete {
+            modified_item: None,
+            result: _
+        }
+    ));
+
+    let requests = spawner.take();
+    assert_eq!(requests, vec![(t, 3)]);
+
+    assert!(matches!(
+        handler.step(&mut action_context, meta, &agent),
+        StepResult::Fail(EventHandlerError::SteppedAfterComplete)
+    ));
 }

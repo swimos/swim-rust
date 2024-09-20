@@ -233,10 +233,10 @@ where
     H: HandlerAction<Agent, Completion = ()>,
 {
     let mut join_lane_init = HashMap::new();
-    let mut ad_hoc_buffer = BytesMut::new();
+    let mut command_buffer = BytesMut::new();
     let modified = loop {
         match event_handler.step(
-            &mut dummy_context(&mut join_lane_init, &mut ad_hoc_buffer),
+            &mut dummy_context(&mut join_lane_init, &mut command_buffer),
             meta,
             agent,
         ) {
@@ -252,7 +252,7 @@ where
         }
     };
     assert!(join_lane_init.is_empty());
-    assert!(ad_hoc_buffer.is_empty());
+    assert!(command_buffer.is_empty());
     modified
 }
 

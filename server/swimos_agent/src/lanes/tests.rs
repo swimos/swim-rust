@@ -22,21 +22,23 @@ use std::{
 
 use parking_lot::Mutex;
 use swimos_api::{
+    address::Address,
     agent::{AgentConfig, WarpLaneKind},
-    error::{DownlinkRuntimeError, DynamicRegistrationError, LaneSpawnError},
+    error::{CommanderRegistrationError, DynamicRegistrationError, LaneSpawnError},
 };
+use swimos_model::Text;
 use swimos_utilities::routing::RouteUri;
 
+use crate::lanes::OpenLane;
 use crate::{
     agent_lifecycle::HandlerContext,
-    agent_model::downlink::BoxDownlinkChannel,
+    agent_model::downlink::BoxDownlinkChannelFactory,
     event_handler::{
-        ActionContext, DownlinkSpawner, HandlerAction, HandlerFuture, LaneSpawnOnDone, LaneSpawner,
-        Spawner, StepResult,
+        ActionContext, DownlinkSpawnOnDone, HandlerAction, HandlerFuture, LaneSpawnOnDone,
+        LaneSpawner, LinkSpawner, Spawner, StepResult,
     },
     AgentMetadata,
 };
-use crate::{lanes::OpenLane, test_context::DummyAgentContext};
 
 pub struct TestAgent;
 
@@ -55,14 +57,24 @@ impl Spawner<TestAgent> for TestSpawner {
     fn spawn_suspend(&self, _fut: HandlerFuture<TestAgent>) {
         panic!("Suspending futures not supported.");
     }
+
+    fn schedule_timer(&self, _at: tokio::time::Instant, _id: u64) {
+        panic!("Unexpected timer.");
+    }
 }
 
-impl DownlinkSpawner<TestAgent> for TestSpawner {
+impl LinkSpawner<TestAgent> for TestSpawner {
     fn spawn_downlink(
         &self,
-        _dl_channel: BoxDownlinkChannel<TestAgent>,
-    ) -> Result<(), DownlinkRuntimeError> {
+        _path: Address<Text>,
+        _make_channel: BoxDownlinkChannelFactory<TestAgent>,
+        _on_done: DownlinkSpawnOnDone<TestAgent>,
+    ) {
         panic!("Opening downlinks not supported.");
+    }
+
+    fn register_commander(&self, _path: Address<Text>) -> Result<u16, CommanderRegistrationError> {
+        panic!("Registering commanders not supported.");
     }
 }
 
@@ -105,7 +117,7 @@ fn open_lane() {
     let route_params = HashMap::new();
     let meta = make_meta(&uri, &route_params);
     let mut join_lane_init = HashMap::new();
-    let mut ad_hoc_buffer = BytesMut::new();
+    let mut command_buffer = BytesMut::new();
 
     let flag = Arc::new(AtomicI64::new(0));
     let flag_copy = flag.clone();
@@ -127,14 +139,12 @@ fn open_lane() {
 
     let agent = TestAgent;
     let spawner = TestSpawner::default();
-    let context = DummyAgentContext;
     let mut action_context = ActionContext::new(
         &spawner,
-        &context,
         &spawner,
         &spawner,
         &mut join_lane_init,
-        &mut ad_hoc_buffer,
+        &mut command_buffer,
     );
 
     run_handler(handler, &mut action_context, &agent, meta);
@@ -168,7 +178,7 @@ fn open_lane_fail() {
     let route_params = HashMap::new();
     let meta = make_meta(&uri, &route_params);
     let mut join_lane_init = HashMap::new();
-    let mut ad_hoc_buffer = BytesMut::new();
+    let mut command_buffer = BytesMut::new();
 
     let flag = Arc::new(AtomicI64::new(0));
     let flag_copy = flag.clone();
@@ -190,14 +200,12 @@ fn open_lane_fail() {
 
     let agent = TestAgent;
     let spawner = TestSpawner::default();
-    let context = DummyAgentContext;
     let mut action_context = ActionContext::new(
         &spawner,
-        &context,
         &spawner,
         &spawner,
         &mut join_lane_init,
-        &mut ad_hoc_buffer,
+        &mut command_buffer,
     );
 
     run_handler(handler, &mut action_context, &agent, meta);

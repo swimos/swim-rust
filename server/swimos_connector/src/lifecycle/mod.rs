@@ -19,7 +19,8 @@ use crate::connectors::suspend_connector;
 use crate::{Connector, ConnectorInitError};
 use swimos_agent::{
     agent_lifecycle::{
-        item_event::ItemEvent, on_init::OnInit, on_start::OnStart, on_stop::OnStop, HandlerContext,
+        item_event::ItemEvent, on_init::OnInit, on_start::OnStart, on_stop::OnStop,
+        on_timer::OnTimer, HandlerContext,
     },
     event_handler::{
         ActionContext, EventHandler, HandlerActionExt, TryHandlerActionExt, UnitHandler,
@@ -82,6 +83,15 @@ where
 {
     fn on_stop(&self) -> impl EventHandler<A> + '_ {
         self.0.on_stop()
+    }
+}
+
+impl<A, C> OnTimer<A> for ConnectorLifecycle<C>
+where
+    C: Connector<A> + Send,
+{
+    fn on_timer(&self, _timer_id: u64) -> impl EventHandler<A> + '_ {
+        UnitHandler::default()
     }
 }
 

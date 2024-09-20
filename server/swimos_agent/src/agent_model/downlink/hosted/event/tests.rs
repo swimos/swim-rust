@@ -30,7 +30,7 @@ use tokio_util::codec::FramedWrite;
 
 use super::{EventDownlinkFactory, SimpleDownlinkConfig};
 use crate::{
-    agent_model::downlink::{BoxDownlinkChannel, DownlinkChannelEvent},
+    agent_model::downlink::{BoxDownlinkChannel, DownlinkChannelEvent, DownlinkChannelFactory},
     downlink_lifecycle::{OnConsumeEvent, OnFailed, OnLinked, OnSynced, OnUnlinked},
     event_handler::{HandlerActionExt, LocalBoxEventHandler, SideEffect},
 };
@@ -132,24 +132,25 @@ struct TestContext {
     stop_tx: Option<trigger::Sender>,
 }
 
-fn make_hosted_input(config: SimpleDownlinkConfig) -> TestContext {
+fn make_hosted_input(context: &FakeAgent, config: SimpleDownlinkConfig) -> TestContext {
     let inner: Events = Default::default();
     let lc = FakeLifecycle {
         inner: inner.clone(),
     };
 
-    let (tx, rx) = byte_channel::byte_channel(BUFFER_SIZE);
+    let (in_tx, in_rx) = byte_channel::byte_channel(BUFFER_SIZE);
+    let (out_tx, _) = byte_channel::byte_channel(BUFFER_SIZE);
     let (stop_tx, stop_rx) = trigger::trigger();
 
     let address = Address::new(None, Text::new("/node"), Text::new("lane"));
 
     let fac = EventDownlinkFactory::new(address, lc, config, stop_rx, false);
 
-    let chan = fac.create(rx);
+    let chan = fac.create(context, out_tx, in_rx);
     TestContext {
         channel: chan,
         events: inner,
-        sender: FramedWrite::new(tx, Default::default()),
+        sender: FramedWrite::new(in_tx, Default::default()),
         stop_tx: Some(stop_tx),
     }
 }
@@ -206,12 +207,13 @@ async fn expect_no_unlink_shutdown(channel: &mut BoxDownlinkChannel<FakeAgent>, 
 
 #[tokio::test]
 async fn event_dl_shutdown_when_input_stops() {
+    let agent = FakeAgent;
     let TestContext {
         mut channel,
         sender,
         stop_tx: _stop_tx,
         events: _events,
-    } = make_hosted_input(SimpleDownlinkConfig::default());
+    } = make_hosted_input(&agent, SimpleDownlinkConfig::default());
 
     let agent = FakeAgent;
 
@@ -224,12 +226,14 @@ async fn event_dl_shutdown_when_input_stops() {
 
 #[tokio::test]
 async fn event_dl_shutdown_on_stop_signal() {
+    let agent = FakeAgent;
+
     let TestContext {
         mut channel,
         sender: _sender,
         stop_tx,
         events: _events,
-    } = make_hosted_input(SimpleDownlinkConfig::default());
+    } = make_hosted_input(&agent, SimpleDownlinkConfig::default());
 
     let agent = FakeAgent;
 
@@ -242,12 +246,14 @@ async fn event_dl_shutdown_on_stop_signal() {
 
 #[tokio::test]
 async fn event_dl_terminate_on_error() {
+    let agent = FakeAgent;
+
     let TestContext {
         mut channel,
         mut sender,
         events,
         stop_tx: _stop_tx,
-    } = make_hosted_input(SimpleDownlinkConfig::default());
+    } = make_hosted_input(&agent, SimpleDownlinkConfig::default());
 
     let agent = FakeAgent;
 
@@ -316,7 +322,9 @@ async fn run_with_expectations(
 
 #[tokio::test]
 async fn event_dl_emit_linked_handler() {
-    let mut context = make_hosted_input(SimpleDownlinkConfig::default());
+    let agent = FakeAgent;
+
+    let mut context = make_hosted_input(&agent, SimpleDownlinkConfig::default());
 
     let agent = FakeAgent;
 
@@ -334,7 +342,9 @@ async fn event_dl_emit_linked_handler() {
 
 #[tokio::test]
 async fn event_dl_emit_synced_handler() {
-    let mut context = make_hosted_input(SimpleDownlinkConfig::default());
+    let agent = FakeAgent;
+
+    let mut context = make_hosted_input(&agent, SimpleDownlinkConfig::default());
 
     let agent = FakeAgent;
 
@@ -356,7 +366,9 @@ async fn event_dl_emit_synced_handler() {
 
 #[tokio::test]
 async fn event_dl_emit_event_handlers() {
-    let mut context = make_hosted_input(SimpleDownlinkConfig::default());
+    let agent = FakeAgent;
+
+    let mut context = make_hosted_input(&agent, SimpleDownlinkConfig::default());
 
     let agent = FakeAgent;
 
@@ -382,11 +394,13 @@ async fn event_dl_emit_event_handlers() {
 
 #[tokio::test]
 async fn event_dl_emit_events_before_synced() {
+    let agent = FakeAgent;
+
     let config = SimpleDownlinkConfig {
         events_when_not_synced: true,
         terminate_on_unlinked: true,
     };
-    let mut context = make_hosted_input(config);
+    let mut context = make_hosted_input(&agent, config);
 
     let agent = FakeAgent;
 
@@ -411,7 +425,9 @@ async fn event_dl_emit_events_before_synced() {
 
 #[tokio::test]
 async fn event_dl_emit_unlinked_handler() {
-    let mut context = make_hosted_input(SimpleDownlinkConfig::default());
+    let agent = FakeAgent;
+
+    let mut context = make_hosted_input(&agent, SimpleDownlinkConfig::default());
 
     let agent = FakeAgent;
 
@@ -437,12 +453,14 @@ async fn event_dl_emit_unlinked_handler() {
 
 #[tokio::test]
 async fn event_dl_revive_unlinked_downlink() {
+    let agent = FakeAgent;
+
     let config = SimpleDownlinkConfig {
         events_when_not_synced: true,
         terminate_on_unlinked: false,
     };
 
-    let mut context = make_hosted_input(config);
+    let mut context = make_hosted_input(&agent, config);
 
     let agent = FakeAgent;
 

@@ -23,7 +23,7 @@ use futures::{
 use parking_lot::Mutex;
 use std::{collections::HashMap, io::ErrorKind, sync::Arc, time::Duration};
 use swimos_agent_protocol::{
-    encoding::ad_hoc::AdHocCommandDecoder, AdHocCommand, MapMessage, MapOperation,
+    encoding::command::CommandMessageDecoder, CommandMessage, MapMessage, MapOperation,
 };
 use swimos_api::{
     address::Address,
@@ -58,6 +58,7 @@ use super::{
     AgentModel, HostedDownlink, ItemDescriptor, ItemModelFactory,
 };
 
+mod external_links;
 mod fake_agent;
 mod fake_context;
 mod fake_lifecycle;
@@ -117,6 +118,7 @@ const HTTP_LANE: &str = "fourth";
 const DYN_VAL_LANE: &str = "first_dynamic";
 const DYN_MAP_LANE: &str = "second_dynamic";
 const HTTP_LANE_URI: &str = "http://example/node?lane=fourth";
+const TIMEOUT_ID: u64 = 674;
 
 const CONFIG: AgentConfig = AgentConfig::DEFAULT;
 const NODE_URI: &str = "/node";
@@ -131,16 +133,18 @@ const REMOTE_HOST: &str = "remote:8080";
 const REMOTE_NODE: &str = "/node";
 const REMOTE_LANE: &str = "lane";
 
-//Event values cause the mock command lane to suspend a future.
+//Values divisible by 3 cause the mock command lane to suspend a future.
 const SUSPEND_VALUE: i32 = 456;
-//Odd values cause the mock command lane to send an ad ho command.
-const AD_HOC_CMD_VALUE: i32 = 891;
+//Values congruent 1 mod 3 cause the mock command lane to send an ad ho command.
+const AD_HOC_CMD_VALUE: i32 = 892;
+//Values congruent to 2 mod 3 cause the mock command lane to schedule a timeout.
+const TIMEOUT_EVENT: i32 = 1097;
 
 fn make_uri() -> RouteUri {
     RouteUri::try_from(NODE_URI).expect("Bad URI.")
 }
 
-type CommandReceiver = FramedRead<ByteReader, AdHocCommandDecoder<BytesStr, Text>>;
+type CommandReceiver = FramedRead<ByteReader, CommandMessageDecoder<BytesStr, Text>>;
 
 struct TestContext {
     test_event_rx: UnboundedReceiverStream<TestEvent>,
@@ -1131,8 +1135,8 @@ async fn suspend_future() {
 
 #[tokio::test]
 async fn trigger_ad_hoc_command() {
-    let (ad_hoc_tx, ad_hoc_rx) = oneshot::channel();
-    let context = Box::new(TestAgentContext::new(ad_hoc_tx));
+    let (cmd_tx, cmd_rx) = oneshot::channel();
+    let context = Box::new(TestAgentContext::new(cmd_tx));
     let (
         task,
         TestContext {
@@ -1163,10 +1167,10 @@ async fn trigger_ad_hoc_command() {
         let (mut sender, receiver) = cmd_lane_io;
 
         let mut cmd_receiver = CommandReceiver::new(
-            ad_hoc_rx
+            cmd_rx
                 .await
                 .expect("Ad hoc command channel not registered."),
-            AdHocCommandDecoder::default(),
+            CommandMessageDecoder::default(),
         );
 
         let n = AD_HOC_CMD_VALUE;
@@ -1187,7 +1191,7 @@ async fn trigger_ad_hoc_command() {
 
         //... and then issue an outgoing command.
 
-        let expected = AdHocCommand::new(
+        let expected = CommandMessage::ad_hoc(
             Address::new(
                 Some(BytesStr::from_static_str(AD_HOC_HOST)),
                 BytesStr::from_static_str(AD_HOC_NODE),
@@ -1222,6 +1226,83 @@ async fn trigger_ad_hoc_command() {
 
     let lane_events = test_event_rx.collect::<Vec<_>>().await;
     assert!(lane_events.is_empty());
+}
+
+#[tokio::test(start_paused = true)]
+async fn schedule_timeout() {
+    with_timeout(async {
+        let context = Box::<TestAgentContext>::default();
+        let (
+            task,
+            TestContext {
+                mut test_event_rx,
+                http_request_rx: _http_request_rx,
+                mut lc_event_rx,
+                val_lane_io,
+                map_lane_io,
+                cmd_lane_io,
+                dyn_val_lane_io,
+                dyn_map_lane_io,
+                http_lane_tx,
+            },
+        ) = init_agent(context).await;
+
+        assert!(dyn_val_lane_io.is_none());
+        assert!(dyn_map_lane_io.is_none());
+
+        let test_case = async move {
+            assert_eq!(
+                lc_event_rx.next().await.expect("Expected init event."),
+                LifecycleEvent::Init
+            );
+            assert_eq!(
+                lc_event_rx.next().await.expect("Expected start event."),
+                LifecycleEvent::Start
+            );
+            let (mut sender, receiver) = cmd_lane_io;
+
+            let n = TIMEOUT_EVENT;
+
+            sender.command(n).await;
+
+            // The agent should receive the command...
+            assert!(matches!(
+                test_event_rx.next().await.expect("Expected command event."),
+                TestEvent::Cmd { body } if body == n
+            ));
+
+            //... ,trigger the `on_command` event...
+            assert_eq!(
+                lc_event_rx.next().await.expect("Expected command event."),
+                LifecycleEvent::Lane(Text::new(CMD_LANE))
+            );
+
+            // The runtime should auto-advance to trigger the timeout.
+            assert_eq!(
+                lc_event_rx.next().await.expect("Expected timeout event."),
+                LifecycleEvent::Timeout(TIMEOUT_ID)
+            );
+
+            drop(sender);
+            drop(receiver);
+            drop(val_lane_io);
+            drop(map_lane_io);
+            drop(http_lane_tx);
+            (test_event_rx, lc_event_rx)
+        };
+
+        let (result, (test_event_rx, lc_event_rx)) = join(task, test_case).await;
+        assert!(result.is_ok());
+
+        let events = lc_event_rx.collect::<Vec<_>>().await;
+
+        //Check that the `on_stop` event fired.
+        assert!(matches!(events.as_slice(), [LifecycleEvent::Stop]));
+
+        let lane_events = test_event_rx.collect::<Vec<_>>().await;
+        assert!(lane_events.is_empty());
+    })
+    .await
 }
 
 type WriteStream = BoxStream<'static, Result<(), std::io::Error>>;

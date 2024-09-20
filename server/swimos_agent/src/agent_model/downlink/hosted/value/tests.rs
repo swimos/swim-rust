@@ -49,7 +49,7 @@ use super::{SimpleDownlinkConfig, ValueDownlinkFactory};
 use crate::{
     agent_model::downlink::{
         hosted::{value::ValueWriteStream, ValueDownlinkHandle},
-        BoxDownlinkChannel, DownlinkChannelEvent,
+        BoxDownlinkChannel, DownlinkChannelEvent, DownlinkChannelFactory,
     },
     downlink_lifecycle::{
         OnDownlinkEvent, OnDownlinkSet, OnFailed, OnLinked, OnSynced, OnUnlinked,
@@ -1275,7 +1275,7 @@ impl DlTestContext {
 }
 
 impl AgentContext for DlTestContext {
-    fn ad_hoc_commands(&self) -> BoxFuture<'static, Result<ByteWriter, DownlinkRuntimeError>> {
+    fn command_channel(&self) -> BoxFuture<'static, Result<ByteWriter, DownlinkRuntimeError>> {
         panic!("Unexpected call.");
     }
 

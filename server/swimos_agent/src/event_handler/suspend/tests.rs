@@ -19,16 +19,16 @@ use crate::{
         ActionContext, EventHandler, EventHandlerError, HandlerAction, SideEffect, StepResult,
     },
     meta::AgentMetadata,
-    test_context::{no_downlink, DummyAgentContext, NO_DYN_LANES},
+    test_context::{TestSpawner, NO_DOWNLINKS, NO_DYN_LANES},
 };
 use bytes::BytesMut;
-use futures::{stream::FuturesUnordered, StreamExt};
+use futures::StreamExt;
 use parking_lot::Mutex;
 use swimos_api::agent::AgentConfig;
 use swimos_utilities::{routing::RouteUri, trigger};
 use tokio::{sync::mpsc, time::Instant};
 
-use super::{HandlerFuture, Suspend};
+use super::Suspend;
 
 const CONFIG: AgentConfig = AgentConfig::DEFAULT;
 const NODE_URI: &str = "/node";
@@ -52,7 +52,7 @@ async fn suspend_future() {
     let route_params = HashMap::new();
     let meta = make_meta(&uri, &route_params);
     let mut join_lane_init = HashMap::new();
-    let mut ad_hoc_buffer = BytesMut::new();
+    let mut command_buffer = BytesMut::new();
 
     let (tx, mut rx) = mpsc::channel(4);
     let (done_tx, done_rx) = trigger::trigger();
@@ -64,16 +64,15 @@ async fn suspend_future() {
         })
     });
 
-    let mut spawner = FuturesUnordered::new();
+    let mut spawner = TestSpawner::<DummyAgent>::default();
 
     let result = suspend.step(
         &mut ActionContext::new(
             &spawner,
-            &DummyAgentContext,
-            &no_downlink,
+            &NO_DOWNLINKS,
             &NO_DYN_LANES,
             &mut join_lane_init,
-            &mut ad_hoc_buffer,
+            &mut command_buffer,
         ),
         meta,
         &DummyAgent,
@@ -96,11 +95,10 @@ async fn suspend_future() {
         let result = handler.step(
             &mut ActionContext::new(
                 &spawner,
-                &DummyAgentContext,
-                &no_downlink,
+                &NO_DOWNLINKS,
                 &NO_DYN_LANES,
                 &mut join_lane_init,
-                &mut ad_hoc_buffer,
+                &mut command_buffer,
             ),
             meta,
             &DummyAgent,
@@ -118,11 +116,10 @@ async fn suspend_future() {
         let result = suspend.step(
             &mut ActionContext::new(
                 &spawner,
-                &DummyAgentContext,
-                &no_downlink,
+                &NO_DOWNLINKS,
                 &NO_DYN_LANES,
                 &mut join_lane_init,
-                &mut ad_hoc_buffer,
+                &mut command_buffer,
             ),
             meta,
             &DummyAgent,
@@ -138,7 +135,7 @@ async fn suspend_future() {
     .expect("Timed out.");
 }
 
-fn run_handler<H>(mut handler: H, spawner: &FuturesUnordered<HandlerFuture<DummyAgent>>)
+fn run_handler<H>(mut handler: H, spawner: &TestSpawner<DummyAgent>)
 where
     H: EventHandler<DummyAgent>,
 {
@@ -146,15 +143,14 @@ where
     let route_params = HashMap::new();
     let meta = make_meta(&uri, &route_params);
     let mut join_lane_init = HashMap::new();
-    let mut ad_hoc_buffer = BytesMut::new();
+    let mut command_buffer = BytesMut::new();
 
     let mut action_context = ActionContext::new(
         spawner,
-        &DummyAgentContext,
-        &no_downlink,
+        &NO_DOWNLINKS,
         &NO_DYN_LANES,
         &mut join_lane_init,
-        &mut ad_hoc_buffer,
+        &mut command_buffer,
     );
     loop {
         match handler.step(&mut action_context, meta, &DummyAgent) {
@@ -177,7 +173,7 @@ async fn run_handler_with_futures<H>(handler: H)
 where
     H: EventHandler<DummyAgent>,
 {
-    let mut spawner = FuturesUnordered::new();
+    let mut spawner = TestSpawner::default();
     run_handler(handler, &spawner);
 
     if !spawner.is_empty() {

@@ -18,22 +18,25 @@ use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 use std::pin::{pin, Pin};
 use std::sync::Arc;
+use std::task::{ready, Poll};
 
 use bytes::{Bytes, BytesMut};
+use downlink::BoxDownlinkChannelFactory;
 use futures::future::{Fuse, OptionFuture};
 use futures::{
-    future::{BoxFuture, Either, FusedFuture},
+    future::{BoxFuture, FusedFuture},
     stream::{FuturesUnordered, SelectAll},
     StreamExt,
 };
 use futures::{Future, FutureExt};
+use pin_project::pin_project;
 use swimos_agent_protocol::encoding::store::{RawMapStoreInitDecoder, RawValueStoreInitDecoder};
 use swimos_agent_protocol::{LaneRequest, MapMessage};
 use swimos_api::agent::DownlinkKind;
 use swimos_api::agent::{HttpLaneRequest, LaneConfig, RawHttpLaneResponse};
 use swimos_api::error::{
-    AgentRuntimeError, DownlinkRuntimeError, DynamicRegistrationError, LaneSpawnError,
-    OpenStoreError,
+    AgentRuntimeError, CommanderRegistrationError, DownlinkRuntimeError, DynamicRegistrationError,
+    LaneSpawnError, OpenStoreError,
 };
 use swimos_api::{
     address::Address,
@@ -43,18 +46,20 @@ use swimos_api::{
 };
 use swimos_model::Text;
 use swimos_utilities::byte_channel::{ByteReader, ByteWriter};
+use swimos_utilities::errors::Recoverable;
 use swimos_utilities::future::RetryStrategy;
 use swimos_utilities::routing::RouteUri;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
+use tokio::time::{sleep_until, Instant, Sleep};
 use tracing::{debug, error, info, trace};
 use uuid::Uuid;
 
 use crate::agent_lifecycle::item_event::ItemEvent;
 use crate::agent_model::io::LaneReadEvent;
 use crate::event_handler::{
-    ActionContext, BoxJoinLaneInit, HandlerFuture, LaneSpawnOnDone, LaneSpawner,
-    LocalBoxEventHandler, ModificationFlags, Sequentially,
+    ActionContext, BoxJoinLaneInit, DownlinkSpawnOnDone, HandlerFuture, LaneSpawnOnDone,
+    LaneSpawner, LinkSpawner, LocalBoxEventHandler, ModificationFlags, Sequentially, Spawner,
 };
 use crate::{
     agent_lifecycle::AgentLifecycle,
@@ -267,7 +272,11 @@ pub trait AgentSpec: Sized + Send {
     /// no result if the lane does not exist.
     fn write_event(&self, lane: &str, buffer: &mut BytesMut) -> Option<WriteResult>;
 
-    /// Register a dynamically created item with the agent. The returned value is the unique ID of the
+    /// Register a dynamically created item with the agent. The returned value is the unique ID of the item.
+    ///
+    /// # Arguments
+    /// * `_name` - The name of the item.
+    /// * `_descriptor` - The kind of the item and any flags.
     fn register_dynamic_item(
         &self,
         _name: &str,
@@ -416,10 +425,10 @@ enum TaskEvent<ItemModel> {
         result: Result<bool, std::io::Error>,
     },
     SuspendedComplete {
-        handler: LocalBoxEventHandler<'static, ItemModel>,
+        result: SuspendResult<ItemModel>,
     },
-    DownlinkReady {
-        downlink_event: (HostedDownlink<ItemModel>, HostedDownlinkEvent),
+    LinksEvent {
+        downlink_event: LinksEvent<ItemModel>,
     },
     ValueRequest {
         id: u64,
@@ -637,10 +646,10 @@ where
             .collect();
 
         let suspended = FuturesUnordered::new();
-        let downlink_channels = RefCell::new(vec![]);
+        let link_requests = RefCell::new(LinkRequestCollector::default());
         let mut dynamic_lanes = RefCell::new(vec![]);
         let mut join_lane_init = HashMap::new();
-        let mut ad_hoc_buffer = BytesMut::new();
+        let mut command_buffer = BytesMut::new();
 
         let item_model = item_model_fac.create();
         let default_lane_config = config.default_lane_config.unwrap_or_default();
@@ -745,11 +754,10 @@ where
         lifecycle.initialize(
             &mut ActionContext::new(
                 &suspended,
-                &*context,
-                &downlink_channels,
+                &link_requests,
                 &dynamic_lanes,
                 &mut join_lane_init,
-                &mut ad_hoc_buffer,
+                &mut command_buffer,
             ),
             meta,
             &item_model,
@@ -757,6 +765,9 @@ where
 
         let mut dyn_lane_handlers = vec![];
 
+        // This handles any requests that have been received to open dynamic lanes. Due to complex, interleaved
+        // borrows of non-send variables, it is impractical to extract this out as a function. This macro is a
+        // compromise to avoid duplicating the block of code.
         macro_rules! handle_dyn_lanes {
             () => {
                 for LaneSpawnRequest {
@@ -772,7 +783,7 @@ where
                         let io = context.add_lane(&name, kind, lane_conf).await?;
                         let descriptor = ItemDescriptor::WarpLane {
                             kind,
-                            flags: ItemFlags::TRANSIENT,
+                            flags: ItemFlags::TRANSIENT, // For now, all dynamic lanes are transient.
                         };
                         let result = item_model.register_dynamic_item(&name, descriptor);
                         if let Ok(id) = result {
@@ -791,6 +802,9 @@ where
             };
         }
 
+        // Handle any dynamic lane requests received in the `on_init` event. We don't trigger the
+        // corresponding event handlers yet to respect the contract that `on_start` is the first
+        // event handler to be run in the agent.
         handle_dyn_lanes!();
 
         // Run the agent's `on_start` event handler.
@@ -799,11 +813,10 @@ where
         match run_handler(
             &mut ActionContext::new(
                 &suspended,
-                &*context,
-                &downlink_channels,
+                &link_requests,
                 &dynamic_lanes,
                 &mut join_lane_init,
-                &mut ad_hoc_buffer,
+                &mut command_buffer,
             ),
             meta,
             &item_model,
@@ -817,16 +830,18 @@ where
             Ok(_) => {}
         }
 
+        // Handle any dynamic lane requests received in the `on_start` event.
         handle_dyn_lanes!();
 
+        // Run all of the event handlers associated with requests for dynamic lanes. These could have bee
+        // generated by either (or both) of the `on_init` and `on_start` events.
         match run_handler(
             &mut ActionContext::new(
                 &suspended,
-                &*context,
-                &downlink_channels,
+                &link_requests,
                 &dynamic_lanes,
                 &mut join_lane_init,
-                &mut ad_hoc_buffer,
+                &mut command_buffer,
             ),
             meta,
             &item_model,
@@ -852,8 +867,8 @@ where
             store_io,
             http_lane_rxs,
             suspended,
-            downlink_channels: downlink_channels.into_inner(),
-            ad_hoc_buffer,
+            link_requests: link_requests.into_inner(),
+            command_buffer,
             join_lane_init,
         };
         Ok(agent_task.run_agent(context).boxed())
@@ -1014,10 +1029,10 @@ struct AgentTask<ItemModel, Lifecycle> {
     lane_io: HashMap<(Text, WarpLaneKind), (ByteWriter, ByteReader)>,
     store_io: HashMap<Text, ByteWriter>,
     http_lane_rxs: HashMap<Text, mpsc::Receiver<HttpLaneRequest>>,
-    suspended: FuturesUnordered<HandlerFuture<ItemModel>>,
+    suspended: FuturesUnordered<Suspended<ItemModel>>,
+    link_requests: LinkRequestCollector<ItemModel>,
     join_lane_init: HashMap<u64, BoxJoinLaneInit<'static, ItemModel>>,
-    ad_hoc_buffer: BytesMut,
-    downlink_channels: Vec<BoxDownlinkChannel<ItemModel>>,
+    command_buffer: BytesMut,
 }
 
 impl<ItemModel, Lifecycle> AgentTask<ItemModel, Lifecycle>
@@ -1046,22 +1061,28 @@ where
             store_io,
             http_lane_rxs,
             mut suspended,
+            link_requests:
+                LinkRequestCollector {
+                    downlinks: downlink_requests,
+                    commander_ids,
+                },
             mut join_lane_init,
-            mut ad_hoc_buffer,
-            downlink_channels,
+            mut command_buffer,
         } = self;
         let meta = AgentMetadata::new(&route, &route_params, &config);
 
         let mut lane_readers = SelectAll::new();
         let mut item_writers = HashMap::new();
         let mut pending_writes = FuturesUnordered::new();
-        let mut downlinks = FuturesUnordered::new();
+        let mut link_futures = FuturesUnordered::new();
         let mut external_item_ids_rev = HashMap::new();
+        let cmd_ids = RefCell::new(commander_ids);
+
         for (name, id) in external_item_ids.iter() {
             external_item_ids_rev.insert(*id, name);
         }
 
-        let mut cmd_writer = if let Ok(cmd_tx) = context.ad_hoc_commands().await {
+        let mut cmd_writer = if let Ok(cmd_tx) = context.command_channel().await {
             Some(CommandWriter::new(cmd_tx))
         } else {
             return Err(AgentTaskError::OutputFailed(std::io::Error::from(
@@ -1071,10 +1092,16 @@ where
 
         let mut cmd_send_fut = pin!(OptionFuture::from(None));
 
-        // Start waiting on downlinks from the init phase.
-        for channel in downlink_channels {
-            let dl = HostedDownlink::new(channel);
-            downlinks.push(Either::Left(dl.wait_on_downlink()));
+        // Start opening downlinks from the init phase.
+        for request in downlink_requests {
+            let fut = open_new_downlink(
+                &*context,
+                &request.path,
+                request.kind,
+                config.keep_linked_retry,
+                None,
+            );
+            link_futures.push(LinkFuture::Opening(Some(request), fut));
         }
 
         for ((name, kind), (tx, rx)) in lane_io {
@@ -1102,7 +1129,7 @@ where
         // We need to check if anything has been written into the command buffer as the agent
         // initialisation process called lifecycle::on_start and that may have sent commands.
         check_cmds(
-            &mut ad_hoc_buffer,
+            &mut command_buffer,
             &mut cmd_writer,
             &mut cmd_send_fut,
             CommandWriter::write,
@@ -1115,12 +1142,12 @@ where
             let select_event = async {
                 tokio::select! {
                     maybe_suspended = suspended.next(), if !suspended.is_empty() => {
-                        maybe_suspended.map(|handler| TaskEvent::SuspendedComplete { handler })
+                        maybe_suspended.map(|result| TaskEvent::SuspendedComplete { result })
                     }
-                    maybe_downlink = downlinks.next(), if !downlinks.is_empty() => {
-                        maybe_downlink.map(|downlink_event| TaskEvent::DownlinkReady { downlink_event })
+                    maybe_downlink = link_futures.next(), if !link_futures.is_empty() => {
+                        maybe_downlink.map(|downlink_event| TaskEvent::LinksEvent { downlink_event })
                     }
-                    maybe_req = lane_readers.next() => {
+                    maybe_req = lane_readers.next(), if !lane_readers.is_empty() => {
                         maybe_req.map(|req| {
                             match req {
                                 (id, Ok(LaneReadEvent::Value(request))) => TaskEvent::ValueRequest{
@@ -1138,8 +1165,10 @@ where
                             }
                         })
                     }
+                    else => None,
                 }
             };
+
             let task_event: TaskEvent<ItemModel> = tokio::select! {
                 biased;
                 maybe_cmd_result = &mut cmd_send_fut, if !cmd_send_fut.is_terminated() => {
@@ -1166,12 +1195,50 @@ where
                     }
                 }
             };
-            let add_downlink = |channel| {
-                let dl = HostedDownlink::new(channel);
-                downlinks.push(Either::Left(dl.wait_on_downlink()));
-                Ok(())
+            let add_downlink = |request: DownlinkSpawnRequest<ItemModel>| {
+                let fut = open_new_downlink(
+                    &*context,
+                    &request.path,
+                    request.kind,
+                    config.keep_linked_retry,
+                    None,
+                );
+                link_futures.push(LinkFuture::Opening(Some(request), fut));
             };
+            let add_commander = |address: Address<Text>| cmd_ids.borrow_mut().get_request(&address);
+            let add_link = (add_downlink, add_commander);
             let add_lane = NoDynLanes;
+
+            // Calling run_handler is very verbose so is pulled out into this macro to make the code easier to read.
+            macro_rules! exec_handler {
+                ($handler:expr) => {
+                    match run_handler(
+                        &mut ActionContext::new(
+                            &suspended,
+                            &add_link,
+                            &add_lane,
+                            &mut join_lane_init,
+                            &mut command_buffer,
+                        ),
+                        meta,
+                        &item_model,
+                        &lifecycle,
+                        $handler,
+                        &lifecycle_item_ids,
+                        &mut dirty_items,
+                    ) {
+                        Err(EventHandlerError::StopInstructed) => break Ok(()),
+                        Err(e) => break Err(AgentTaskError::UserCodeError(Box::new(e))),
+                        Ok(_) => check_cmds(
+                            &mut command_buffer,
+                            &mut cmd_writer,
+                            &mut cmd_send_fut,
+                            CommandWriter::write,
+                        ),
+                    }
+                };
+            }
+
             match task_event {
                 TaskEvent::WriteComplete { writer, result } => {
                     match result {
@@ -1180,33 +1247,7 @@ where
                             let lane = &lifecycle_item_ids[&writer.lane_id()];
                             if let Some(handler) = lifecycle.item_event(&item_model, lane.as_str())
                             {
-                                match run_handler(
-                                    &mut ActionContext::new(
-                                        &suspended,
-                                        &*context,
-                                        &add_downlink,
-                                        &add_lane,
-                                        &mut join_lane_init,
-                                        &mut ad_hoc_buffer,
-                                    ),
-                                    meta,
-                                    &item_model,
-                                    &lifecycle,
-                                    handler,
-                                    &lifecycle_item_ids,
-                                    &mut dirty_items,
-                                ) {
-                                    Err(EventHandlerError::StopInstructed) => break Ok(()),
-                                    Err(e) => {
-                                        break Err(AgentTaskError::UserCodeError(Box::new(e)))
-                                    }
-                                    Ok(_) => check_cmds(
-                                        &mut ad_hoc_buffer,
-                                        &mut cmd_writer,
-                                        &mut cmd_send_fut,
-                                        CommandWriter::write,
-                                    ),
-                                }
+                                exec_handler!(handler);
                             }
                         }
                         Err(_) => break Ok(()), //Failing to write indicates that the runtime has stopped so we can exit without an error.
@@ -1214,102 +1255,123 @@ where
                     }
                     item_writers.insert(writer.lane_id(), writer);
                 }
-                TaskEvent::SuspendedComplete { handler } => {
-                    match run_handler(
-                        &mut ActionContext::new(
-                            &suspended,
-                            &*context,
-                            &add_downlink,
-                            &add_lane,
-                            &mut join_lane_init,
-                            &mut ad_hoc_buffer,
-                        ),
-                        meta,
-                        &item_model,
-                        &lifecycle,
-                        handler,
-                        &lifecycle_item_ids,
-                        &mut dirty_items,
-                    ) {
-                        Err(EventHandlerError::StopInstructed) => break Ok(()),
-                        Err(e) => break Err(AgentTaskError::UserCodeError(Box::new(e))),
-                        Ok(_) => check_cmds(
-                            &mut ad_hoc_buffer,
-                            &mut cmd_writer,
-                            &mut cmd_send_fut,
-                            CommandWriter::write,
-                        ),
-                    }
+                TaskEvent::SuspendedComplete {
+                    result: SuspendResult::Handler(handler),
+                } => {
+                    exec_handler!(handler);
                 }
-                TaskEvent::DownlinkReady {
-                    downlink_event: (mut downlink, event),
+                TaskEvent::SuspendedComplete {
+                    result: SuspendResult::TimedOut(id),
+                } => {
+                    let handler = lifecycle.on_timer(id);
+                    exec_handler!(handler);
+                }
+                TaskEvent::LinksEvent {
+                    downlink_event: LinksEvent::Opened { request, result },
+                } => match result {
+                    OpenDownlinkResult::Success(tx, rx) => {
+                        let DownlinkSpawnRequest {
+                            make_channel,
+                            on_done,
+                            ..
+                        } = request;
+                        let channel = make_channel.create_box(&item_model, tx, rx);
+                        let downlink = HostedDownlink::new(channel);
+                        link_futures.push(LinkFuture::Running(downlink.wait_on_downlink()));
+                        let handler = on_done(Ok(()));
+                        exec_handler!(handler);
+                    }
+                    OpenDownlinkResult::Failed(error, retry) => {
+                        if error.is_fatal() {
+                            let DownlinkSpawnRequest {
+                                path,
+                                kind,
+                                on_done,
+                                ..
+                            } = request;
+                            error!(error = %error, address = %path, kind = ?kind, "Failed to start a downlink due a fatal error.");
+                            let handler = on_done(Err(error));
+                            exec_handler!(handler);
+                        } else {
+                            error!(address = %{&request.path}, kind = ?{request.kind}, error = %error, "Starting a downlink failed. Attempting to retry.");
+                            let fut = open_new_downlink(
+                                &*context,
+                                &request.path,
+                                request.kind,
+                                retry,
+                                Some(error),
+                            );
+                            link_futures.push(LinkFuture::Opening(Some(request), fut));
+                        }
+                    }
+                    OpenDownlinkResult::RetriesExpired(error) => {
+                        let DownlinkSpawnRequest {
+                            path,
+                            kind,
+                            on_done,
+                            ..
+                        } = request;
+                        error!(address = %path, kind = ?kind, error = %error, "A downlink could not be established.");
+                        let handler = on_done(Err(error));
+                        exec_handler!(handler);
+                    }
+                },
+                TaskEvent::LinksEvent {
+                    downlink_event:
+                        LinksEvent::Event {
+                            mut downlink,
+                            event,
+                            ..
+                        },
                 } => match event {
                     HostedDownlinkEvent::Written => {
-                        downlinks.push(Either::Left(downlink.wait_on_downlink()))
+                        link_futures.push(LinkFuture::Running(downlink.wait_on_downlink()))
                     }
                     HostedDownlinkEvent::WriterFailed(err) => {
                         error!(error = %err, "A downlink hosted by the agent failed.");
                         debug!(address = %downlink.address(), kind = ?downlink.kind(), "Attempting to reconnect downlink.");
-                        downlinks.push(Either::Right(downlink.reconnect(
+                        link_futures.push(LinkFuture::Reconnecting(downlink.reconnect(
                             &*context,
                             config.keep_linked_retry,
                             true,
                         )));
                     }
                     HostedDownlinkEvent::WriterTerminated => {
-                        info!("A downlink hosted by the agent stopped writing output.");
-                        downlinks.push(Either::Left(downlink.wait_on_downlink()));
+                        debug!("A downlink hosted by the agent stopped writing output.");
+                        link_futures.push(LinkFuture::Running(downlink.wait_on_downlink()));
                     }
                     HostedDownlinkEvent::HandlerReady { failed } => {
                         if let Some(handler) = downlink.next_event(&item_model) {
-                            match run_handler(
-                                &mut ActionContext::new(
-                                    &suspended,
-                                    &*context,
-                                    &add_downlink,
-                                    &add_lane,
-                                    &mut join_lane_init,
-                                    &mut ad_hoc_buffer,
-                                ),
-                                meta,
-                                &item_model,
-                                &lifecycle,
-                                handler,
-                                &lifecycle_item_ids,
-                                &mut dirty_items,
-                            ) {
-                                Err(EventHandlerError::StopInstructed) => break Ok(()),
-                                Err(e) => break Err(AgentTaskError::UserCodeError(Box::new(e))),
-                                Ok(_) => check_cmds(
-                                    &mut ad_hoc_buffer,
-                                    &mut cmd_writer,
-                                    &mut cmd_send_fut,
-                                    CommandWriter::write,
-                                ),
-                            }
+                            exec_handler!(handler);
                         }
                         if failed {
                             error!("Reading from a downlink failed.");
                             debug!(address = %downlink.address(), kind = ?downlink.kind(), "Attempting to reconnect downlink.");
-                            downlinks.push(Either::Right(downlink.reconnect(
+                            link_futures.push(LinkFuture::Reconnecting(downlink.reconnect(
                                 &*context,
                                 config.keep_linked_retry,
                                 true,
                             )));
                         } else {
-                            downlinks.push(Either::Left(downlink.wait_on_downlink()));
+                            link_futures.push(LinkFuture::Running(downlink.wait_on_downlink()));
                         }
                     }
                     HostedDownlinkEvent::ReconnectSucceeded(reconnect) => {
                         reconnect.connect(&mut downlink, &item_model);
-                        downlinks.push(Either::Left(downlink.wait_on_downlink()));
+                        link_futures.push(LinkFuture::Running(downlink.wait_on_downlink()));
                     }
                     HostedDownlinkEvent::ReconnectFailed { error, retry } => {
-                        error!(error = %error, address = %downlink.address(), kind = ?downlink.kind(), "Attempting to reconnect downlink failed.");
-                        downlinks.push(Either::Right(downlink.reconnect(&*context, retry, false)));
+                        if error.is_fatal() {
+                            error!(error = %error, address = %downlink.address(), kind = ?downlink.kind(), "Attempting to reconnect a downlink failed with a fatal error.");
+                        } else {
+                            error!(error = %error, address = %downlink.address(), kind = ?downlink.kind(), "Attempting to reconnect a downlink failed; attempting again.");
+                            link_futures.push(LinkFuture::Reconnecting(
+                                downlink.reconnect(&*context, retry, false),
+                            ));
+                        }
                     }
                     HostedDownlinkEvent::Stopped => {
-                        downlinks.push(Either::Right(downlink.reconnect(
+                        link_futures.push(LinkFuture::Reconnecting(downlink.reconnect(
                             &*context,
                             config.keep_linked_retry,
                             true,
@@ -1319,7 +1381,7 @@ where
                         if retries_expired {
                             error!(address = %downlink.address(), kind = ?downlink.kind(), "A downlink stopped and could not be restarted.");
                         } else {
-                            info!(address = %downlink.address(), kind = ?downlink.kind(), "A downlink stopped and was removed.");
+                            debug!(address = %downlink.address(), kind = ?downlink.kind(), "A downlink stopped and was removed.");
                         }
                     }
                 },
@@ -1333,11 +1395,10 @@ where
                                 let result = run_handler(
                                     &mut ActionContext::new(
                                         &suspended,
-                                        &*context,
-                                        &add_downlink,
+                                        &add_link,
                                         &add_lane,
                                         &mut join_lane_init,
-                                        &mut ad_hoc_buffer,
+                                        &mut command_buffer,
                                     ),
                                     meta,
                                     &item_model,
@@ -1355,13 +1416,13 @@ where
                                         break Err(AgentTaskError::UserCodeError(Box::new(e)));
                                     }
                                     Err(error) => {
-                                        info!(
+                                        debug!(
                                             error = %error,
                                             "Incoming frame was rejected by the item."
                                         );
                                     }
                                     _ => check_cmds(
-                                        &mut ad_hoc_buffer,
+                                        &mut command_buffer,
                                         &mut cmd_writer,
                                         &mut cmd_send_fut,
                                         CommandWriter::write,
@@ -1372,33 +1433,7 @@ where
                         LaneRequest::Sync(remote_id) => {
                             trace!(name = %name, remote_id = %remote_id, "Received a sync request for a value-like lane.");
                             if let Some(handler) = item_model.on_sync(name.as_str(), remote_id) {
-                                match run_handler(
-                                    &mut ActionContext::new(
-                                        &suspended,
-                                        &*context,
-                                        &add_downlink,
-                                        &add_lane,
-                                        &mut join_lane_init,
-                                        &mut ad_hoc_buffer,
-                                    ),
-                                    meta,
-                                    &item_model,
-                                    &lifecycle,
-                                    handler,
-                                    &lifecycle_item_ids,
-                                    &mut dirty_items,
-                                ) {
-                                    Err(EventHandlerError::StopInstructed) => break Ok(()),
-                                    Err(e) => {
-                                        break Err(AgentTaskError::UserCodeError(Box::new(e)))
-                                    }
-                                    Ok(_) => check_cmds(
-                                        &mut ad_hoc_buffer,
-                                        &mut cmd_writer,
-                                        &mut cmd_send_fut,
-                                        CommandWriter::write,
-                                    ),
-                                }
+                                exec_handler!(handler);
                             }
                         }
                         LaneRequest::InitComplete => {}
@@ -1413,11 +1448,10 @@ where
                                 let result = run_handler(
                                     &mut ActionContext::new(
                                         &suspended,
-                                        &*context,
-                                        &add_downlink,
+                                        &add_link,
                                         &add_lane,
                                         &mut join_lane_init,
-                                        &mut ad_hoc_buffer,
+                                        &mut command_buffer,
                                     ),
                                     meta,
                                     &item_model,
@@ -1435,13 +1469,13 @@ where
                                         break Err(AgentTaskError::UserCodeError(Box::new(e)));
                                     }
                                     Err(error) => {
-                                        info!(
+                                        debug!(
                                             error = %error,
                                             "Incoming frame was rejected by the item."
                                         );
                                     }
                                     _ => check_cmds(
-                                        &mut ad_hoc_buffer,
+                                        &mut command_buffer,
                                         &mut cmd_writer,
                                         &mut cmd_send_fut,
                                         CommandWriter::write,
@@ -1452,33 +1486,7 @@ where
                         LaneRequest::Sync(remote_id) => {
                             trace!(name = %name, remote_id = %remote_id, "Received a sync request for a map-like lane.");
                             if let Some(handler) = item_model.on_sync(name.as_str(), remote_id) {
-                                match run_handler(
-                                    &mut ActionContext::new(
-                                        &suspended,
-                                        &*context,
-                                        &add_downlink,
-                                        &add_lane,
-                                        &mut join_lane_init,
-                                        &mut ad_hoc_buffer,
-                                    ),
-                                    meta,
-                                    &item_model,
-                                    &lifecycle,
-                                    handler,
-                                    &lifecycle_item_ids,
-                                    &mut dirty_items,
-                                ) {
-                                    Err(EventHandlerError::StopInstructed) => break Ok(()),
-                                    Err(e) => {
-                                        break Err(AgentTaskError::UserCodeError(Box::new(e)))
-                                    }
-                                    Ok(_) => check_cmds(
-                                        &mut ad_hoc_buffer,
-                                        &mut cmd_writer,
-                                        &mut cmd_send_fut,
-                                        CommandWriter::write,
-                                    ),
-                                }
+                                exec_handler!(handler);
                             }
                         }
                         LaneRequest::InitComplete => {}
@@ -1489,31 +1497,7 @@ where
                     trace!(name = %name, "Received an HTTP request for a lane.");
                     match item_model.on_http_request(name.as_str(), request) {
                         Ok(handler) => {
-                            match run_handler(
-                                &mut ActionContext::new(
-                                    &suspended,
-                                    &*context,
-                                    &add_downlink,
-                                    &add_lane,
-                                    &mut join_lane_init,
-                                    &mut ad_hoc_buffer,
-                                ),
-                                meta,
-                                &item_model,
-                                &lifecycle,
-                                handler,
-                                &lifecycle_item_ids,
-                                &mut dirty_items,
-                            ) {
-                                Err(EventHandlerError::StopInstructed) => break Ok(()),
-                                Err(e) => break Err(AgentTaskError::UserCodeError(Box::new(e))),
-                                Ok(_) => check_cmds(
-                                    &mut ad_hoc_buffer,
-                                    &mut cmd_writer,
-                                    &mut cmd_send_fut,
-                                    CommandWriter::write,
-                                ),
-                            }
+                            exec_handler!(handler);
                         }
                         Err(request) => not_found(name.as_str(), request),
                     }
@@ -1524,8 +1508,8 @@ where
                 }
                 TaskEvent::CommandSendComplete { result: Ok(writer) } => {
                     cmd_send_fut.set(None.into());
-                    if !ad_hoc_buffer.is_empty() {
-                        let fut = writer.write(&mut ad_hoc_buffer);
+                    if !command_buffer.is_empty() {
+                        let fut = writer.write(&mut command_buffer);
                         cmd_send_fut.set(Some(fut.fuse()).into());
                     } else {
                         cmd_writer = Some(writer);
@@ -1561,20 +1545,22 @@ where
         }?;
         // Try to run the `on_stop` handler before we stop.
         let on_stop_handler = lifecycle.on_stop();
-        let discard = |_| {
-            Err(DownlinkRuntimeError::RuntimeError(
-                AgentRuntimeError::Stopping,
-            ))
-        };
+        let discard = (
+            |_| {},
+            |_| {
+                Err(CommanderRegistrationError::RuntimeError(
+                    AgentRuntimeError::Stopping,
+                ))
+            },
+        );
         let add_lane = NoDynLanes;
         match run_handler(
             &mut ActionContext::new(
                 &suspended,
-                &*context,
                 &discard,
                 &add_lane,
                 &mut join_lane_init,
-                &mut ad_hoc_buffer,
+                &mut command_buffer,
             ),
             meta,
             &item_model,
@@ -1781,16 +1767,16 @@ impl CommandWriter {
 /// write to the command channel.
 #[inline]
 fn check_cmds<Fut>(
-    ad_hoc_buffer: &mut BytesMut,
+    command_buffer: &mut BytesMut,
     cmd_writer: &mut Option<CommandWriter>,
     cmd_send_fut: &mut Pin<&mut OptionFuture<Fuse<Fut>>>,
     write: fn(CommandWriter, &mut BytesMut) -> Fut,
 ) where
     Fut: Future,
 {
-    if !ad_hoc_buffer.is_empty() {
+    if !command_buffer.is_empty() {
         if let Some(writer) = cmd_writer.take() {
-            let fut = write(writer, ad_hoc_buffer);
+            let fut = write(writer, command_buffer);
             cmd_send_fut.set(Some(fut.fuse()).into());
         }
     }
@@ -1816,5 +1802,288 @@ impl<Context> LaneSpawner<Context> for RefCell<Vec<LaneSpawnRequest<Context>>> {
             on_done,
         });
         Ok(())
+    }
+}
+
+/// A request to open a new downlink in the agent task.
+struct DownlinkSpawnRequest<Context> {
+    path: Address<Text>,
+    kind: DownlinkKind,
+    make_channel: BoxDownlinkChannelFactory<Context>,
+    on_done: DownlinkSpawnOnDone<Context>,
+}
+
+impl<Context> std::fmt::Debug for DownlinkSpawnRequest<Context> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DownlinkSpawnRequest")
+            .field("path", &self.path)
+            .field("kind", &self.kind)
+            .field("make_channel", &"...")
+            .field("on_done", &"...")
+            .finish()
+    }
+}
+
+/// Unifies events for opening new downlinks, registering commanders and polling existing downlinks for activity.
+enum LinksEvent<Context> {
+    Opened {
+        request: DownlinkSpawnRequest<Context>,
+        result: OpenDownlinkResult,
+    },
+    Event {
+        downlink: HostedDownlink<Context>,
+        event: HostedDownlinkEvent,
+    },
+}
+
+/// A future that either opens a new downlink, registers a commander or waits on activity from an open downlink.
+#[pin_project(project = LinkFutureProj)]
+enum LinkFuture<Context, F1, F2, F3> {
+    Opening(Option<DownlinkSpawnRequest<Context>>, #[pin] F1),
+    Running(#[pin] F2),
+    Reconnecting(#[pin] F3),
+}
+
+impl<Context, F1, F2, F3> Future for LinkFuture<Context, F1, F2, F3>
+where
+    F1: Future<Output = OpenDownlinkResult>,
+    F2: Future<Output = (HostedDownlink<Context>, HostedDownlinkEvent)>,
+    F3: Future<Output = (HostedDownlink<Context>, HostedDownlinkEvent)>,
+{
+    type Output = LinksEvent<Context>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<Self::Output> {
+        match self.project() {
+            LinkFutureProj::Opening(request, fut) => {
+                let result = ready!(fut.poll(cx));
+                Poll::Ready(LinksEvent::Opened {
+                    request: request.take().expect("Polled twice."),
+                    result,
+                })
+            }
+            LinkFutureProj::Running(fut) => {
+                let (dl, ev) = ready!(fut.poll(cx));
+                Poll::Ready(LinksEvent::Event {
+                    downlink: dl,
+                    event: ev,
+                })
+            }
+            LinkFutureProj::Reconnecting(fut) => {
+                let (dl, ev) = ready!(fut.poll(cx));
+                Poll::Ready(LinksEvent::Event {
+                    downlink: dl,
+                    event: ev,
+                })
+            }
+        }
+    }
+}
+
+/// The outcome of attempting to open a new downlink.
+#[derive(Debug)]
+enum OpenDownlinkResult {
+    /// The downlink was opened successfully.
+    Success(ByteWriter, ByteReader),
+    /// Attempting to open the downlink failed with an error.
+    Failed(DownlinkRuntimeError, RetryStrategy),
+    /// The retry strategy used for retrying the downlink became exhausted.
+    RetriesExpired(DownlinkRuntimeError),
+}
+
+fn open_new_downlink(
+    agent_context: &dyn AgentContext,
+    path: &Address<Text>,
+    kind: DownlinkKind,
+    retry: RetryStrategy,
+    last_error: Option<DownlinkRuntimeError>,
+) -> impl Future<Output = OpenDownlinkResult> + Send + 'static {
+    let Address { host, node, lane } = path;
+    let open_fut = agent_context.open_downlink(
+        host.as_ref().map(AsRef::as_ref),
+        node.as_ref(),
+        lane.as_ref(),
+        kind,
+    );
+    open_with_retry(open_fut, retry, last_error)
+}
+
+async fn open_with_retry(
+    open_fut: BoxFuture<'static, Result<(ByteWriter, ByteReader), DownlinkRuntimeError>>,
+    mut retry: RetryStrategy,
+    last_error: Option<DownlinkRuntimeError>,
+) -> OpenDownlinkResult {
+    let delay = if let Some(error) = last_error {
+        match retry.next() {
+            Some(delay) => delay,
+            None => return OpenDownlinkResult::RetriesExpired(error),
+        }
+    } else {
+        None
+    };
+    if let Some(t) = delay {
+        tokio::time::sleep(t).await;
+    }
+    match open_fut.await {
+        Ok((tx, rx)) => OpenDownlinkResult::Success(tx, rx),
+        Err(err) => OpenDownlinkResult::Failed(err, retry),
+    }
+}
+
+struct LinkRequestCollector<Context> {
+    downlinks: Vec<DownlinkSpawnRequest<Context>>,
+    commander_ids: CommanderIds,
+}
+
+impl<Context> Default for LinkRequestCollector<Context> {
+    fn default() -> Self {
+        Self {
+            downlinks: Default::default(),
+            commander_ids: CommanderIds::default(),
+        }
+    }
+}
+
+enum SuspendResult<Context> {
+    Handler(LocalBoxEventHandler<'static, Context>),
+    TimedOut(u64),
+}
+
+#[pin_project(project = SuspendedProj)]
+enum Suspended<Context> {
+    Handler(HandlerFuture<Context>),
+    Timeout {
+        #[pin]
+        at: Sleep,
+        id: u64,
+    },
+}
+
+impl<Context> From<HandlerFuture<Context>> for Suspended<Context> {
+    fn from(value: HandlerFuture<Context>) -> Self {
+        Suspended::Handler(value)
+    }
+}
+
+impl<Context> Suspended<Context> {
+    fn timeout(time: Instant, id: u64) -> Self {
+        Suspended::Timeout {
+            at: sleep_until(time),
+            id,
+        }
+    }
+}
+
+impl<Context> std::fmt::Debug for LinkRequestCollector<Context> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LinkRequestCollector")
+            .field("downlinks", &self.downlinks)
+            .field("commander_ids", &self.commander_ids)
+            .finish()
+    }
+}
+
+impl<Context> LinkSpawner<Context> for RefCell<LinkRequestCollector<Context>> {
+    fn spawn_downlink(
+        &self,
+        path: Address<Text>,
+        make_channel: BoxDownlinkChannelFactory<Context>,
+        on_done: DownlinkSpawnOnDone<Context>,
+    ) {
+        self.borrow_mut().downlinks.push(DownlinkSpawnRequest {
+            path,
+            kind: make_channel.kind(),
+            make_channel,
+            on_done,
+        })
+    }
+
+    fn register_commander(&self, path: Address<Text>) -> Result<u16, CommanderRegistrationError> {
+        let mut guard = self.borrow_mut();
+        guard.commander_ids.get_request(&path)
+    }
+}
+
+impl<Context, F1, F2> LinkSpawner<Context> for (F1, F2)
+where
+    F1: Fn(DownlinkSpawnRequest<Context>),
+    F2: Fn(Address<Text>) -> Result<u16, CommanderRegistrationError>,
+{
+    fn spawn_downlink(
+        &self,
+        path: Address<Text>,
+        make_channel: BoxDownlinkChannelFactory<Context>,
+        on_done: DownlinkSpawnOnDone<Context>,
+    ) {
+        (self.0)(DownlinkSpawnRequest {
+            path,
+            kind: make_channel.kind(),
+            make_channel,
+            on_done,
+        })
+    }
+
+    fn register_commander(&self, path: Address<Text>) -> Result<u16, CommanderRegistrationError> {
+        (self.1)(path)
+    }
+}
+
+#[derive(Default, Debug)]
+struct CommanderIds {
+    next_id: u16,
+    assigned: HashMap<Address<Text>, u16>,
+}
+
+impl CommanderIds {
+    fn get_request(&mut self, address: &Address<Text>) -> Result<u16, CommanderRegistrationError> {
+        let id = if let Some(id) = self.assigned.get(address) {
+            *id
+        } else {
+            let id = self.next_id;
+            if let Some(next) = id.checked_add(1) {
+                self.next_id = next;
+                self.assigned.insert(address.clone(), id);
+                id
+            } else {
+                return Err(CommanderRegistrationError::CommanderIdOverflow);
+            }
+        };
+
+        Ok(id)
+    }
+}
+
+impl<Context> Future for Suspended<Context> {
+    type Output = SuspendResult<Context>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<Self::Output> {
+        match self.project() {
+            SuspendedProj::Handler(fut) => fut.poll_unpin(cx).map(SuspendResult::Handler),
+            SuspendedProj::Timeout { at, id } => {
+                at.poll(cx).map(move |_| SuspendResult::TimedOut(*id))
+            }
+        }
+    }
+}
+
+impl<F, Context> Spawner<Context> for F
+where
+    F: Fn(Suspended<Context>),
+{
+    fn spawn_suspend(&self, fut: HandlerFuture<Context>) {
+        self(fut.into())
+    }
+
+    fn schedule_timer(&self, at: Instant, id: u64) {
+        self(Suspended::timeout(at, id))
+    }
+}
+
+impl<Context> Spawner<Context> for FuturesUnordered<Suspended<Context>> {
+    fn spawn_suspend(&self, fut: HandlerFuture<Context>) {
+        self.push(fut.into());
+    }
+
+    fn schedule_timer(&self, at: Instant, id: u64) {
+        self.push(Suspended::timeout(at, id))
     }
 }

@@ -174,24 +174,17 @@ mod test_support {
     use std::collections::HashMap;
 
     use bytes::BytesMut;
-    use futures::future::BoxFuture;
-    use swimos_api::{
-        agent::DownlinkKind,
-        agent::{
-            AgentConfig, AgentContext, HttpLaneRequestChannel, LaneConfig, StoreKind, WarpLaneKind,
-        },
-        error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError},
-    };
-    use swimos_utilities::{
-        byte_channel::{ByteReader, ByteWriter},
-        routing::RouteUri,
-    };
+
+    use swimos_api::{address::Address, agent::AgentConfig, error::CommanderRegistrationError};
+    use swimos_model::Text;
+    use swimos_utilities::routing::RouteUri;
+    use tokio::time::Instant;
 
     use crate::{
-        agent_model::downlink::BoxDownlinkChannel,
+        agent_model::downlink::BoxDownlinkChannelFactory,
         event_handler::{
-            ActionContext, DownlinkSpawner, HandlerFuture, LocalBoxEventHandler, Spawner,
-            StepResult,
+            ActionContext, DownlinkSpawnOnDone, HandlerFuture, LinkSpawner, LocalBoxEventHandler,
+            Spawner, StepResult,
         },
         meta::AgentMetadata,
         test_context::NoDynamicLanes,
@@ -203,56 +196,27 @@ mod test_support {
         fn spawn_suspend(&self, _fut: HandlerFuture<FakeAgent>) {
             panic!("Unexpected spawn.");
         }
+
+        fn schedule_timer(&self, _at: Instant, _id: u64) {
+            panic!("Unexpected timer.");
+        }
     }
 
-    impl<FakeAgent> DownlinkSpawner<FakeAgent> for NoSpawn {
+    impl<FakeAgent> LinkSpawner<FakeAgent> for NoSpawn {
         fn spawn_downlink(
             &self,
-            _dl_channel: BoxDownlinkChannel<FakeAgent>,
-        ) -> Result<(), DownlinkRuntimeError> {
-            panic!("Unexpected downlink.");
-        }
-    }
-
-    struct NoAgentRuntime;
-
-    impl AgentContext for NoAgentRuntime {
-        fn ad_hoc_commands(&self) -> BoxFuture<'static, Result<ByteWriter, DownlinkRuntimeError>> {
-            panic!("Unexpected runtime interaction.");
+            _path: Address<Text>,
+            _make_channel: BoxDownlinkChannelFactory<FakeAgent>,
+            _on_done: DownlinkSpawnOnDone<FakeAgent>,
+        ) {
+            panic!("Opening downlinks not supported.");
         }
 
-        fn add_lane(
+        fn register_commander(
             &self,
-            _name: &str,
-            _lane_kind: WarpLaneKind,
-            _config: LaneConfig,
-        ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>> {
-            panic!("Unexpected runtime interaction.");
-        }
-
-        fn open_downlink(
-            &self,
-            _host: Option<&str>,
-            _node: &str,
-            _lane: &str,
-            _kind: DownlinkKind,
-        ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), DownlinkRuntimeError>> {
-            panic!("Unexpected runtime interaction.");
-        }
-
-        fn add_store(
-            &self,
-            _name: &str,
-            _kind: StoreKind,
-        ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), OpenStoreError>> {
-            panic!("Unexpected runtime interaction.");
-        }
-
-        fn add_http_lane(
-            &self,
-            _name: &str,
-        ) -> BoxFuture<'static, Result<HttpLaneRequestChannel, AgentRuntimeError>> {
-            panic!("Unexpected runtime interaction.");
+            _path: Address<Text>,
+        ) -> Result<u16, CommanderRegistrationError> {
+            panic!("Registering commanders not supported.");
         }
     }
 
@@ -278,17 +242,15 @@ mod test_support {
         let route_params = HashMap::new();
         let meta = make_meta(&uri, &route_params);
         let no_spawn = NoSpawn;
-        let no_runtime = NoAgentRuntime;
         let no_dyn_lanes = NoDynamicLanes;
         let mut join_lane_init = HashMap::new();
-        let mut ad_hoc_buffer = BytesMut::new();
+        let mut command_buffer = BytesMut::new();
         let mut context = ActionContext::new(
             &no_spawn,
-            &no_runtime,
             &no_spawn,
             &no_dyn_lanes,
             &mut join_lane_init,
-            &mut ad_hoc_buffer,
+            &mut command_buffer,
         );
         loop {
             match handler.step(&mut context, meta, agent) {

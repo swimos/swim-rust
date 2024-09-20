@@ -43,6 +43,7 @@ members = [
     "example_apps/devguide",
     "example_apps/ripple",
     "example_apps/stocks_simulated",
+    "example_apps/kafka_connector"
 ]
 
 [workspace.package]

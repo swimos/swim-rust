@@ -16,10 +16,10 @@ use std::time::Duration;
 
 use futures::{
     future::{BoxFuture, Either},
-    stream::FuturesUnordered,
     Future, FutureExt, Stream, StreamExt,
 };
 use static_assertions::assert_obj_safe;
+use tokio::time::Instant;
 
 use crate::meta::AgentMetadata;
 
@@ -40,24 +40,11 @@ pub trait Spawner<Context> {
     /// result in an event handler that will be executed by the agent task after the
     /// future completes.
     fn spawn_suspend(&self, fut: HandlerFuture<Context>);
-}
 
-impl<F, Context> Spawner<Context> for F
-where
-    F: Fn(HandlerFuture<Context>),
-{
-    fn spawn_suspend(&self, fut: HandlerFuture<Context>) {
-        self(fut)
-    }
+    fn schedule_timer(&self, at: Instant, id: u64);
 }
 
 assert_obj_safe!(Spawner<()>);
-
-impl<Context> Spawner<Context> for FuturesUnordered<HandlerFuture<Context>> {
-    fn spawn_suspend(&self, fut: HandlerFuture<Context>) {
-        self.push(fut);
-    }
-}
 
 /// A handler action that will suspend a future into the agent task.
 pub struct Suspend<Fut> {

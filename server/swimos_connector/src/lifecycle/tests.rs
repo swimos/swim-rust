@@ -22,25 +22,27 @@ use futures::{
 use parking_lot::Mutex;
 use swimos_agent::{
     agent_lifecycle::{on_start::OnStart, on_stop::OnStop},
-    agent_model::downlink::BoxDownlinkChannel,
+    agent_model::downlink::BoxDownlinkChannelFactory,
     event_handler::{
-        ActionContext, DownlinkSpawner, EventHandler, EventHandlerError, HandlerAction,
-        HandlerActionExt, HandlerFuture, LaneSpawnOnDone, LaneSpawner, SideEffect, Spawner,
-        StepResult,
+        ActionContext, DownlinkSpawnOnDone, EventHandler, EventHandlerError, HandlerAction,
+        HandlerActionExt, HandlerFuture, LaneSpawnOnDone, LaneSpawner, LinkSpawner, SideEffect,
+        Spawner, StepResult,
     },
     AgentMetadata,
 };
 use swimos_api::{
+    address::Address,
     agent::WarpLaneKind,
-    error::{DownlinkRuntimeError, DynamicRegistrationError},
+    error::{CommanderRegistrationError, DynamicRegistrationError},
 };
+use swimos_model::Text;
 use swimos_utilities::trigger;
 use thiserror::Error;
 
 use crate::generic::GenericConnectorAgent;
 use crate::{
-    test_support::{make_meta, make_uri, TestContext},
-    Connector, ConnectorInitError, ConnectorLifecycle, ConnectorStream,
+    test_support::{make_meta, make_uri},
+    Connector, ConnectorAgent, ConnectorInitError, ConnectorLifecycle, ConnectorStream,
 };
 
 #[derive(Default)]
@@ -52,14 +54,24 @@ impl Spawner<GenericConnectorAgent> for TestSpawner {
     fn spawn_suspend(&self, fut: HandlerFuture<GenericConnectorAgent>) {
         self.futures.push(fut);
     }
+
+    fn schedule_timer(&self, _at: tokio::time::Instant, _id: u64) {
+        panic!("Unexpected timer.");
+    }
 }
 
-impl DownlinkSpawner<GenericConnectorAgent> for TestSpawner {
+impl LinkSpawner<GenericConnectorAgent> for TestSpawner {
     fn spawn_downlink(
         &self,
-        _dl_channel: BoxDownlinkChannel<GenericConnectorAgent>,
-    ) -> Result<(), DownlinkRuntimeError> {
+        _path: Address<Text>,
+        _make_channel: BoxDownlinkChannelFactory<GenericConnectorAgent>,
+        _on_done: DownlinkSpawnOnDone<GenericConnectorAgent>,
+    ) {
         panic!("Spawning downlinks not supported.");
+    }
+
+    fn register_commander(&self, _path: Address<Text>) -> Result<u16, CommanderRegistrationError> {
+        panic!("Registering commanders not supported.");
     }
 }
 
@@ -106,17 +118,15 @@ where
     let route_params = HashMap::new();
     let meta = make_meta(&uri, &route_params);
 
-    let context = TestContext;
     let mut join_lane_init = HashMap::new();
-    let mut ad_hoc_buffer = BytesMut::new();
+    let mut command_buffer = BytesMut::new();
 
     let mut action_context = ActionContext::new(
         spawner,
-        &context,
         spawner,
         spawner,
         &mut join_lane_init,
-        &mut ad_hoc_buffer,
+        &mut command_buffer,
     );
 
     loop {
