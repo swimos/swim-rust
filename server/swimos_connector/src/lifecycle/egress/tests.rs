@@ -18,14 +18,17 @@ use std::time::Duration;
 
 use futures::FutureExt;
 use parking_lot::Mutex;
+use swimos_agent::agent_lifecycle::item_event::ItemEvent;
 use swimos_agent::agent_lifecycle::on_start::OnStart;
 use swimos_agent::agent_lifecycle::on_stop::OnStop;
+use swimos_agent::agent_lifecycle::on_timer::OnTimer;
 use swimos_agent::agent_lifecycle::HandlerContext;
 use swimos_agent::agent_model::AgentSpec;
 use swimos_agent::agent_model::{ItemDescriptor, ItemFlags};
 use swimos_agent::event_handler::{
     ActionContext, EventHandler, HandlerAction, HandlerActionExt, StepResult,
 };
+use swimos_agent::lanes::ValueLaneSelectSet;
 use swimos_agent::AgentMetadata;
 use swimos_api::address::Address;
 use swimos_api::agent::{DownlinkKind, WarpLaneKind};
@@ -33,10 +36,12 @@ use swimos_model::Value;
 use swimos_utilities::trigger;
 use thiserror::Error;
 
-use crate::lifecycle::fixture::{run_handle_with_futs, DownlinkRecord};
+use crate::lifecycle::fixture::{
+    run_handle_with_futs, DownlinkRecord, RequestsRecord, TimerRecord,
+};
 use crate::{
     BaseConnector, ConnectorAgent, ConnectorFuture, EgressConnector, EgressConnectorLifecycle,
-    EgressConnectorSender, EgressContext, MessageSource, SendResult,
+    EgressConnectorSender, EgressContext, MessageSource, SendResult, ValueLaneSelectorFn,
 };
 
 #[derive(Default)]
@@ -188,7 +193,7 @@ impl EgressConnector for TestConnector {
     }
 }
 
-const TIMEOUT: Duration = Duration::from_secs(1);
+const TIMEOUT: Duration = Duration::from_secs(11);
 const ID: u64 = 746347;
 
 impl EgressConnectorSender<TestError> for TestSender {
@@ -229,9 +234,10 @@ impl EgressConnectorSender<TestError> for TestSender {
         &self,
         timer_id: u64,
     ) -> Option<SendResult<impl ConnectorFuture<TestError>, TestError>> {
+        assert_eq!(timer_id, ID);
         let TestSender { state } = self;
         let mut guard = state.lock();
-        let State { events, busy_for } = &mut *guard;
+        let State { busy_for, events } = &mut *guard;
         if *busy_for > 0 {
             *busy_for -= 1;
             Some(SendResult::RequestCallback(TIMEOUT, ID))
@@ -253,13 +259,14 @@ async fn init_connector(
 ) {
     let handler = lifecycle.on_start();
 
-    let downlinks = run_handle_with_futs(agent, handler)
+    let RequestsRecord { downlinks, timers } = run_handle_with_futs(agent, handler)
         .await
         .expect("Handler failed.");
 
     let events = connector.take_events();
     assert_eq!(events, vec![Event::Start, Event::CreateSender,]);
 
+    assert!(timers.is_empty());
     match downlinks.as_slice() {
         [first, second] => {
             let DownlinkRecord {
@@ -313,14 +320,13 @@ async fn connector_lifecycle_stop_uninitialized() {
     let agent = ConnectorAgent::default();
 
     let handler = lifecycle.on_stop();
-    let downlinks = run_handle_with_futs(&agent, handler)
+    assert!(run_handle_with_futs(&agent, handler)
         .await
-        .expect("Handler failed.");
+        .expect("Handler failed.")
+        .is_empty());
 
     let events = connector.take_events();
     assert_eq!(events, vec![Event::Stop]);
-
-    assert!(downlinks.is_empty());
 }
 
 #[tokio::test]
@@ -332,12 +338,159 @@ async fn connector_lifecycle_stop_initialized() {
     init_connector(&agent, &connector, &lifecycle).await;
 
     let handler = lifecycle.on_stop();
-    let downlinks = run_handle_with_futs(&agent, handler)
+    assert!(run_handle_with_futs(&agent, handler)
         .await
-        .expect("Handler failed.");
+        .expect("Handler failed.")
+        .is_empty());
 
     let events = connector.take_events();
     assert_eq!(events, vec![Event::Stop]);
+}
+
+fn set_value_lane(value: Value) -> impl EventHandler<ConnectorAgent> + 'static {
+    ValueLaneSelectSet::new(ValueLaneSelectorFn::new(VALUE_LANE.to_string()), value)
+}
+
+#[tokio::test]
+async fn connector_lifecycle_value_lane_event_immediate() {
+    let connector = TestConnector::default();
+    let lifecycle = EgressConnectorLifecycle::new(connector.clone());
+    let agent = ConnectorAgent::default();
+
+    init_connector(&agent, &connector, &lifecycle).await;
+    create_lanes(&agent);
+
+    let handler = set_value_lane(Value::Int32Value(4));
+    assert!(run_handle_with_futs(&agent, handler)
+        .await
+        .expect("Handler failed.")
+        .is_empty());
+
+    let handler = lifecycle
+        .item_event(&agent, VALUE_LANE)
+        .expect("No pending event.");
+    assert!(run_handle_with_futs(&agent, handler)
+        .await
+        .expect("Handler failed.")
+        .is_empty());
+
+    let events = connector.take_events();
+
+    let expected = vec![
+        Event::SendLane {
+            name: VALUE_LANE.to_string(),
+            key: None,
+            value: Value::Int32Value(4),
+        },
+        Event::SendHandler,
+    ];
+    assert_eq!(events, expected);
+}
+
+#[tokio::test]
+async fn connector_lifecycle_value_lane_event_busy() {
+    let connector = TestConnector::new(1);
+    let lifecycle = EgressConnectorLifecycle::new(connector.clone());
+    let agent = ConnectorAgent::default();
+
+    init_connector(&agent, &connector, &lifecycle).await;
+    create_lanes(&agent);
+
+    let handler = set_value_lane(Value::Int32Value(4));
+    assert!(run_handle_with_futs(&agent, handler)
+        .await
+        .expect("Handler failed.")
+        .is_empty());
+
+    let handler = lifecycle
+        .item_event(&agent, VALUE_LANE)
+        .expect("No pending event.");
+    let RequestsRecord { downlinks, timers } = run_handle_with_futs(&agent, handler)
+        .await
+        .expect("Handler failed.");
 
     assert!(downlinks.is_empty());
+
+    let id = match timers.as_slice() {
+        &[TimerRecord { id, .. }] => id,
+        _ => panic!("Timer expected."),
+    };
+
+    assert!(connector.take_events().is_empty());
+
+    let handler = lifecycle.on_timer(id);
+
+    assert!(run_handle_with_futs(&agent, handler)
+        .await
+        .expect("Handler failed.")
+        .is_empty());
+
+    let events = connector.take_events();
+
+    let expected = vec![Event::Timer(id), Event::SendHandler];
+    assert_eq!(events, expected);
+}
+
+#[tokio::test]
+async fn connector_lifecycle_value_lane_event_busy_twice() {
+    let connector = TestConnector::new(2);
+    let lifecycle = EgressConnectorLifecycle::new(connector.clone());
+    let agent = ConnectorAgent::default();
+
+    init_connector(&agent, &connector, &lifecycle).await;
+    create_lanes(&agent);
+
+    let handler = set_value_lane(Value::Int32Value(4));
+    assert!(run_handle_with_futs(&agent, handler)
+        .await
+        .expect("Handler failed.")
+        .is_empty());
+
+    // Item event triggers send which is busy and schedules a callback.
+
+    let handler = lifecycle
+        .item_event(&agent, VALUE_LANE)
+        .expect("No pending event.");
+    let RequestsRecord { downlinks, timers } = run_handle_with_futs(&agent, handler)
+        .await
+        .expect("Handler failed.");
+
+    assert!(downlinks.is_empty());
+
+    let id = match timers.as_slice() {
+        &[TimerRecord { id, .. }] => id,
+        _ => panic!("Timer expected."),
+    };
+
+    assert!(connector.take_events().is_empty());
+
+    // Callback occurs but the sender is still busy and another callback is requested.
+
+    let handler = lifecycle.on_timer(id);
+
+    let RequestsRecord { downlinks, timers } = run_handle_with_futs(&agent, handler)
+        .await
+        .expect("Handler failed.");
+    assert!(downlinks.is_empty());
+
+    let id = match timers.as_slice() {
+        &[TimerRecord { id, .. }] => id,
+        _ => panic!("Timer expected."),
+    };
+
+    assert!(connector.take_events().is_empty());
+
+    // The second callback occurs and now the send can go ahead.
+
+    let handler = lifecycle.on_timer(id);
+
+    assert!(run_handle_with_futs(&agent, handler)
+        .await
+        .expect("Handler failed.")
+        .is_empty());
+
+    let events = connector.take_events();
+
+    let expected = vec![Event::Timer(id), Event::SendHandler];
+    assert_eq!(events, expected);
 }

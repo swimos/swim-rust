@@ -29,6 +29,7 @@ use swimos_api::{
     error::{CommanderRegistrationError, DynamicRegistrationError},
 };
 use swimos_model::Text;
+use tokio::time::Instant;
 
 use crate::{
     test_support::{make_meta, make_uri},
@@ -39,12 +40,16 @@ use crate::{
 pub struct TestSpawner {
     futures: FuturesUnordered<HandlerFuture<ConnectorAgent>>,
     downlinks: RefCell<Vec<DownlinkRecord>>,
+    timers: RefCell<Vec<TimerRecord>>,
 }
 
 impl TestSpawner {
-    fn take_downlinks(&self) -> Vec<DownlinkRecord> {
+    fn take_requests(&self) -> RequestsRecord {
         let mut guard = self.downlinks.borrow_mut();
-        std::mem::take(&mut *guard)
+        let downlinks = std::mem::take(&mut *guard);
+        let mut guard = self.timers.borrow_mut();
+        let timers = std::mem::take(&mut *guard);
+        RequestsRecord { downlinks, timers }
     }
 }
 
@@ -53,8 +58,8 @@ impl Spawner<ConnectorAgent> for TestSpawner {
         self.futures.push(fut);
     }
 
-    fn schedule_timer(&self, _at: tokio::time::Instant, _id: u64) {
-        panic!("Unexpected timer.");
+    fn schedule_timer(&self, at: Instant, id: u64) {
+        self.timers.borrow_mut().push(TimerRecord { at, id });
     }
 }
 
@@ -71,6 +76,24 @@ impl std::fmt::Debug for DownlinkRecord {
             .field("make_channel", &"...")
             .field("on_done", &"...")
             .finish()
+    }
+}
+
+#[derive(Debug)]
+pub struct TimerRecord {
+    pub at: Instant,
+    pub id: u64,
+}
+
+#[derive(Debug)]
+pub struct RequestsRecord {
+    pub downlinks: Vec<DownlinkRecord>,
+    pub timers: Vec<TimerRecord>,
+}
+
+impl RequestsRecord {
+    pub fn is_empty(&self) -> bool {
+        self.downlinks.is_empty() && self.timers.is_empty()
     }
 }
 
@@ -107,7 +130,7 @@ impl LaneSpawner<ConnectorAgent> for TestSpawner {
 pub async fn run_handle_with_futs<H>(
     agent: &ConnectorAgent,
     handler: H,
-) -> Result<Vec<DownlinkRecord>, Box<dyn std::error::Error + Send>>
+) -> Result<RequestsRecord, Box<dyn std::error::Error + Send>>
 where
     H: EventHandler<ConnectorAgent>,
 {
@@ -121,7 +144,7 @@ where
             None => break,
         }
     }
-    Ok(spawner.take_downlinks())
+    Ok(spawner.take_requests())
 }
 
 pub fn run_handler<H>(
