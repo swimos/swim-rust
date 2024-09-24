@@ -35,7 +35,8 @@ use swimos_api::{
     agent::WarpLaneKind,
     error::{CommanderRegistrationError, DynamicRegistrationError},
 };
-use swimos_model::{Text, Value};
+use swimos_form::write::StructuralWritable;
+use swimos_model::Text;
 use swimos_recon::print_recon_compact;
 use swimos_utilities::{
     byte_channel::{byte_channel, ByteWriter},
@@ -72,7 +73,7 @@ impl Spawner<ConnectorAgent> for TestSpawner {
     }
 
     fn schedule_timer(&self, at: Instant, id: u64) {
-        self.timers.borrow_mut().push(TimerRecord { at, id });
+        self.timers.borrow_mut().push(TimerRecord { _at: at, id });
     }
 }
 
@@ -94,7 +95,7 @@ impl std::fmt::Debug for DownlinkRecord {
 
 #[derive(Debug)]
 pub struct TimerRecord {
-    pub at: Instant,
+    pub _at: Instant,
     pub id: u64,
 }
 
@@ -198,11 +199,14 @@ where
 
 const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
 
-pub fn drive_downlink<'a>(
+pub fn drive_downlink<'a, T>(
     factory: BoxDownlinkChannelFactory<ConnectorAgent>,
     agent: &'a ConnectorAgent,
-    input: BoxStream<'static, Value>,
-) -> impl Stream<Item = RequestsRecord> + 'a {
+    input: BoxStream<'static, T>,
+) -> impl Stream<Item = RequestsRecord> + 'a
+where
+    T: StructuralWritable + Send + 'static,
+{
     let (in_tx, in_rx) = byte_channel(BUFFER_SIZE);
     let (out_tx, _out_rx) = byte_channel(BUFFER_SIZE);
     let channel = factory.create_box(agent, out_tx, in_rx);
@@ -212,7 +216,10 @@ pub fn drive_downlink<'a>(
     unfold(pump, |pump| pump.consume())
 }
 
-async fn downlink_provider(in_tx: ByteWriter, mut data: BoxStream<'static, Value>) {
+async fn downlink_provider<T>(in_tx: ByteWriter, mut data: BoxStream<'static, T>)
+where
+    T: StructuralWritable + 'static,
+{
     let mut writer = FramedWrite::new(in_tx, DownlinkNotificationEncoder);
     writer
         .send(DownlinkNotification::<&[u8]>::Linked)

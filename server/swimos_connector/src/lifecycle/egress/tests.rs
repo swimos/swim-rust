@@ -31,6 +31,7 @@ use swimos_agent::event_handler::{
 };
 use swimos_agent::lanes::{MapLaneSelectRemove, MapLaneSelectUpdate, ValueLaneSelectSet};
 use swimos_agent::AgentMetadata;
+use swimos_agent_protocol::MapMessage;
 use swimos_api::address::Address;
 use swimos_api::agent::{DownlinkKind, WarpLaneKind};
 use swimos_model::{Text, Value};
@@ -518,7 +519,7 @@ async fn connector_lifecycle_value_from_downlink() {
     ) = init_connector(&agent, &connector, &lifecycle).await;
 
     let data = futures::stream::iter([Value::from(56)]);
-    let mut dl_stream = pin!(drive_downlink(make_channel, &agent, data.boxed()));
+    let mut dl_stream = pin!(drive_downlink::<Value>(make_channel, &agent, data.boxed()));
 
     while let Some(requests) = dl_stream.next().await {
         assert!(requests.is_empty());
@@ -646,6 +647,85 @@ async fn connector_lifecycle_map_lane_remove_event_immediate() {
     let expected = vec![
         Event::SendLane {
             name: MAP_LANE.to_string(),
+            key: Some(Value::from("hello")),
+            value: Value::Extant,
+        },
+        Event::SendHandler,
+    ];
+    assert_eq!(events, expected);
+}
+
+#[tokio::test]
+async fn connector_lifecycle_map_update_from_downlink() {
+    let connector = TestConnector::default();
+    let lifecycle = EgressConnectorLifecycle::new(connector.clone());
+    let agent = ConnectorAgent::default();
+
+    let (
+        _,
+        DownlinkRecord {
+            path, make_channel, ..
+        },
+    ) = init_connector(&agent, &connector, &lifecycle).await;
+
+    let data = futures::stream::iter([MapMessage::Update {
+        key: Value::from("hello"),
+        value: Value::from(945),
+    }]);
+    let mut dl_stream = pin!(drive_downlink::<MapMessage<Value, Value>>(
+        make_channel,
+        &agent,
+        data.boxed()
+    ));
+
+    while let Some(requests) = dl_stream.next().await {
+        assert!(requests.is_empty());
+    }
+
+    let events = connector.take_events();
+
+    let expected = vec![
+        Event::SendDownlink {
+            address: addr(path),
+            key: Some(Value::from("hello")),
+            value: Value::from(945),
+        },
+        Event::SendHandler,
+    ];
+    assert_eq!(events, expected);
+}
+
+#[tokio::test]
+async fn connector_lifecycle_map_remove_from_downlink() {
+    let connector = TestConnector::default();
+    let lifecycle = EgressConnectorLifecycle::new(connector.clone());
+    let agent = ConnectorAgent::default();
+
+    let (
+        _,
+        DownlinkRecord {
+            path, make_channel, ..
+        },
+    ) = init_connector(&agent, &connector, &lifecycle).await;
+
+    let data = futures::stream::iter([MapMessage::Remove {
+        key: Value::from("hello"),
+    }]);
+    let mut dl_stream = pin!(drive_downlink::<MapMessage<Value, Value>>(
+        make_channel,
+        &agent,
+        data.boxed()
+    ));
+
+    while let Some(requests) = dl_stream.next().await {
+        assert!(requests.is_empty());
+    }
+
+    let events = connector.take_events();
+
+    let expected = vec![
+        Event::SendDownlink {
+            address: addr(path),
             key: Some(Value::from("hello")),
             value: Value::Extant,
         },
