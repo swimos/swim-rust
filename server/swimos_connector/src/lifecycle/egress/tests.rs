@@ -29,7 +29,7 @@ use swimos_agent::agent_model::{ItemDescriptor, ItemFlags};
 use swimos_agent::event_handler::{
     ActionContext, EventHandler, HandlerAction, HandlerActionExt, StepResult,
 };
-use swimos_agent::lanes::ValueLaneSelectSet;
+use swimos_agent::lanes::{MapLaneSelectRemove, MapLaneSelectUpdate, ValueLaneSelectSet};
 use swimos_agent::AgentMetadata;
 use swimos_api::address::Address;
 use swimos_api::agent::{DownlinkKind, WarpLaneKind};
@@ -42,7 +42,8 @@ use crate::lifecycle::fixture::{
 };
 use crate::{
     BaseConnector, ConnectorAgent, ConnectorFuture, EgressConnector, EgressConnectorLifecycle,
-    EgressConnectorSender, EgressContext, MessageSource, SendResult, ValueLaneSelectorFn,
+    EgressConnectorSender, EgressContext, MapLaneSelectorFn, MessageSource, SendResult,
+    ValueLaneSelectorFn,
 };
 
 #[derive(Default)]
@@ -542,4 +543,113 @@ fn addr(address: Address<Text>) -> Address<String> {
         node: address.node.into(),
         lane: address.lane.into(),
     }
+}
+
+fn update_map_lane(key: Value, value: Value) -> impl EventHandler<ConnectorAgent> + 'static {
+    MapLaneSelectUpdate::new(MapLaneSelectorFn::new(MAP_LANE.to_string()), key, value)
+}
+
+fn remove_map_lane(key: Value) -> impl EventHandler<ConnectorAgent> + 'static {
+    MapLaneSelectRemove::new(MapLaneSelectorFn::new(MAP_LANE.to_string()), key)
+}
+
+#[tokio::test]
+async fn connector_lifecycle_map_lane_update_event_immediate() {
+    let connector = TestConnector::default();
+    let lifecycle = EgressConnectorLifecycle::new(connector.clone());
+    let agent = ConnectorAgent::default();
+
+    init_connector(&agent, &connector, &lifecycle).await;
+    create_lanes(&agent);
+
+    let handler = update_map_lane(Value::from("hello"), Value::from(78));
+    assert!(run_handle_with_futs(&agent, handler)
+        .await
+        .expect("Handler failed.")
+        .is_empty());
+
+    let handler = lifecycle
+        .item_event(&agent, MAP_LANE)
+        .expect("No pending event.");
+    assert!(run_handle_with_futs(&agent, handler)
+        .await
+        .expect("Handler failed.")
+        .is_empty());
+
+    let events = connector.take_events();
+
+    let expected = vec![
+        Event::SendLane {
+            name: MAP_LANE.to_string(),
+            key: Some(Value::from("hello")),
+            value: Value::from(78),
+        },
+        Event::SendHandler,
+    ];
+    assert_eq!(events, expected);
+}
+
+#[tokio::test]
+async fn connector_lifecycle_map_lane_remove_event_immediate() {
+    let connector = TestConnector::default();
+    let lifecycle = EgressConnectorLifecycle::new(connector.clone());
+    let agent = ConnectorAgent::default();
+
+    init_connector(&agent, &connector, &lifecycle).await;
+    create_lanes(&agent);
+
+    //Run update so there is something to remove.
+    let handler = update_map_lane(Value::from("hello"), Value::from(78));
+    assert!(run_handle_with_futs(&agent, handler)
+        .await
+        .expect("Handler failed.")
+        .is_empty());
+
+    let handler = lifecycle
+        .item_event(&agent, MAP_LANE)
+        .expect("No pending event.");
+    assert!(run_handle_with_futs(&agent, handler)
+        .await
+        .expect("Handler failed.")
+        .is_empty());
+
+    let events = connector.take_events();
+
+    let expected = vec![
+        Event::SendLane {
+            name: MAP_LANE.to_string(),
+            key: Some(Value::from("hello")),
+            value: Value::from(78),
+        },
+        Event::SendHandler,
+    ];
+    assert_eq!(events, expected);
+
+    // Remove the entry we just added.
+
+    let handler = remove_map_lane(Value::from("hello"));
+    assert!(run_handle_with_futs(&agent, handler)
+        .await
+        .expect("Handler failed.")
+        .is_empty());
+
+    let handler = lifecycle
+        .item_event(&agent, MAP_LANE)
+        .expect("No pending event.");
+    assert!(run_handle_with_futs(&agent, handler)
+        .await
+        .expect("Handler failed.")
+        .is_empty());
+
+    let events = connector.take_events();
+
+    let expected = vec![
+        Event::SendLane {
+            name: MAP_LANE.to_string(),
+            key: Some(Value::from("hello")),
+            value: Value::Extant,
+        },
+        Event::SendHandler,
+    ];
+    assert_eq!(events, expected);
 }
