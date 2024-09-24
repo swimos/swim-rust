@@ -13,10 +13,11 @@
 // limitations under the License.
 
 use std::collections::HashMap;
+use std::pin::pin;
 use std::sync::Arc;
 use std::time::Duration;
 
-use futures::FutureExt;
+use futures::{FutureExt, StreamExt};
 use parking_lot::Mutex;
 use swimos_agent::agent_lifecycle::item_event::ItemEvent;
 use swimos_agent::agent_lifecycle::on_start::OnStart;
@@ -32,12 +33,12 @@ use swimos_agent::lanes::ValueLaneSelectSet;
 use swimos_agent::AgentMetadata;
 use swimos_api::address::Address;
 use swimos_api::agent::{DownlinkKind, WarpLaneKind};
-use swimos_model::Value;
+use swimos_model::{Text, Value};
 use swimos_utilities::trigger;
 use thiserror::Error;
 
 use crate::lifecycle::fixture::{
-    run_handle_with_futs, DownlinkRecord, RequestsRecord, TimerRecord,
+    drive_downlink, run_handle_with_futs, DownlinkRecord, RequestsRecord, TimerRecord,
 };
 use crate::{
     BaseConnector, ConnectorAgent, ConnectorFuture, EgressConnector, EgressConnectorLifecycle,
@@ -256,10 +257,13 @@ async fn init_connector(
     agent: &ConnectorAgent,
     connector: &TestConnector,
     lifecycle: &EgressConnectorLifecycle<TestConnector>,
-) {
+) -> (DownlinkRecord, DownlinkRecord) {
     let handler = lifecycle.on_start();
 
-    let RequestsRecord { downlinks, timers } = run_handle_with_futs(agent, handler)
+    let RequestsRecord {
+        mut downlinks,
+        timers,
+    } = run_handle_with_futs(agent, handler)
         .await
         .expect("Handler failed.");
 
@@ -267,19 +271,23 @@ async fn init_connector(
     assert_eq!(events, vec![Event::Start, Event::CreateSender,]);
 
     assert!(timers.is_empty());
-    match downlinks.as_slice() {
-        [first, second] => {
+    let second_dl = downlinks.pop();
+    let first_dl = downlinks.pop();
+    assert!(downlinks.is_empty());
+    match (first_dl, second_dl) {
+        (Some(first), Some(second)) => {
             let DownlinkRecord {
                 path, make_channel, ..
-            } = first;
+            } = &first;
             assert_eq!(path, &value_lane_addr());
             assert_eq!(make_channel.kind(), DownlinkKind::Event);
 
             let DownlinkRecord {
                 path, make_channel, ..
-            } = second;
+            } = &second;
             assert_eq!(path, &map_lane_addr());
             assert_eq!(make_channel.kind(), DownlinkKind::MapEvent);
+            (first, second)
         }
         _ => panic!("Expected 2 downlinks, found {}.", downlinks.len()),
     }
@@ -493,4 +501,45 @@ async fn connector_lifecycle_value_lane_event_busy_twice() {
 
     let expected = vec![Event::Timer(id), Event::SendHandler];
     assert_eq!(events, expected);
+}
+
+#[tokio::test]
+async fn connector_lifecycle_value_from_downlink() {
+    let connector = TestConnector::default();
+    let lifecycle = EgressConnectorLifecycle::new(connector.clone());
+    let agent = ConnectorAgent::default();
+
+    let (
+        DownlinkRecord {
+            path, make_channel, ..
+        },
+        _,
+    ) = init_connector(&agent, &connector, &lifecycle).await;
+
+    let data = futures::stream::iter([Value::from(56)]);
+    let mut dl_stream = pin!(drive_downlink(make_channel, &agent, data.boxed()));
+
+    while let Some(requests) = dl_stream.next().await {
+        assert!(requests.is_empty());
+    }
+
+    let events = connector.take_events();
+
+    let expected = vec![
+        Event::SendDownlink {
+            address: addr(path),
+            key: None,
+            value: Value::from(56),
+        },
+        Event::SendHandler,
+    ];
+    assert_eq!(events, expected);
+}
+
+fn addr(address: Address<Text>) -> Address<String> {
+    Address {
+        host: address.host.map(|h| h.into()),
+        node: address.node.into(),
+        lane: address.lane.into(),
+    }
 }

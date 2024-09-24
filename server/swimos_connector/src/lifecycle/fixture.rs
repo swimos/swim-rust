@@ -12,24 +12,37 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{cell::RefCell, collections::HashMap};
+use std::{cell::RefCell, collections::HashMap, num::NonZeroUsize};
 
 use bytes::BytesMut;
-use futures::{stream::FuturesUnordered, StreamExt};
+use futures::{
+    future::BoxFuture,
+    stream::{unfold, BoxStream, FuturesUnordered},
+    FutureExt, SinkExt, Stream, StreamExt,
+};
 use swimos_agent::{
-    agent_model::downlink::BoxDownlinkChannelFactory,
+    agent_model::downlink::{BoxDownlinkChannel, BoxDownlinkChannelFactory, DownlinkChannelEvent},
     event_handler::{
         ActionContext, DownlinkSpawnOnDone, EventHandler, EventHandlerError, HandlerFuture,
         LaneSpawnOnDone, LaneSpawner, LinkSpawner, Spawner, StepResult,
     },
+};
+use swimos_agent_protocol::{
+    encoding::downlink::DownlinkNotificationEncoder, DownlinkNotification,
 };
 use swimos_api::{
     address::Address,
     agent::WarpLaneKind,
     error::{CommanderRegistrationError, DynamicRegistrationError},
 };
-use swimos_model::Text;
+use swimos_model::{Text, Value};
+use swimos_recon::print_recon_compact;
+use swimos_utilities::{
+    byte_channel::{byte_channel, ByteWriter},
+    non_zero_usize,
+};
 use tokio::time::Instant;
+use tokio_util::codec::FramedWrite;
 
 use crate::{
     test_support::{make_meta, make_uri},
@@ -181,4 +194,101 @@ where
         }
     }
     Ok(())
+}
+
+const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
+
+pub fn drive_downlink<'a>(
+    factory: BoxDownlinkChannelFactory<ConnectorAgent>,
+    agent: &'a ConnectorAgent,
+    input: BoxStream<'static, Value>,
+) -> impl Stream<Item = RequestsRecord> + 'a {
+    let (in_tx, in_rx) = byte_channel(BUFFER_SIZE);
+    let (out_tx, _out_rx) = byte_channel(BUFFER_SIZE);
+    let channel = factory.create_box(agent, out_tx, in_rx);
+
+    let provider = downlink_provider(in_tx, input).boxed();
+    let pump = DownlinkPump::new(provider, agent, channel);
+    unfold(pump, |pump| pump.consume())
+}
+
+async fn downlink_provider(in_tx: ByteWriter, mut data: BoxStream<'static, Value>) {
+    let mut writer = FramedWrite::new(in_tx, DownlinkNotificationEncoder);
+    writer
+        .send(DownlinkNotification::<&[u8]>::Linked)
+        .await
+        .expect("Send failed.");
+    writer
+        .send(DownlinkNotification::<&[u8]>::Synced)
+        .await
+        .expect("Send failed.");
+    while let Some(value) = data.next().await {
+        let content = format!("{}", print_recon_compact(&value));
+        let bytes = content.as_bytes();
+        writer
+            .send(DownlinkNotification::Event { body: bytes })
+            .await
+            .expect("Send failed.");
+    }
+    writer
+        .send(DownlinkNotification::<&[u8]>::Unlinked)
+        .await
+        .expect("Send failed.");
+}
+
+struct DownlinkPump<'a> {
+    provider: Option<BoxFuture<'static, ()>>,
+    agent: &'a ConnectorAgent,
+    channel: BoxDownlinkChannel<ConnectorAgent>,
+}
+
+impl<'a> DownlinkPump<'a> {
+    fn new(
+        provider: BoxFuture<'static, ()>,
+        agent: &'a ConnectorAgent,
+        channel: BoxDownlinkChannel<ConnectorAgent>,
+    ) -> Self {
+        DownlinkPump {
+            provider: Some(provider),
+            agent,
+            channel,
+        }
+    }
+
+    async fn consume(mut self) -> Option<(RequestsRecord, Self)> {
+        let DownlinkPump {
+            provider,
+            agent,
+            channel,
+        } = &mut self;
+        let requests = loop {
+            let result = if let Some(task) = provider.as_mut() {
+                tokio::select! {
+                    biased;
+                    result = channel.await_ready() => result,
+                    _ = task => {
+                        *provider = None;
+                        continue;
+                    },
+                }
+            } else {
+                channel.await_ready().await
+            };
+            match result {
+                Some(Ok(ev)) => {
+                    if ev == DownlinkChannelEvent::HandlerReady {
+                        if let Some(handler) = channel.next_event(agent) {
+                            let record = run_handle_with_futs(agent, handler)
+                                .await
+                                .expect("Handler failed.");
+                            break Some(record);
+                        }
+                    }
+                }
+                Some(Err(e)) => panic!("Downlink failed: {}", e),
+                None => break None,
+            };
+        };
+        requests.map(|req| (req, self))
+    }
 }
