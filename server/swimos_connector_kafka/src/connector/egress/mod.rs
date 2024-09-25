@@ -31,17 +31,17 @@ use thiserror::Error;
 use tokio::sync::Semaphore;
 
 use crate::{
-    config::{
-        EgressMapLaneSpec, EgressValueLaneSpec, KafkaEgressConfiguration, MapDownlinkSpec,
-        ValueDownlinkSpec,
-    },
+    config::KafkaEgressConfiguration,
     facade::{KafkaProducer, ProduceResult, ProducerFactory},
-    selector::MessageSelector,
+    selector::{MessageSelector, MessageSelectors},
     ser::{SerializationError, SharedMessageSerializer},
-    InvalidExtractors, LoadError,
+    LoadError,
 };
 
 use super::ConnHandlerContext;
+
+#[cfg(test)]
+mod tests;
 
 pub struct KafkaEgressConnector<F: ProducerFactory> {
     factory: F,
@@ -51,11 +51,11 @@ pub struct KafkaEgressConnector<F: ProducerFactory> {
 
 struct ConnectorState {
     serializers: Serializers,
-    extractors: Arc<Extractors>,
+    extractors: Arc<MessageSelectors>,
 }
 
 impl ConnectorState {
-    fn new(rx: oneshot::Receiver<LoadedSerializers>, extractors: Extractors) -> Self {
+    fn new(rx: oneshot::Receiver<LoadedSerializers>, extractors: MessageSelectors) -> Self {
         ConnectorState {
             serializers: Serializers::Pending(rx),
             extractors: Arc::new(extractors),
@@ -145,9 +145,9 @@ where
         let suspend_ser = context.suspend(ser_fut);
 
         let setup_agent = context
-            .value(Extractors::try_from(configuration))
+            .value(MessageSelectors::try_from(configuration))
             .try_handler()
-            .and_then(move |extractors: Extractors| {
+            .and_then(move |extractors: MessageSelectors| {
                 let open_lanes = extractors.open_lanes(init_complete, semaphore);
                 let set_state = context.effect(move || {
                     *(state.borrow_mut()) = Some(ConnectorState::new(ser_rx, extractors));
@@ -226,30 +226,19 @@ where
     }
 }
 
-pub struct Extractors {
-    value_lanes: HashMap<String, MessageSelector>,
-    map_lanes: HashMap<String, MessageSelector>,
-    value_downlinks: HashMap<Address<String>, MessageSelector>,
-    map_downlinks: HashMap<Address<String>, MessageSelector>,
-    total_lanes: u32,
-}
-
 const ADDITIONAL_PARTIES: u32 = 1;
 
-impl Extractors {
+impl MessageSelectors {
     pub fn select_source(&self, source: MessageSource<'_>) -> Option<&MessageSelector> {
-        let Extractors {
-            value_lanes,
-            map_lanes,
-            value_downlinks,
-            map_downlinks,
-            ..
-        } = self;
         match source {
-            MessageSource::Lane(name) => value_lanes.get(name).or_else(|| map_lanes.get(name)),
-            MessageSource::Downlink(addr) => value_downlinks
+            MessageSource::Lane(name) => self
+                .value_lanes()
+                .get(name)
+                .or_else(|| self.map_lanes().get(name)),
+            MessageSource::Downlink(addr) => self
+                .value_downlinks()
                 .get(addr)
-                .or_else(|| map_downlinks.get(addr)),
+                .or_else(|| self.map_downlinks().get(addr)),
         }
     }
 
@@ -259,15 +248,9 @@ impl Extractors {
         semaphore: Arc<Semaphore>,
     ) -> impl EventHandler<ConnectorAgent> + 'static {
         let handler_context = ConnHandlerContext::default();
-        let Extractors {
-            value_lanes,
-            map_lanes,
-            total_lanes,
-            ..
-        } = self;
+        let total = self.total_lanes();
 
         let wait_handle = semaphore.clone();
-        let total = *total_lanes;
         let await_done = async move {
             let result = wait_handle
                 .acquire_many(ADDITIONAL_PARTIES + total)
@@ -280,6 +263,9 @@ impl Extractors {
                     let _ = init_complete.trigger();
                 }))
         };
+
+        let value_lanes = self.value_lanes();
+        let map_lanes = self.map_lanes();
 
         let mut open_value_lanes = Vec::with_capacity(value_lanes.len());
         let mut open_map_lanes = Vec::with_capacity(map_lanes.len());
@@ -303,63 +289,6 @@ impl Extractors {
             .followed_by(Sequentially::new(open_value_lanes))
             .followed_by(Sequentially::new(open_map_lanes))
             .discard()
-    }
-}
-
-impl TryFrom<&KafkaEgressConfiguration> for Extractors {
-    type Error = InvalidExtractors;
-
-    fn try_from(value: &KafkaEgressConfiguration) -> Result<Self, Self::Error> {
-        let KafkaEgressConfiguration {
-            fixed_topic,
-            value_lanes,
-            map_lanes,
-            value_downlinks,
-            map_downlinks,
-            ..
-        } = value;
-        let top = fixed_topic.as_ref().map(|s| s.as_str());
-        let value_lanes = value_lanes
-            .iter()
-            .map(|EgressValueLaneSpec { name, extractor }| {
-                MessageSelector::try_from_ext_spec(extractor, top)
-                    .map(|selector| (name.clone(), selector))
-            })
-            .collect::<Result<HashMap<_, _>, _>>()?;
-        let map_lanes = map_lanes
-            .iter()
-            .map(|EgressMapLaneSpec { name, extractor }| {
-                MessageSelector::try_from_ext_spec(extractor, top)
-                    .map(|selector| (name.clone(), selector))
-            })
-            .collect::<Result<HashMap<_, _>, _>>()?;
-        let value_downlinks = value_downlinks
-            .iter()
-            .map(|ValueDownlinkSpec { address, extractor }| {
-                MessageSelector::try_from_ext_spec(extractor, top)
-                    .map(|selector| (Address::<String>::from(address), selector))
-            })
-            .collect::<Result<HashMap<_, _>, _>>()?;
-        let map_downlinks = map_downlinks
-            .iter()
-            .map(|MapDownlinkSpec { address, extractor }| {
-                MessageSelector::try_from_ext_spec(extractor, top)
-                    .map(|selector| (Address::<String>::from(address), selector))
-            })
-            .collect::<Result<HashMap<_, _>, _>>()?;
-        let total = value_lanes.len() + map_lanes.len();
-        let total_lanes = if let Ok(n) = u32::try_from(total) {
-            n
-        } else {
-            return Err(InvalidExtractors::TooManyLanes(total));
-        };
-        Ok(Extractors {
-            value_lanes,
-            map_lanes,
-            value_downlinks,
-            map_downlinks,
-            total_lanes,
-        })
     }
 }
 
@@ -446,7 +375,7 @@ where
 
 pub struct KafkaSender<P> {
     producer: SerializingProducer<P>,
-    extractors: Arc<Extractors>,
+    extractors: Arc<MessageSelectors>,
     timeout: Duration,
     pending: RefCell<Pending>,
 }
@@ -454,7 +383,7 @@ pub struct KafkaSender<P> {
 impl<P> KafkaSender<P> {
     fn new(
         producer: SerializingProducer<P>,
-        extractors: Arc<Extractors>,
+        extractors: Arc<MessageSelectors>,
         timeout: Duration,
     ) -> Self {
         KafkaSender {

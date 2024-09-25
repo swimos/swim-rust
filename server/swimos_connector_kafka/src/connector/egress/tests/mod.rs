@@ -11,22 +11,3 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-
-mod config;
-mod connector;
-mod deser;
-mod error;
-mod facade;
-mod selector;
-mod ser;
-
-pub use config::{
-    DataFormat, DownlinkAddress, ExtractionSpec, IngressMapLaneSpec, IngressValueLaneSpec,
-    KafkaIngressConfiguration, KafkaLogLevel,
-};
-pub use connector::KafkaIngressConnector;
-pub use deser::Endianness;
-pub use error::{
-    BadSelector, DeserializationError, DoubleInitialization, InvalidExtractor, InvalidExtractors,
-    InvalidLaneSpec, InvalidLanes, KafkaConnectorError, LaneSelectorError, LoadError,
-};

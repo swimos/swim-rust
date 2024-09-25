@@ -33,7 +33,7 @@ use crate::{
 };
 use swimos_agent::lanes::{MapLaneSelectRemove, MapLaneSelectUpdate, ValueLaneSelectSet};
 
-pub use message::MessageSelector;
+pub use message::{MessageSelector, MessageSelectors};
 
 /// Enumeration of the components of a Kafka message.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
