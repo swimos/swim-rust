@@ -134,7 +134,8 @@ syn = "1.0"
 quote = "1.0.3"
 num-bigint = "0.4"
 ratchet = { package = "ratchet_rs", version = "1.0" }
-ratchet_fixture = "1.0"
+ratchet_core = { version = "1.0" }
+ratchet_fixture = { version = "1.0" }
 flate2 = "1.0.22"
 bitflags = "2.5"
 rocksdb = "0.22"

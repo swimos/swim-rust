@@ -21,9 +21,7 @@ use bytes::BytesMut;
 use futures::future::ready;
 use futures::stream::BoxStream;
 use futures::{future::BoxFuture, FutureExt, Stream, StreamExt};
-use ratchet::{
-    ExtensionProvider, NegotiatedExtension, Role, WebSocket, WebSocketConfig, WebSocketStream,
-};
+use ratchet::{ExtensionProvider, Role, WebSocket, WebSocketConfig, WebSocketStream};
 use swimos_messages::remote_protocol::FindNode;
 use swimos_remote::dns::{DnsFut, DnsResolver};
 use swimos_remote::websocket::{RatchetError, WebsocketClient, WebsocketServer, WsOpenFuture};
@@ -78,7 +76,7 @@ impl WebsocketClient for TestWs {
         ready(Ok(WebSocket::from_upgraded(
             self.config,
             socket,
-            NegotiatedExtension::from(None),
+            None,
             BytesMut::new(),
             Role::Client,
         )))
@@ -108,13 +106,7 @@ impl WebsocketServer for TestWs {
             .map(move |result| {
                 result.map(|(sock, _, addr)| {
                     (
-                        WebSocket::from_upgraded(
-                            config,
-                            sock,
-                            NegotiatedExtension::from(None),
-                            BytesMut::new(),
-                            Role::Server,
-                        ),
+                        WebSocket::from_upgraded(config, sock, None, BytesMut::new(), Role::Server),
                         addr,
                     )
                 })

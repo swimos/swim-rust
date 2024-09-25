@@ -19,6 +19,7 @@ aws_lc_rs_provider = ["swimos_remote/aws_lc_rs_provider"]
 [dependencies]
 futures = { workspace = true }
 ratchet = { workspace = true, features = ["deflate", "split"] }
+ratchet_core = { workspace = true }
 swimos_utilities = { workspace = true, features = ["io", "trigger", "text", "time"] }
 swimos_runtime = { workspace = true }
 swimos_messages = { workspace = true }

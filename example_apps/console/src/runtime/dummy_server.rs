@@ -27,7 +27,7 @@ use futures::{
 };
 use parking_lot::RwLock;
 use ratchet::{
-    CloseCode, CloseReason, NoExtDecoder, NoExtEncoder, NoExtProvider, ProtocolRegistry,
+    CloseCode, CloseReason, NoExtDecoder, NoExtEncoder, NoExtProvider, SubprotocolRegistry,
     WebSocketConfig,
 };
 use swimos_agent_protocol::MapMessage;
@@ -216,7 +216,7 @@ impl DummyServer {
             };
             match event {
                 Event::NewConnection(stream) => {
-                    let subprotocols = ProtocolRegistry::new(vec!["warp0"]).unwrap();
+                    let subprotocols = SubprotocolRegistry::new(vec!["warp0"]).unwrap();
                     let upgrader = ratchet::accept_with(
                         stream,
                         WebSocketConfig::default(),
