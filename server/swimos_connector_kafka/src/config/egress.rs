@@ -51,7 +51,7 @@ pub enum TopicSpecifier {
     Selector(#[form(header_body)] String),
 }
 
-#[derive(Clone, Debug, Form, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, Form, PartialEq, Eq)]
 pub struct ExtractionSpec {
     /// Chooses the topic for a value set to this lane.
     pub topic_specifier: TopicSpecifier,

@@ -23,7 +23,7 @@ use crate::{
         TopicSpecifier, ValueDownlinkSpec,
     },
     selector::{BasicSelector, ChainSelector, SlotSelector},
-    DataFormat, DownlinkAddress, Endianness, ExtractionSpec, KafkaLogLevel,
+    DataFormat, DownlinkAddress, Endianness, ExtractionSpec, InvalidExtractors, KafkaLogLevel,
 };
 
 use super::{FieldSelector, KeyOrValue, MessageSelector, MessageSelectors, TopicSelector};
@@ -36,6 +36,21 @@ const HOST: &str = "ws://remote:8080";
 const NODE1: &str = "/node1";
 const NODE2: &str = "/node2";
 const LANE: &str = "lane";
+
+fn empty_config() -> KafkaEgressConfiguration {
+    KafkaEgressConfiguration {
+        properties: HashMap::new(),
+        log_level: KafkaLogLevel::Warning,
+        key_serializer: DataFormat::Int32(Endianness::BigEndian),
+        payload_serializer: DataFormat::Recon,
+        fixed_topic: Some(FIXED_TOPIC.to_string()),
+        value_lanes: vec![],
+        map_lanes: vec![],
+        value_downlinks: vec![],
+        map_downlinks: vec![],
+        retry_timeout_ms: 5000,
+    }
+}
 
 fn test_config() -> KafkaEgressConfiguration {
     let value_lanes = vec![EgressValueLaneSpec {
@@ -80,16 +95,11 @@ fn test_config() -> KafkaEgressConfiguration {
         },
     }];
     KafkaEgressConfiguration {
-        properties: HashMap::new(),
-        log_level: KafkaLogLevel::Warning,
-        key_serializer: DataFormat::Int32(Endianness::BigEndian),
-        payload_serializer: DataFormat::Recon,
-        fixed_topic: Some(FIXED_TOPIC.to_string()),
         value_lanes,
         map_lanes,
         value_downlinks,
         map_downlinks,
-        retry_timeout_ms: 5000,
+        ..empty_config()
     }
 }
 
@@ -316,4 +326,150 @@ fn message_selector_no_value_selector() {
     assert_eq!(selector.select_topic(Some(&key), &value), Some(FIXED_TOPIC));
     assert_eq!(selector.select_key(Some(&key), &value), Some(&key));
     assert_eq!(selector.select_payload(Some(&key), &value), Some(&value));
+}
+
+#[test]
+fn duplicate_value_lane() {
+    let config = KafkaEgressConfiguration {
+        value_lanes: vec![
+            EgressValueLaneSpec {
+                name: VALUE_LANE.to_string(),
+                extractor: Default::default(),
+            },
+            EgressValueLaneSpec {
+                name: VALUE_LANE.to_string(),
+                extractor: Default::default(),
+            },
+        ],
+        ..empty_config()
+    };
+    if let Err(InvalidExtractors::NameCollision(name)) = MessageSelectors::try_from(&config) {
+        assert_eq!(name, VALUE_LANE);
+    } else {
+        panic!("Expected name collision error.");
+    }
+}
+
+#[test]
+fn duplicate_map_lane() {
+    let config = KafkaEgressConfiguration {
+        map_lanes: vec![
+            EgressMapLaneSpec {
+                name: MAP_LANE.to_string(),
+                extractor: Default::default(),
+            },
+            EgressMapLaneSpec {
+                name: MAP_LANE.to_string(),
+                extractor: Default::default(),
+            },
+        ],
+        ..empty_config()
+    };
+    if let Err(InvalidExtractors::NameCollision(name)) = MessageSelectors::try_from(&config) {
+        assert_eq!(name, MAP_LANE);
+    } else {
+        panic!("Expected name collision error.");
+    }
+}
+
+#[test]
+fn duplicate_value_and_map_lane() {
+    let config = KafkaEgressConfiguration {
+        value_lanes: vec![EgressValueLaneSpec {
+            name: VALUE_LANE.to_string(),
+            extractor: Default::default(),
+        }],
+        map_lanes: vec![EgressMapLaneSpec {
+            name: VALUE_LANE.to_string(),
+            extractor: Default::default(),
+        }],
+        ..empty_config()
+    };
+    if let Err(InvalidExtractors::NameCollision(name)) = MessageSelectors::try_from(&config) {
+        assert_eq!(name, VALUE_LANE);
+    } else {
+        panic!("Expected name collision error.");
+    }
+}
+
+#[test]
+fn duplicate_value_downlink() {
+    let addr = DownlinkAddress {
+        host: Some(HOST.to_string()),
+        node: NODE1.to_string(),
+        lane: LANE.to_string(),
+    };
+    let expected = Address::<String>::from(&addr);
+    let config = KafkaEgressConfiguration {
+        value_downlinks: vec![
+            ValueDownlinkSpec {
+                address: addr.clone(),
+                extractor: ExtractionSpec::default(),
+            },
+            ValueDownlinkSpec {
+                address: addr,
+                extractor: ExtractionSpec::default(),
+            },
+        ],
+        ..empty_config()
+    };
+    if let Err(InvalidExtractors::AddressCollision(address)) = MessageSelectors::try_from(&config) {
+        assert_eq!(address, expected);
+    } else {
+        panic!("Expected name collision error.");
+    }
+}
+
+#[test]
+fn duplicate_map_downlink() {
+    let addr = DownlinkAddress {
+        host: Some(HOST.to_string()),
+        node: NODE1.to_string(),
+        lane: LANE.to_string(),
+    };
+    let expected = Address::<String>::from(&addr);
+    let config = KafkaEgressConfiguration {
+        map_downlinks: vec![
+            MapDownlinkSpec {
+                address: addr.clone(),
+                extractor: ExtractionSpec::default(),
+            },
+            MapDownlinkSpec {
+                address: addr,
+                extractor: ExtractionSpec::default(),
+            },
+        ],
+        ..empty_config()
+    };
+    if let Err(InvalidExtractors::AddressCollision(address)) = MessageSelectors::try_from(&config) {
+        assert_eq!(address, expected);
+    } else {
+        panic!("Expected name collision error.");
+    }
+}
+
+#[test]
+fn duplicate_value_and_map_downlink() {
+    let addr = DownlinkAddress {
+        host: Some(HOST.to_string()),
+        node: NODE1.to_string(),
+        lane: LANE.to_string(),
+    };
+    let expected = Address::<String>::from(&addr);
+    let config = KafkaEgressConfiguration {
+        value_downlinks: vec![ValueDownlinkSpec {
+            address: addr.clone(),
+            extractor: ExtractionSpec::default(),
+        }],
+        map_downlinks: vec![MapDownlinkSpec {
+            address: addr,
+            extractor: ExtractionSpec::default(),
+        }],
+        ..empty_config()
+    };
+    if let Err(InvalidExtractors::AddressCollision(address)) = MessageSelectors::try_from(&config) {
+        assert_eq!(address, expected);
+    } else {
+        panic!("Expected name collision error.");
+    }
 }

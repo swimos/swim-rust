@@ -107,16 +107,6 @@ async fn load_serializers(
     })
 }
 
-impl<F: ProducerFactory> KafkaEgressConnector<F> {
-    /* fn open_producer(&self) -> Result<(), KafkaError> {
-        let KafkaEgressConnector { factory, configuration, sender } = self;
-        let KafkaEgressConfiguration { properties, log_level, retry_timeout_ms, key_serializer, payload_serializer, .. } = self;
-        let producer = factory.create(properties, *log_level)?;
-        let key_ser = key_serializer.load_serializer()
-
-    } */
-}
-
 impl<F> BaseConnector for KafkaEgressConnector<F>
 where
     F: ProducerFactory + Send + 'static,

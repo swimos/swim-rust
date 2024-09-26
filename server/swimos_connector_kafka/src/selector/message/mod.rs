@@ -12,7 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{borrow::Cow, collections::HashMap};
+use std::{
+    borrow::Cow,
+    collections::{hash_map::Entry, HashMap},
+};
 
 use swimos_api::address::Address;
 use swimos_model::Value;
@@ -289,45 +292,80 @@ impl TryFrom<&KafkaEgressConfiguration> for MessageSelectors {
             ..
         } = value;
         let top = fixed_topic.as_ref().map(|s| s.as_str());
-        let value_lanes = value_lanes
-            .iter()
-            .map(|EgressValueLaneSpec { name, extractor }| {
-                MessageSelector::try_from_ext_spec(extractor, top)
-                    .map(|selector| (name.clone(), selector))
-            })
-            .collect::<Result<HashMap<_, _>, _>>()?;
-        let map_lanes = map_lanes
-            .iter()
-            .map(|EgressMapLaneSpec { name, extractor }| {
-                MessageSelector::try_from_ext_spec(extractor, top)
-                    .map(|selector| (name.clone(), selector))
-            })
-            .collect::<Result<HashMap<_, _>, _>>()?;
-        let value_downlinks = value_downlinks
-            .iter()
-            .map(|ValueDownlinkSpec { address, extractor }| {
-                MessageSelector::try_from_ext_spec(extractor, top)
-                    .map(|selector| (Address::<String>::from(address), selector))
-            })
-            .collect::<Result<HashMap<_, _>, _>>()?;
-        let map_downlinks = map_downlinks
-            .iter()
-            .map(|MapDownlinkSpec { address, extractor }| {
-                MessageSelector::try_from_ext_spec(extractor, top)
-                    .map(|selector| (Address::<String>::from(address), selector))
-            })
-            .collect::<Result<HashMap<_, _>, _>>()?;
+        let mut value_lane_selectors = HashMap::new();
+        let mut map_lane_selectors = HashMap::new();
+        let mut value_dl_selectors = HashMap::new();
+        let mut map_dl_selectors = HashMap::new();
+        for EgressValueLaneSpec { name, extractor } in value_lanes {
+            match value_lane_selectors.entry(name.clone()) {
+                Entry::Occupied(entry) => {
+                    let (name, _) = entry.remove_entry();
+                    return Err(InvalidExtractors::NameCollision(name));
+                }
+                Entry::Vacant(entry) => {
+                    let selector = MessageSelector::try_from_ext_spec(extractor, top)?;
+                    entry.insert(selector);
+                }
+            }
+        }
+        for EgressMapLaneSpec { name, extractor } in map_lanes {
+            if value_lane_selectors.contains_key(name) {
+                return Err(InvalidExtractors::NameCollision(name.clone()));
+            }
+            match map_lane_selectors.entry(name.clone()) {
+                Entry::Occupied(entry) => {
+                    let (name, _) = entry.remove_entry();
+                    return Err(InvalidExtractors::NameCollision(name));
+                }
+                Entry::Vacant(entry) => {
+                    let selector = MessageSelector::try_from_ext_spec(extractor, top)?;
+                    entry.insert(selector);
+                }
+            }
+        }
+        for ValueDownlinkSpec { address, extractor } in value_downlinks {
+            let address = Address::<String>::from(address);
+            match value_dl_selectors.entry(address.clone()) {
+                Entry::Occupied(entry) => {
+                    let (address, _) = entry.remove_entry();
+                    return Err(InvalidExtractors::AddressCollision(address));
+                }
+                Entry::Vacant(entry) => {
+                    let selector = MessageSelector::try_from_ext_spec(extractor, top)?;
+                    entry.insert(selector);
+                }
+            }
+        }
+        for MapDownlinkSpec { address, extractor } in map_downlinks {
+            let address = Address::<String>::from(address);
+            if value_dl_selectors.contains_key(&address) {
+                return Err(InvalidExtractors::AddressCollision(address.clone()));
+            }
+            match map_dl_selectors.entry(address.clone()) {
+                Entry::Occupied(entry) => {
+                    let (address, _) = entry.remove_entry();
+                    return Err(InvalidExtractors::AddressCollision(address));
+                }
+                Entry::Vacant(entry) => {
+                    let selector = MessageSelector::try_from_ext_spec(extractor, top)?;
+                    entry.insert(selector);
+                }
+            }
+        }
         let total = value_lanes.len() + map_lanes.len();
         let total_lanes = if let Ok(n) = u32::try_from(total) {
+            if n == u32::MAX {
+                return Err(InvalidExtractors::TooManyLanes(total));
+            }
             n
         } else {
             return Err(InvalidExtractors::TooManyLanes(total));
         };
         Ok(MessageSelectors {
-            value_lanes,
-            map_lanes,
-            value_downlinks,
-            map_downlinks,
+            value_lanes: value_lane_selectors,
+            map_lanes: map_lane_selectors,
+            value_downlinks: value_dl_selectors,
+            map_downlinks: map_dl_selectors,
             total_lanes,
         })
     }

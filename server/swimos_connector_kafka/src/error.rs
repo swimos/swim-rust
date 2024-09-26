@@ -15,6 +15,7 @@
 use std::num::ParseIntError;
 
 use rdkafka::error::KafkaError;
+use swimos_api::address::Address;
 use thiserror::Error;
 
 /// An error type that boxes any type of error that could be returned by a message deserializer.
@@ -152,6 +153,9 @@ pub enum InvalidExtractors {
     /// There are lane extractors with the same name.
     #[error("The lane name {0} occurs more than once.")]
     NameCollision(String),
+    /// There are downlink extractors with the same address.
+    #[error("The downlink address {0} occurs more than once.")]
+    AddressCollision(Address<String>),
 }
 
 #[derive(Clone, Copy, Default, Debug, PartialEq, Eq, Error)]
