@@ -92,7 +92,7 @@ pub fn get_attribute_meta(
             Ok(other) => {
                 ctx.error_spanned_by(
                     other,
-                    &format!("Invalid attribute. Expected #[{}(...)]", path),
+                    format!("Invalid attribute. Expected #[{}(...)]", path),
                 );
                 Err(())
             }
