@@ -38,6 +38,8 @@ pub mod agent_lifecycle;
 /// and stores.
 pub mod agent_model;
 
+pub mod commander;
+
 /// Configuration types for downlinks that are started from agent lifecycles.
 pub mod config;
 
@@ -68,11 +70,17 @@ pub mod stores;
 #[cfg(test)]
 mod test_context;
 #[cfg(test)]
+mod test_util;
+#[cfg(test)]
 mod tests;
+
 #[cfg(test)]
 pub use agent_model::AgentSpec;
 
 pub use item::AgentItem;
+
+#[doc(hidden)]
+pub use meta::AgentMetadata;
 
 #[doc(hidden)]
 pub mod model {

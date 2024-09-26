@@ -36,6 +36,7 @@ use tracing::{debug, error, info, trace};
 use crate::{
     agent_model::downlink::{
         BoxDownlinkChannel, DownlinkChannel, DownlinkChannelError, DownlinkChannelEvent,
+        DownlinkChannelFactory,
     },
     config::SimpleDownlinkConfig,
     downlink_lifecycle::EventDownlinkLifecycle,
@@ -80,10 +81,23 @@ where
         }
     }
 
-    pub fn create<Context>(self, receiver: ByteReader) -> BoxDownlinkChannel<Context>
-    where
-        LC: EventDownlinkLifecycle<T, Context> + 'static,
-    {
+    pub fn dl_state(&self) -> &Arc<AtomicU8> {
+        &self.dl_state
+    }
+}
+
+impl<T, LC, Context> DownlinkChannelFactory<Context> for EventDownlinkFactory<T, LC>
+where
+    T: StructuralReadable + Send + 'static,
+    T::Rec: Send,
+    LC: EventDownlinkLifecycle<T, Context> + 'static,
+{
+    fn create(
+        self,
+        _context: &Context,
+        _: ByteWriter,
+        receiver: ByteReader,
+    ) -> BoxDownlinkChannel<Context> {
         let EventDownlinkFactory {
             address,
             lifecycle,
@@ -107,8 +121,21 @@ where
         Box::new(chan)
     }
 
-    pub fn dl_state(&self) -> &Arc<AtomicU8> {
-        &self.dl_state
+    fn create_box(
+        self: Box<Self>,
+        context: &Context,
+        tx: ByteWriter,
+        rx: ByteReader,
+    ) -> BoxDownlinkChannel<Context> {
+        (*self).create(context, tx, rx)
+    }
+
+    fn kind(&self) -> DownlinkKind {
+        if self.map_events {
+            DownlinkKind::MapEvent
+        } else {
+            DownlinkKind::Event
+        }
     }
 }
 

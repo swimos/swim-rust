@@ -15,8 +15,8 @@
 use std::collections::HashMap;
 
 use bytes::BytesMut;
-use swimos_agent_protocol::encoding::ad_hoc::AdHocCommandDecoder;
-use swimos_agent_protocol::AdHocCommand;
+use swimos_agent_protocol::encoding::command::CommandMessageDecoder;
+use swimos_agent_protocol::CommandMessage;
 use swimos_api::{address::Address, agent::AgentConfig};
 use swimos_utilities::{encoding::BytesStr, routing::RouteUri};
 use tokio_util::codec::Decoder;
@@ -49,7 +49,7 @@ fn make_meta<'a>(
 #[test]
 fn write_command_to_buffer() {
     let mut join_lane_init = HashMap::new();
-    let mut ad_hoc_buffer = BytesMut::new();
+    let mut command_buffer = BytesMut::new();
     let uri = make_uri();
     let route_params = HashMap::new();
     let meta = make_meta(&uri, &route_params);
@@ -58,7 +58,7 @@ fn write_command_to_buffer() {
     let command = 23;
     let mut handler = SendCommand::new(address, command, true);
     {
-        let mut action_context = dummy_context(&mut join_lane_init, &mut ad_hoc_buffer);
+        let mut action_context = dummy_context(&mut join_lane_init, &mut command_buffer);
 
         match handler.step(&mut action_context, meta, &FakeAgent) {
             StepResult::Complete { modified_item, .. } => {
@@ -67,10 +67,10 @@ fn write_command_to_buffer() {
             ow => panic!("Unexpected step result: {:?}", ow),
         }
     }
-    let msg = decode_message(&mut ad_hoc_buffer);
-    assert_eq!(msg, AdHocCommand::new(address, command, true));
+    let msg = decode_message(&mut command_buffer);
+    assert_eq!(msg, CommandMessage::ad_hoc(address, command, true));
     {
-        let mut action_context = dummy_context(&mut join_lane_init, &mut ad_hoc_buffer);
+        let mut action_context = dummy_context(&mut join_lane_init, &mut command_buffer);
         let result = handler.step(&mut action_context, meta, &FakeAgent);
         assert!(matches!(
             result,
@@ -79,8 +79,8 @@ fn write_command_to_buffer() {
     }
 }
 
-fn decode_message(buffer: &mut BytesMut) -> AdHocCommand<BytesStr, i32> {
-    let mut decoder = AdHocCommandDecoder::<BytesStr, i32>::default();
+fn decode_message(buffer: &mut BytesMut) -> CommandMessage<BytesStr, i32> {
+    let mut decoder = CommandMessageDecoder::<BytesStr, i32>::default();
     let cmd = decoder
         .decode(buffer)
         .expect("Decoding failed.")

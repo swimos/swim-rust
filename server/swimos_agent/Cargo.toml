@@ -14,7 +14,7 @@ json = ["dep:serde", "dep:serde_json"]
 
 [dependencies]
 futures = { workspace = true }
-swimos_utilities = { workspace = true, features = ["io", "trigger", "circular_buffer", "encoding"] }
+swimos_utilities = { workspace = true, features = ["io", "trigger", "circular_buffer", "encoding", "errors"] }
 swimos_model = { workspace = true }
 swimos_form = { workspace = true }
 swimos_recon = { workspace = true }

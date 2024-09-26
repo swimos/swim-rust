@@ -43,6 +43,7 @@ members = [
     "example_apps/devguide",
     "example_apps/ripple",
     "example_apps/stocks_simulated",
+    "example_apps/kafka_connector"
 ]
 
 [workspace.package]
@@ -81,6 +82,8 @@ swimos_agent = { path = "server/swimos_agent", version = "0.1.0" }
 swimos_agent_derive = { path = "server/swimos_agent_derive", version = "0.1.0" }
 swimos_introspection = { path = "server/swimos_introspection", version = "0.1.0" }
 swimos_server_app = { path = "server/swimos_server_app", version = "0.1.0" }
+swimos_connector = { path = "server/swimos_connector", version = "0.1.0"}
+swimos_connector_kafka = { path = "server/swimos_connector_kafka", version = "0.1.0"}
 swimos = { path = "swimos", version = "0.1.0" }
 swimos_client = { path = "swimos_client", version = "0.1.0" }
 swimos_downlink = { path = "swimos_downlink", version = "0.1.0" }
@@ -176,3 +179,6 @@ num = "0.4"
 smol_str = "0.2.0"
 http-body-util = "0.1.2"
 hyper-util = "0.1.5"
+rdkafka = "0.25"
+apache-avro = "0.16.0"
+time = "0.3.36"

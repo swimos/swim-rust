@@ -22,7 +22,7 @@
 //! of the message. Otherwise, the body should be any type that can be serialized to Recon, using the
 //! [`swimos_form::Form`] trait.
 
-mod ad_hoc;
+mod command;
 mod downlink;
 mod lane;
 mod map;
@@ -31,7 +31,7 @@ mod store;
 mod model;
 
 pub use model::{
-    AdHocCommand, DownlinkNotification, DownlinkOperation, LaneRequest, LaneResponse,
+    CommandMessage, DownlinkNotification, DownlinkOperation, LaneRequest, LaneResponse,
     MapLaneResponse, MapMessage, MapOperation, MapStoreResponse, StoreInitMessage,
     StoreInitialized, StoreResponse,
 };
@@ -98,12 +98,12 @@ pub mod encoding {
 
     /// The protocol used by the agents to send ad hoc messages to lanes on other agents.
     ///
-    /// [`crate::AdHocCommand`] messages are sent by agents to the runtime to instruct it to send an ad hoc
+    /// [Command messages](`crate::CommandMessage`) are sent by agents to the runtime to instruct it to send a
     /// command to an arbitrary lane endpoint.
-    pub mod ad_hoc {
-        pub use crate::ad_hoc::{
-            AdHocCommandDecoder, AdHocCommandEncoder, RawAdHocCommandDecoder,
-            RawAdHocCommandEncoder,
+    pub mod command {
+        pub use crate::command::{
+            CommandMessageDecoder, CommandMessageEncoder, RawCommandMessageDecoder,
+            RawCommandMessageEncoder,
         };
     }
 

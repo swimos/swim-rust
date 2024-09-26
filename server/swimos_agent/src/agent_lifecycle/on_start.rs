@@ -20,11 +20,7 @@ use super::utility::HandlerContext;
 
 /// Lifecycle event for the `on_start` event of an agent.
 pub trait OnStart<Context>: Send {
-    type OnStartHandler<'a>: EventHandler<Context> + 'a
-    where
-        Self: 'a;
-
-    fn on_start(&self) -> Self::OnStartHandler<'_>;
+    fn on_start(&self) -> impl EventHandler<Context> + '_;
 }
 
 /// Lifecycle event for the `on_start` event of an agent where the event handler
@@ -46,10 +42,8 @@ pub trait OnStartShared<Context, Shared>: Send {
 }
 
 impl<Context> OnStart<Context> for NoHandler {
-    type OnStartHandler<'a> = UnitHandler where Self: 'a;
-
-    fn on_start(&self) -> Self::OnStartHandler<'_> {
-        Default::default()
+    fn on_start(&self) -> impl EventHandler<Context> + '_ {
+        UnitHandler::default()
     }
 }
 
@@ -58,11 +52,7 @@ where
     F: Fn() -> H + Send,
     H: EventHandler<Context> + 'static,
 {
-    type OnStartHandler<'a> = H
-    where
-        Self: 'a;
-
-    fn on_start(&self) -> Self::OnStartHandler<'_> {
+    fn on_start(&self) -> impl EventHandler<Context> + '_ {
         let FnHandler(f) = self;
         f()
     }

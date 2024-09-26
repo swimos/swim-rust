@@ -29,7 +29,7 @@ pub enum ParseError {
         line: u32,
         column: usize,
     },
-    /// The parsed strucuture was not valid for the target type.
+    /// The parsed structure was not valid for the target type.
     Structure(ReadError),
     /// The parser produced an invalid stream of events. This likely indicates
     /// a bug in the parser.

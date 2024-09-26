@@ -14,20 +14,21 @@
 
 use std::{
     any::{Any, TypeId},
-    cell::RefCell,
     collections::HashMap,
     marker::PhantomData,
 };
 
 use bytes::BytesMut;
 use frunk::{coproduct::CNil, Coproduct};
-use futures::FutureExt;
 use static_assertions::assert_obj_safe;
-use swimos_agent_protocol::{encoding::ad_hoc::AdHocCommandEncoder, AdHocCommand};
+use swimos_agent_protocol::{encoding::command::CommandMessageEncoder, CommandMessage};
 use swimos_api::{
     address::Address,
-    agent::{AgentContext, DownlinkKind},
-    error::{AgentRuntimeError, DownlinkRuntimeError},
+    agent::WarpLaneKind,
+    error::{
+        AgentRuntimeError, CommanderRegistrationError, DownlinkRuntimeError,
+        DynamicRegistrationError, LaneSpawnError,
+    },
 };
 use swimos_form::{read::RecognizerReadable, write::StructuralWritable};
 use swimos_model::Text;
@@ -38,10 +39,14 @@ use swimos_utilities::{
     routing::RouteUri,
 };
 use thiserror::Error;
+use tokio::time::Instant;
 use tokio_util::codec::{Decoder, Encoder};
 
 use crate::{
-    agent_model::downlink::{BoxDownlinkChannel, MapDownlinkHandle, ValueDownlinkHandle},
+    agent_model::downlink::{
+        BoxDownlinkChannel, BoxDownlinkChannelFactory, DownlinkChannelFactory, MapDownlinkHandle,
+        ValueDownlinkHandle,
+    },
     lanes::JoinLaneKind,
     meta::AgentMetadata,
 };
@@ -54,12 +59,13 @@ pub use futures::future::Either;
 pub(crate) mod check_step;
 mod command;
 mod handler_fn;
-mod register_downlink;
 mod suspend;
 #[cfg(test)]
 mod tests;
+mod try_handler;
 
 pub use suspend::{run_after, run_schedule, run_schedule_async, HandlerFuture, Spawner, Suspend};
+pub use try_handler::{TryHandler, TryHandlerAction, TryHandlerActionExt};
 
 pub use command::SendCommand;
 #[doc(hidden)]
@@ -68,40 +74,52 @@ pub use handler_fn::{
     MapUpdateFn, RequestFn0, RequestFn1, TakeFn, UpdateBorrowFn, UpdateFn,
 };
 
-use self::register_downlink::RegisterHostedDownlink;
-
-/// Trait for contexts that can spawn a new task into the agent runtime to run the lifecycle for a downlink.
-pub trait DownlinkSpawner<Context> {
-    /// Spawn a new downlink runtime task into the agent runtime.
+/// Instances of this trait allow [`HandlerAction`]s to request new downlinks and commanders to be opened in the agent.
+pub trait LinkSpawner<Context> {
+    /// Request a new downlink be opened in the agent task.
     ///
     /// # Arguments
-    /// * `dl_channel` - The downlink task.
+    /// * `path` - The address of the lane to open a downlink to.
+    /// * `make_channel` - Factory to create the downlink channel.
+    /// * `on_done` - A callback that will create an event handler to be run when the connection completes (or fails).
     fn spawn_downlink(
         &self,
-        dl_channel: BoxDownlinkChannel<Context>,
-    ) -> Result<(), DownlinkRuntimeError>;
+        path: Address<Text>,
+        make_channel: BoxDownlinkChannelFactory<Context>,
+        on_done: DownlinkSpawnOnDone<Context>,
+    );
+
+    fn register_commander(&self, path: Address<Text>) -> Result<u16, CommanderRegistrationError>;
 }
 
-impl<Context> DownlinkSpawner<Context> for RefCell<Vec<BoxDownlinkChannel<Context>>> {
-    fn spawn_downlink(
-        &self,
-        dl_channel: BoxDownlinkChannel<Context>,
-    ) -> Result<(), DownlinkRuntimeError> {
-        self.borrow_mut().push(dl_channel);
-        Ok(())
-    }
-}
+type SpawnHandler<Context> = BoxHandlerAction<'static, Context, ()>;
 
-impl<F, Context> DownlinkSpawner<Context> for F
-where
-    F: Fn(BoxDownlinkChannel<Context>) -> Result<(), DownlinkRuntimeError>,
-{
-    fn spawn_downlink(
+#[doc(hidden)]
+pub type LaneSpawnOnDone<Context> =
+    Box<dyn FnOnce(Result<u64, LaneSpawnError>) -> SpawnHandler<Context> + Send + 'static>;
+
+#[doc(hidden)]
+pub type DownlinkSpawnOnDone<Context> =
+    Box<dyn FnOnce(Result<(), DownlinkRuntimeError>) -> SpawnHandler<Context> + Send + 'static>;
+
+#[doc(hidden)]
+pub type CommanderSpawnOnDone<Context> =
+    Box<dyn FnOnce(u16) -> SpawnHandler<Context> + Send + 'static>;
+
+/// Trait for contexts that can spawn a new lane into the agent task.
+pub trait LaneSpawner<Context> {
+    /// Spawn a new WARP lane into the agent task.
+    ///
+    /// # Arguments
+    /// * `io` - IO channels, for the lane, connected to the runtime.
+    /// * `kind` - The kind of the lane.
+    /// * `on_done` - A callback that produces an event handler that will be executed after the lane is registered.
+    fn spawn_warp_lane(
         &self,
-        dl_channel: BoxDownlinkChannel<Context>,
-    ) -> Result<(), DownlinkRuntimeError> {
-        (*self)(dl_channel)
-    }
+        name: &str,
+        kind: WarpLaneKind,
+        on_done: LaneSpawnOnDone<Context>,
+    ) -> Result<(), DynamicRegistrationError>;
 }
 
 /// The context type passed to every call to [`HandlerAction::step`] that provides access to the
@@ -109,41 +127,36 @@ where
 /// implementations and so can only be used from this crate.
 pub struct ActionContext<'a, Context> {
     spawner: &'a dyn Spawner<Context>,
-    agent_context: &'a dyn AgentContext,
-    downlink: &'a dyn DownlinkSpawner<Context>,
+    downlink: &'a dyn LinkSpawner<Context>,
+    lanes: &'a dyn LaneSpawner<Context>,
     join_lane_init: &'a mut HashMap<u64, BoxJoinLaneInit<'static, Context>>,
-    ad_hoc_buffer: &'a mut BytesMut,
+    command_buffer: &'a mut BytesMut,
 }
 
 impl<'a, Context> Spawner<Context> for ActionContext<'a, Context> {
     fn spawn_suspend(&self, fut: HandlerFuture<Context>) {
-        self.spawner.spawn_suspend(fut)
+        self.spawner.spawn_suspend(fut);
     }
-}
 
-impl<'a, Context> DownlinkSpawner<Context> for ActionContext<'a, Context> {
-    fn spawn_downlink(
-        &self,
-        dl_channel: BoxDownlinkChannel<Context>,
-    ) -> Result<(), DownlinkRuntimeError> {
-        self.downlink.spawn_downlink(dl_channel)
+    fn schedule_timer(&self, at: Instant, id: u64) {
+        self.spawner.schedule_timer(at, id);
     }
 }
 
 impl<'a, Context> ActionContext<'a, Context> {
     pub fn new(
         spawner: &'a dyn Spawner<Context>,
-        agent_context: &'a dyn AgentContext,
-        downlink: &'a dyn DownlinkSpawner<Context>,
+        downlink: &'a dyn LinkSpawner<Context>,
+        lanes: &'a dyn LaneSpawner<Context>,
         join_lane_init: &'a mut HashMap<u64, BoxJoinLaneInit<'static, Context>>,
-        ad_hoc_buffer: &'a mut BytesMut,
+        command_buffer: &'a mut BytesMut,
     ) -> Self {
         ActionContext {
             spawner,
-            agent_context,
             downlink,
+            lanes,
             join_lane_init,
-            ad_hoc_buffer,
+            command_buffer,
         }
     }
 
@@ -175,69 +188,121 @@ impl<'a, Context> ActionContext<'a, Context> {
     ///
     /// # Arguments
     /// * `path` - The address of the remote lane.
-    /// * `kind` - The required kind of the downlink.
     /// * `make_channel` - A closure that will create the task that will run within the agent runtime to handle the
     /// downlink lifecycle.
     /// * `on_done` - A callback that will be executed when the downlink has started (or failed to start).
     #[doc(hidden)]
-    pub(crate) fn start_downlink<S, F, OnDone, H>(
+    pub(crate) fn start_downlink<F, OnDone, H>(
         &self,
-        path: Address<S>,
-        kind: DownlinkKind,
+        path: Address<Text>,
         make_channel: F,
         on_done: OnDone,
     ) where
         Context: 'static,
-        S: AsRef<str>,
-        F: FnOnce(&Context, ByteWriter, ByteReader) -> BoxDownlinkChannel<Context> + Send + 'static,
+        F: DownlinkChannelFactory<Context> + Send + 'static,
         OnDone: FnOnce(Result<(), DownlinkRuntimeError>) -> H + Send + 'static,
         H: EventHandler<Context> + Send + 'static,
     {
-        let Address { host, node, lane } = path;
-        let external = self.agent_context.open_downlink(
-            host.as_ref().map(AsRef::as_ref),
-            node.as_ref(),
-            lane.as_ref(),
-            kind,
-        );
-        let fut = external
-            .map(move |result| match result {
-                Ok((writer, reader)) => {
-                    let con = ConstructDownlink {
-                        inner: Some((writer, reader, make_channel)),
-                    };
-                    Box::new(con.and_then(RegisterHostedDownlink::new).and_then(on_done))
-                }
-                Err(e) => on_done(Err(e)).boxed_local(),
-            })
-            .boxed();
-        self.spawn_suspend(fut);
+        let on_done_boxed = move |result| {
+            let event_handler: SpawnHandler<Context> = Box::new(on_done(result));
+            event_handler
+        };
+        let handler: DownlinkSpawnOnDone<Context> = Box::new(on_done_boxed);
+        self.downlink
+            .spawn_downlink(path, Box::new(make_channel), handler)
     }
 
-    /// Send an ad-hoc command message to a remote lane.
+    pub(crate) fn register_commander(
+        &mut self,
+        path: Address<Text>,
+    ) -> Result<u16, CommanderRegistrationError> {
+        let id = self.downlink.register_commander(path.clone())?;
+        let msg = CommandMessage::<_, String>::register(path, id);
+        let mut encoder = CommandMessageEncoder::default();
+        encoder
+            .encode(msg, self.command_buffer)
+            .expect("Encoding should be infallible.");
+        Ok(id)
+    }
+
+    /// Attempt to attach a new lane to the agent runtime.
     ///
     /// # Arguments
-    /// * `address` - The address of the remote lane.
+    /// * `name` - The name of the lane.
+    /// * `kind` - The kind of the lane.
+    /// * `on_opened` - Callback providing an event handler to be executed by the agent when the request
+    /// has completed.
+    #[doc(hidden)]
+    pub(crate) fn open_lane<F, H>(
+        &self,
+        name: &str,
+        kind: WarpLaneKind,
+        on_opened: F,
+    ) -> Result<(), DynamicRegistrationError>
+    where
+        F: FnOnce(Result<(), LaneSpawnError>) -> H + Send + 'static,
+        H: EventHandler<Context> + Send + 'static,
+    {
+        let f = move |result| wrap(on_opened, result);
+        self.lanes.spawn_warp_lane(name, kind, Box::new(f))
+    }
+
+    /// Send a command message to a remote lane.
+    ///
+    /// # Arguments
+    /// * `target` - Address of the target endpoint.
     /// * `command` - The body of the command message.
     /// * `overwrite_permitted` - Configures back-pressure relief for this message. If true, and the messages has not
     /// been sent before another message is send, it will be overwritten and never sent.
     #[doc(hidden)]
-    pub(crate) fn send_command<S, T>(
+    pub(crate) fn send_ad_hoc_command<S, T>(
         &mut self,
-        address: Address<S>,
+        target: Address<S>,
         command: T,
         overwrite_permitted: bool,
     ) where
         S: AsRef<str>,
         T: StructuralWritable,
     {
-        let ActionContext { ad_hoc_buffer, .. } = self;
-        let mut encoder = AdHocCommandEncoder::default();
-        let cmd = AdHocCommand::new(address, command, overwrite_permitted);
+        let ActionContext { command_buffer, .. } = self;
+        let mut encoder = CommandMessageEncoder::default();
+        let cmd = CommandMessage::ad_hoc(target, command, overwrite_permitted);
         encoder
-            .encode(cmd, ad_hoc_buffer)
+            .encode(cmd, command_buffer)
             .expect("Encoding should be infallible.")
     }
+
+    /// Send a command message to a remote lane.
+    ///
+    /// # Arguments
+    /// * `target` - Registered ID of the remote lane endpoint.
+    /// * `command` - The body of the command message.
+    /// * `overwrite_permitted` - Configures back-pressure relief for this message. If true, and the messages has not
+    /// been sent before another message is send, it will be overwritten and never sent.
+    #[doc(hidden)]
+    pub(crate) fn send_registered_command<T>(
+        &mut self,
+        target: u16,
+        command: T,
+        overwrite_permitted: bool,
+    ) where
+        T: StructuralWritable,
+    {
+        let ActionContext { command_buffer, .. } = self;
+        let mut encoder = CommandMessageEncoder::default();
+        let cmd = CommandMessage::<&str, T>::registered(target, command, overwrite_permitted);
+        encoder
+            .encode(cmd, command_buffer)
+            .expect("Encoding should be infallible.")
+    }
+}
+
+fn wrap<Context, F, H>(f: F, result: Result<u64, LaneSpawnError>) -> SpawnHandler<Context>
+where
+    F: FnOnce(Result<(), LaneSpawnError>) -> H + Send + 'static,
+    H: EventHandler<Context> + Send + 'static,
+{
+    Box::new(f(result.map(|_| ())))
 }
 
 struct ConstructDownlink<F> {
@@ -373,13 +438,26 @@ pub enum EventHandlerError {
     /// terminate the agent but will cause an error HTTP response to be sent).
     #[error("No GET handler was defined for an HTTP lane.")]
     HttpGetUndefined,
+    /// An executing handler attempted to target a lane that does not exist.
+    #[error("A command was received for a lane that does not exist: '{0}'")]
+    /// Failed to register a dynamic lane.
+    LaneNotFound(String),
+    /// A dynamic lane could not be registered.
+    #[error("An attempt to register a dynamic lane failed: {0}")]
+    FailedLaneRegistration(DynamicRegistrationError),
+    /// A commander could not be registered/
+    #[error("An attempt to register a commander failed: {0}")]
+    FailedCommanderRegistration(CommanderRegistrationError),
+    /// An event handler failed in a user specified effect.
+    #[error("An error occurred in a user specified effect: {0}")]
+    EffectError(Box<dyn std::error::Error + Send>),
     /// The event handler has explicitly requested that the agent stop.
     #[error("The event handler has instructed the agent to stop.")]
     StopInstructed,
 }
 
 bitflags! {
-    #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+    #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
     #[doc(hidden)]
     pub(crate) struct ModificationFlags: u8 {
         /// The lane has data to write.
@@ -392,7 +470,7 @@ bitflags! {
 
 /// When a handler completes or suspends it can indicate that is has modified the
 /// state of an item.
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
 pub struct Modification {
     /// The ID of the item.
     pub(crate) item_id: u64,
@@ -420,6 +498,10 @@ impl Modification {
             item_id,
             flags: ModificationFlags::TRIGGER_HANDLER,
         }
+    }
+
+    pub fn id(&self) -> u64 {
+        self.item_id
     }
 }
 
@@ -1267,6 +1349,7 @@ where
 }
 
 /// Event handler that runs another handler and discards its result.
+#[derive(Debug)]
 pub struct Discard<H>(H);
 
 impl<H> Discard<H> {
@@ -1560,6 +1643,75 @@ where
                 }
             }
             Join3State::AfterDone => StepResult::after_done(),
+        }
+    }
+}
+
+/// An event handler that fails with the provided error.
+pub struct Fail<T, E> {
+    error: Option<E>,
+    _type: PhantomData<T>,
+}
+
+impl<T, E> Fail<T, E> {
+    pub fn new(error: E) -> Self {
+        Fail {
+            error: Some(error),
+            _type: PhantomData,
+        }
+    }
+}
+
+impl<Context, T, E> HandlerAction<Context> for Fail<T, E>
+where
+    E: std::error::Error + Send + 'static,
+{
+    type Completion = T;
+
+    fn step(
+        &mut self,
+        _action_context: &mut ActionContext<Context>,
+        _meta: AgentMetadata,
+        _context: &Context,
+    ) -> StepResult<Self::Completion> {
+        if let Some(e) = self.error.take() {
+            StepResult::Fail(EventHandlerError::EffectError(Box::new(e)))
+        } else {
+            StepResult::after_done()
+        }
+    }
+}
+
+/// Schedule the agent's `on_timer` event to be called.
+pub struct ScheduleTimerEvent {
+    at: Option<Instant>,
+    id: u64,
+}
+
+impl ScheduleTimerEvent {
+    /// # Arguments
+    /// * `at` - The time at which the event should trigger. If this is in the past, the event will trigger immediately.
+    /// * `id` - The ID to be passed to the event handler.
+    pub fn new(at: Instant, id: u64) -> ScheduleTimerEvent {
+        ScheduleTimerEvent { at: Some(at), id }
+    }
+}
+
+impl<Context> HandlerAction<Context> for ScheduleTimerEvent {
+    type Completion = ();
+
+    fn step(
+        &mut self,
+        action_context: &mut ActionContext<Context>,
+        _meta: AgentMetadata,
+        _context: &Context,
+    ) -> StepResult<Self::Completion> {
+        let ScheduleTimerEvent { at, id } = self;
+        if let Some(t) = at.take() {
+            action_context.schedule_timer(t, *id);
+            StepResult::done(())
+        } else {
+            StepResult::after_done()
         }
     }
 }

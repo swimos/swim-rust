@@ -21,6 +21,9 @@ use std::{collections::HashMap, marker::PhantomData};
 
 use futures::stream::unfold;
 use futures::{Future, FutureExt, Stream, StreamExt};
+use swimos_api::agent::WarpLaneKind;
+use swimos_api::error::LaneSpawnError;
+use swimos_model::Text;
 use tokio::time::Instant;
 
 use swimos_api::address::Address;
@@ -33,12 +36,13 @@ use crate::agent_model::downlink::{EventDownlinkHandle, MapDownlinkHandle, Value
 use crate::agent_model::downlink::{
     OpenEventDownlinkAction, OpenMapDownlinkAction, OpenValueDownlinkAction,
 };
+use crate::commander::{Commander, RegisterCommander};
 use crate::config::{MapDownlinkConfig, SimpleDownlinkConfig};
 use crate::downlink_lifecycle::ValueDownlinkLifecycle;
 use crate::downlink_lifecycle::{EventDownlinkLifecycle, MapDownlinkLifecycle};
 use crate::event_handler::{
-    run_after, run_schedule, run_schedule_async, ConstHandler, EventHandler, GetParameter,
-    HandlerActionExt, SendCommand, Sequentially, Stop, Suspend, UnitHandler,
+    run_after, run_schedule, run_schedule_async, ConstHandler, EventHandler, Fail, GetParameter,
+    HandlerActionExt, ScheduleTimerEvent, SendCommand, Sequentially, Stop, Suspend, UnitHandler,
 };
 use crate::event_handler::{GetAgentUri, HandlerAction, SideEffect};
 use crate::item::{
@@ -51,7 +55,7 @@ use crate::lanes::demand_map::CueKey;
 use crate::lanes::join_map::JoinMapAddDownlink;
 use crate::lanes::join_value::{JoinValueAddDownlink, JoinValueLane};
 use crate::lanes::supply::{Supply, SupplyLane};
-use crate::lanes::{DemandMapLane, JoinMapLane};
+use crate::lanes::{DemandMapLane, JoinMapLane, OpenLane};
 
 pub use self::downlink_builder::event::{
     StatefulEventDownlinkBuilder, StatelessEventDownlinkBuilder,
@@ -861,6 +865,107 @@ impl<Agent: 'static> HandlerContext<Agent> {
     /// the 'on_stop' handler, the agent will stop immediately.
     pub fn stop(&self) -> impl EventHandler<Agent> + Send + 'static {
         HandlerActionExt::<Agent>::discard(Stop)
+    }
+
+    /// Create a handler that will fail with the provided error.
+    ///
+    /// # Arguments
+    /// * `error` - The error.
+    pub fn fail<T, E>(&self, error: E) -> impl HandlerAction<Agent, Completion = T> + Send + 'static
+    where
+        T: Send + 'static,
+        E: std::error::Error + Send + 'static,
+    {
+        Fail::<T, E>::new(error)
+    }
+
+    /// Attempt to open a new value lane on this agent. Note that the implementation of the underlying agent
+    /// used must support this.
+    ///
+    /// #Arguments
+    ///
+    /// * `name` - The name of the lane.
+    /// * `on_done` - A callback that will create an event handler that will be executed when the request completes.
+    pub fn open_value_lane<OnDone, H>(
+        &self,
+        name: &str,
+        on_done: OnDone,
+    ) -> impl EventHandler<Agent> + Send + 'static
+    where
+        OnDone: FnOnce(Result<(), LaneSpawnError>) -> H + Send + 'static,
+        H: EventHandler<Agent> + Send + 'static,
+    {
+        OpenLane::new(name.to_string(), WarpLaneKind::Value, on_done)
+    }
+
+    /// Attempt to open a new map lane on this agent. Note that the implementation of the underlying agent
+    /// used must support this.
+    ///
+    /// #Arguments
+    ///
+    /// * `name` - The name of the lane.
+    /// * `on_done` - A callback that will create an event handler that will be executed when the request completes.
+    pub fn open_map_lane<OnDone, H>(
+        &self,
+        name: &str,
+        on_done: OnDone,
+    ) -> impl EventHandler<Agent> + Send + 'static
+    where
+        OnDone: FnOnce(Result<(), LaneSpawnError>) -> H + Send + 'static,
+        H: EventHandler<Agent> + Send + 'static,
+    {
+        OpenLane::new(name.to_string(), WarpLaneKind::Map, on_done)
+    }
+
+    /// Create a [`Commander`] to repeatedly send messages to a remote lane. This is more efficient than
+    /// [sending ad hoc messages](Self::send_command), if you need to send many commands to the same lane. Note that
+    /// creating a commander does not guarantee that the remote endpoint is resolvable and any messages sent to lanes
+    /// that do not exist or cannot be reached will be dropped.
+    ///
+    /// # Arguments
+    /// * `host` - The target remote host or [`None`] for an agent in the same plane.
+    /// * `node` - The target node hosting the lane.
+    /// * `lane` - The name of the target lane.
+    pub fn create_commander(
+        &self,
+        host: Option<impl Into<Text>>,
+        node: impl Into<Text>,
+        lane: impl Into<Text>,
+    ) -> impl HandlerAction<Agent, Completion = Commander<Agent>> + 'static {
+        let address = Address::new(host.map(Into::into), node.into(), lane.into());
+        RegisterCommander::new(address)
+    }
+
+    /// Schedule the agent's `on_timer` event to be called at some time in the future. This can be used as an
+    /// alternative to suspending a future where the resulting handler needs to have access to the agent
+    /// lifecycle (suspending futures must have a static lifetime).
+    ///
+    /// # Arguments
+    /// * `duration` - Duration after the current time for the event to trigger. If this is non-positive, the event
+    ///    will be triggered immediately.
+    /// * `id` - The ID to pass to the event handler.
+    pub fn schedule_timer_event(
+        &self,
+        duration: Duration,
+        id: u64,
+    ) -> impl EventHandler<Agent> + Send + 'static {
+        self.schedule_timer_event_at(Instant::now() + duration, id)
+    }
+
+    /// Schedule the agent's `on_timer` event to be called at some time in the future. This can be used as an
+    /// alternative to suspending a future where the resulting handler needs to have access to the agent
+    /// lifecycle (suspending futures must have a static lifetime).
+    ///
+    /// # Arguments
+    /// * `at` - The time at which to trigger the event handler. If this is in the past, the event will be triggered
+    ///   immediately.
+    /// * `id` - The ID to pass to the event handler.
+    pub fn schedule_timer_event_at(
+        &self,
+        at: Instant,
+        id: u64,
+    ) -> impl EventHandler<Agent> + Send + 'static {
+        ScheduleTimerEvent::new(at, id)
     }
 }
 

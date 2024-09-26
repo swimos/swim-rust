@@ -72,7 +72,7 @@ const AD_HOC_TIMEOUT: Duration = Duration::from_secs(1);
 const HTTP_CHAN_SIZE: NonZeroUsize = non_zero_usize!(8);
 
 const INIT_CONFIG: InitTaskConfig = InitTaskConfig {
-    ad_hoc_queue_size: DL_CHAN_SIZE,
+    command_queue_size: DL_CHAN_SIZE,
     item_init_timeout: INIT_TIMEOUT,
     external_links: LinksTaskConfig {
         buffer_size: BUFFER_SIZE,

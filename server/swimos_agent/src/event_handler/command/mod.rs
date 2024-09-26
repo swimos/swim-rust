@@ -69,7 +69,7 @@ where
             overwrite_permitted,
         } = self;
         if let Some(Body { address, value }) = body.take() {
-            action_context.send_command(address, value, *overwrite_permitted);
+            action_context.send_ad_hoc_command(address, value, *overwrite_permitted);
             StepResult::done(())
         } else {
             StepResult::after_done()

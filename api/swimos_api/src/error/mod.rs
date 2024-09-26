@@ -20,10 +20,12 @@ use std::{error::Error, sync::Arc};
 use swimos_form::read::ReadError;
 use swimos_model::Text;
 use swimos_recon::parser::AsyncParseError;
+use swimos_utilities::trigger::TriggerError;
 use swimos_utilities::{errors::Recoverable, routing::UnapplyError, trigger::promise};
 use thiserror::Error;
 use tokio::sync::{mpsc, oneshot, watch};
 
+use crate::agent::WarpLaneKind;
 use crate::{address::RelativeAddress, agent::StoreKind};
 
 mod introspection;
@@ -102,6 +104,29 @@ pub enum AgentRuntimeError {
     Terminated,
 }
 
+/// Error type for registering point to point command channels.
+#[derive(Error, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CommanderRegistrationError {
+    /// The registration could not be completed because the agent is stopping.
+    #[error(transparent)]
+    RuntimeError(#[from] AgentRuntimeError),
+    /// The limit on the number of registrations for the agent was exceeded.
+    #[error("Too many commander IDs were requested for the agent.")]
+    CommanderIdOverflow,
+}
+
+impl<T> From<mpsc::error::SendError<T>> for CommanderRegistrationError {
+    fn from(_: mpsc::error::SendError<T>) -> Self {
+        CommanderRegistrationError::RuntimeError(AgentRuntimeError::Terminated)
+    }
+}
+
+impl From<TriggerError> for CommanderRegistrationError {
+    fn from(_: TriggerError) -> Self {
+        CommanderRegistrationError::RuntimeError(AgentRuntimeError::Terminated)
+    }
+}
+
 /// Error type for the operation of spawning a new downlink on the runtime.
 #[derive(Error, Debug, Clone)]
 pub enum DownlinkRuntimeError {
@@ -125,6 +150,34 @@ pub enum OpenStoreError {
         requested: StoreKind,
         actual: StoreKind,
     },
+}
+
+/// Error type for requests to a running agent to register a new lane.
+#[derive(Clone, Debug, Error, PartialEq, Eq)]
+pub enum DynamicRegistrationError {
+    #[error("This agent does not support dynamically registered items.")]
+    DynamicRegistrationsNotSupported,
+    #[error("This agent only supports dynamic registration during initialization.")]
+    AfterInitialization,
+    #[error("The requested item name '{0}' is already in use.")]
+    DuplicateName(String),
+    #[error("This agent does not support dynamically adding lanes of type: {0}")]
+    LaneKindUnsupported(WarpLaneKind),
+    #[error("This agent does not support dynamically adding stores of type: {0}")]
+    StoreKindUnsupported(StoreKind),
+    #[error("This agent does not support dynamically adding HTTP lanes.")]
+    HttpLanesUnsupported,
+}
+
+/// Error type for an operation to add a new lane to a running agent.
+#[derive(Clone, Debug, Error, PartialEq, Eq)]
+pub enum LaneSpawnError {
+    /// The agent runtime stopped before the request could be completed,
+    #[error(transparent)]
+    Runtime(#[from] AgentRuntimeError),
+    /// The agent refused to register the lane.
+    #[error(transparent)]
+    Registration(#[from] DynamicRegistrationError),
 }
 
 impl<T> From<mpsc::error::SendError<T>> for AgentRuntimeError {
@@ -222,6 +275,8 @@ pub enum AgentTaskError {
     UserCodeError(Box<dyn std::error::Error + Send>),
     #[error("The agent failed to generate a required output: {0}")]
     OutputFailed(std::io::Error),
+    #[error("Attempting to register a commander failed.")]
+    CommanderRegistrationFailed,
 }
 
 /// Error type that is returned by implementations of the agent interface trait during the initialization phase.
@@ -235,6 +290,8 @@ pub enum AgentInitError {
     UserCodeError(Box<dyn std::error::Error + Send>),
     #[error("Initializing the state of an agent lane failed: {0}")]
     LaneInitializationFailure(FrameIoError),
+    #[error("Attempting to dynamically register a lane failed: {0}")]
+    RegistrationFailure(#[from] DynamicRegistrationError),
     #[error(
         "Requested a store of kind {requested} for item {name} but store was of kind {actual}."
     )]
