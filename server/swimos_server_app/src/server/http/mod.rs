@@ -50,7 +50,7 @@ use std::{
     time::{Duration, Instant},
 };
 use swimos_api::{agent::HttpLaneRequest, http::HttpRequest};
-use swimos_http::{SockUnwrap, UpgradeFuture, UpgradeStatus};
+use swimos_http::{SockUnwrap, Upgrade, UpgradeFuture, UpgradeStatus};
 use swimos_messages::remote_protocol::{AgentResolutionError, FindNode, NoSuchAgent};
 use swimos_remote::{
     websocket::{RatchetError, WebsocketClient, WebsocketServer, WsOpenFuture, WARP},
@@ -386,9 +386,9 @@ where
         swimos_http::upgrade(result, Some(config), ReclaimSock::<Sock>::default())
     });
     match result {
-        Ok((response, upgrade_fut)) => (
+        Ok(Upgrade { response, future }) => (
             Ok(response),
-            Some(UpgradeFutureWithSock::new(upgrade_fut, scheme, addr)),
+            Some(UpgradeFutureWithSock::new(future, scheme, addr)),
         ),
         Err(err) => (Ok(swimos_http::fail_upgrade(err)), None),
     }

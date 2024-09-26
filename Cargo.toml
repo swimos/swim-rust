@@ -133,9 +133,9 @@ proc-macro2 = "1.0"
 syn = "1.0"
 quote = "1.0.3"
 num-bigint = "0.4"
-ratchet = { package = "ratchet_rs", version = "1.0" }
-ratchet_core = { version = "1.0" }
-ratchet_fixture = { version = "1.0" }
+ratchet = { package = "ratchet_rs", version = "*", path = "../ratchet/ratchet_rs" }
+ratchet_core = { version = "*", path = "../ratchet/ratchet_core" }
+ratchet_fixture = { version = "*", path = "../ratchet/ratchet_fixture" }
 flate2 = "1.0.22"
 bitflags = "2.5"
 rocksdb = "0.22"

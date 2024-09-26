@@ -35,13 +35,24 @@ const UPGRADE_STR: &str = "Upgrade";
 const WEBSOCKET_STR: &str = "websocket";
 const FAILED_RESPONSE: &str = "Building response should not fail.";
 
+/// Represents the status of an upgrade attempt during a WebSocket negotiation.
+///
+/// The `UpgradeStatus` enum has two variants:
+///
+/// - `Upgradeable`: Indicates that an upgrade request has been initiated. It contains a `Result`
+///   that wraps an `UpgradeRequest<E, T>` or an error from the `ratchet` module.
+/// - `NotRequested`: Indicates that no upgrade was requested. It contains the original `Request<T>`
+///   that was made.
 pub enum UpgradeStatus<E, T> {
+    /// Indicates that an upgrade request was made
     Upgradeable {
+        /// The result of the upgrade operation. `Ok` if it was possible to upgrade the request and
+        /// contains the upgraded parts which may be used to build a response and open the WebSocket
+        /// connection or an `Err` if one was produced while parsing the request.
         result: Result<UpgradeRequest<E, T>, ratchet::Error>,
     },
-    NotRequested {
-        request: Request<T>,
-    },
+    /// Indicates that no upgrade was requested. Contains the original `Request<T>`that was made.
+    NotRequested { request: Request<T> },
 }
 
 /// Attempt to negotiate a websocket upgrade on a hyper request. If [`Ok(None)`] is returned,
@@ -80,6 +91,15 @@ pub fn fail_upgrade(error: ratchet::Error) -> Response<Full<Bytes>> {
         .expect(FAILED_RESPONSE)
 }
 
+/// WebSocket upgrade parts used for initialising the connection.
+pub struct Upgrade<Ext, U> {
+    /// The negotiated response to be sent to the client.
+    pub response: Response<Full<Bytes>>,
+    /// A future that performs a websocket upgrade, unwraps the upgraded socket and creates a
+    /// Ratchet WebSocket from it.
+    pub future: UpgradeFuture<Ext, U>,
+}
+
 /// Upgrade a hyper request to a websocket, based on a successful negotiation.
 ///
 /// # Arguments
@@ -91,7 +111,7 @@ pub fn upgrade<Ext, U, B>(
     request: UpgradeRequest<Ext, B>,
     config: Option<WebSocketConfig>,
     unwrap_fn: U,
-) -> Result<(Response<Full<Bytes>>, UpgradeFuture<Ext, U>), ratchet::Error>
+) -> Result<Upgrade<Ext, U>, ratchet::Error>
 where
     Ext: Extension + Send,
 {
@@ -105,14 +125,16 @@ where
     } = request;
     let response = build_response(key, subprotocol, extension_header)?;
     let (parts, _body) = response.into_parts();
-    let fut = UpgradeFuture {
-        upgrade: hyper::upgrade::on(request),
-        config: config.unwrap_or_default(),
-        extension,
-        unwrap_fn,
-    };
 
-    Ok((Response::from_parts(parts, Full::default()), fut))
+    Ok(Upgrade {
+        response: Response::from_parts(parts, Full::default()),
+        future: UpgradeFuture {
+            upgrade: hyper::upgrade::on(request),
+            config: config.unwrap_or_default(),
+            extension,
+            unwrap_fn,
+        },
+    })
 }
 
 fn headers_contains(headers: &HeaderMap, name: HeaderName, value: &str) -> bool {
@@ -152,8 +174,8 @@ impl SockUnwrap for NoUnwrap {
     }
 }
 
-/// A future that performs a websocket upgrade, unwraps the upgraded socket and
-/// creates a ratchet websocket from it.
+/// A future that performs a websocket upgrade, unwraps the upgraded socket and creates a Ratchet
+/// WebSocket from it.
 #[derive(Debug)]
 pub struct UpgradeFuture<Ext, U> {
     upgrade: OnUpgrade,

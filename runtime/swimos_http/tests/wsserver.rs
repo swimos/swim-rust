@@ -22,7 +22,7 @@ use std::{
     sync::Arc,
     time::Duration,
 };
-use swimos_http::{NoUnwrap, UpgradeStatus};
+use swimos_http::{NoUnwrap, Upgrade, UpgradeStatus};
 
 use futures::{
     channel::oneshot,
@@ -84,8 +84,8 @@ async fn upgrade_server(
 ) -> Result<Response<Full<Bytes>>, ratchet::Error> {
     match swimos_http::negotiate_upgrade(request, registry, &NoExtProvider) {
         UpgradeStatus::Upgradeable { result: Ok(result) } => {
-            let (response, upgraded) = swimos_http::upgrade(result, None, NoUnwrap)?;
-            tokio::spawn(run_websocket(upgraded));
+            let Upgrade { response, future } = swimos_http::upgrade(result, None, NoUnwrap)?;
+            tokio::spawn(run_websocket(future));
             Ok(response)
         }
         UpgradeStatus::Upgradeable { result: Err(err) } => {

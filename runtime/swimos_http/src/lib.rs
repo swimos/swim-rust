@@ -20,5 +20,6 @@
 mod websocket;
 
 pub use websocket::{
-    fail_upgrade, negotiate_upgrade, upgrade, NoUnwrap, SockUnwrap, UpgradeFuture, UpgradeStatus,
+    fail_upgrade, negotiate_upgrade, upgrade, NoUnwrap, SockUnwrap, Upgrade, UpgradeFuture,
+    UpgradeStatus,
 };
