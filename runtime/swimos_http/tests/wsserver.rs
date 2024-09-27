@@ -83,12 +83,18 @@ async fn upgrade_server(
     registry: &SubprotocolRegistry,
 ) -> Result<Response<Full<Bytes>>, ratchet::Error> {
     match swimos_http::negotiate_upgrade(request, registry, &NoExtProvider) {
-        UpgradeStatus::Upgradeable { result: Ok(result) } => {
-            let Upgrade { response, future } = swimos_http::upgrade(result, None, NoUnwrap)?;
+        UpgradeStatus::Upgradeable {
+            result: Ok(parts),
+            request,
+        } => {
+            let Upgrade { response, future } =
+                swimos_http::upgrade(parts, request, None, NoUnwrap)?;
             tokio::spawn(run_websocket(future));
             Ok(response)
         }
-        UpgradeStatus::Upgradeable { result: Err(err) } => {
+        UpgradeStatus::Upgradeable {
+            result: Err(err), ..
+        } => {
             if err.is_io() {
                 Err(err)
             } else {

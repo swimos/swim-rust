@@ -19,6 +19,7 @@ use std::{
 
 use bytes::{Bytes, BytesMut};
 use futures::{ready, Future, FutureExt};
+use http::request::Parts;
 use http::{header::HeaderName, HeaderMap, HeaderValue, Method};
 use http_body_util::Full;
 use hyper::{
@@ -29,7 +30,7 @@ use hyper_util::rt::TokioIo;
 use ratchet::{
     Extension, ExtensionProvider, Role, SubprotocolRegistry, WebSocket, WebSocketConfig,
 };
-use ratchet_core::server::{build_response, parse_request, UpgradeRequest};
+use ratchet_core::server::{build_response, parse_request_parts, UpgradeRequestParts};
 
 const UPGRADE_STR: &str = "Upgrade";
 const WEBSOCKET_STR: &str = "websocket";
@@ -49,9 +50,11 @@ pub enum UpgradeStatus<E, T> {
         /// The result of the upgrade operation. `Ok` if it was possible to upgrade the request and
         /// contains the upgraded parts which may be used to build a response and open the WebSocket
         /// connection or an `Err` if one was produced while parsing the request.
-        result: Result<UpgradeRequest<E, T>, ratchet::Error>,
+        result: Result<UpgradeRequestParts<E>, ratchet::Error>,
+        /// The original `Request<T>` that was made.
+        request: Request<T>,
     },
-    /// Indicates that no upgrade was requested. Contains the original `Request<T>`that was made.
+    /// Indicates that no upgrade was requested. Contains the original `Request<T>` that was made.
     NotRequested { request: Request<T> },
 }
 
@@ -62,7 +65,7 @@ pub enum UpgradeStatus<E, T> {
 /// * `request` - The HTTP request.
 /// * `protocols` - The supported protocols for the negotiation.
 /// * `extension_provider` - The extension provider (for example compression support).
-pub fn negotiate_upgrade<'a, T, E>(
+pub fn negotiate_upgrade<T, E>(
     request: Request<T>,
     registry: &SubprotocolRegistry,
     extension_provider: &E,
@@ -75,8 +78,17 @@ where
     let has_upgrade = headers_contains(headers, http::header::UPGRADE, WEBSOCKET_STR);
 
     if request.method() == Method::GET && has_conn && has_upgrade {
+        let (parts, body) = request.into_parts();
+        let Parts {
+            method,
+            version,
+            headers,
+            ..
+        } = &parts;
+
         UpgradeStatus::Upgradeable {
-            result: parse_request(request, extension_provider, registry),
+            result: parse_request_parts(*version, method, headers, extension_provider, registry),
+            request: Request::from_parts(parts, body),
         }
     } else {
         UpgradeStatus::NotRequested { request }
@@ -103,26 +115,27 @@ pub struct Upgrade<Ext, U> {
 /// Upgrade a hyper request to a websocket, based on a successful negotiation.
 ///
 /// # Arguments
-/// * `request` - The upgrade request request.
+/// * `parts` - The WebSocket upgrade parts.
+/// * `request` - The upgrade request.
 /// * `config` - Websocket configuration parameters.
 /// * `unwrap_fn` - Used to unwrap the underlying socket type from the opaque [`Upgraded`] socket
 ///    provided by hyper.
 pub fn upgrade<Ext, U, B>(
-    request: UpgradeRequest<Ext, B>,
+    parts: UpgradeRequestParts<Ext>,
+    request: Request<B>,
     config: Option<WebSocketConfig>,
     unwrap_fn: U,
 ) -> Result<Upgrade<Ext, U>, ratchet::Error>
 where
     Ext: Extension + Send,
 {
-    let UpgradeRequest {
+    let UpgradeRequestParts {
         key,
         subprotocol,
         extension,
         extension_header,
-        request,
         ..
-    } = request;
+    } = parts;
     let response = build_response(key, subprotocol, extension_header)?;
     let (parts, _body) = response.into_parts();
 
