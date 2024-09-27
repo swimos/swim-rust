@@ -20,7 +20,7 @@ use futures::{future::join, TryStreamExt};
 use swimos_connector::{BaseConnector, ConnectorAgent, IngressConnector};
 use swimos_utilities::trigger;
 
-use crate::connector::ingress::tests::{run_handler, run_handler_with_futures, TestSpawner};
+use crate::connector::test_util::{run_handler, run_handler_with_futures, TestSpawner};
 
 fn make_config() -> KafkaIngressConfiguration {
     KafkaIngressConfiguration {

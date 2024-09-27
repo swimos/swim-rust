@@ -14,6 +14,8 @@
 
 mod egress;
 mod ingress;
+#[cfg(test)]
+mod test_util;
 
 type ConnHandlerContext = HandlerContext<ConnectorAgent>;
 

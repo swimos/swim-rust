@@ -138,7 +138,8 @@ where
             .value(MessageSelectors::try_from(configuration))
             .try_handler()
             .and_then(move |extractors: MessageSelectors| {
-                let open_lanes = extractors.open_lanes(init_complete, semaphore);
+                let open_lanes =
+                    extractors.open_lanes(init_complete, semaphore, ADDITIONAL_PARTIES);
                 let set_state = context.effect(move || {
                     *(state.borrow_mut()) = Some(ConnectorState::new(ser_rx, extractors));
                 });
@@ -196,23 +197,23 @@ where
     }
 
     fn open_downlinks(&self, context: &mut dyn EgressContext) {
-        let KafkaEgressConnector {
-            configuration:
-                KafkaEgressConfiguration {
-                    value_downlinks,
-                    map_downlinks,
-                    ..
-                },
-            ..
-        } = self;
-        for value_dl in value_downlinks {
-            let addr = Address::from(&value_dl.address);
-            context.open_value_downlink(addr);
-        }
-        for map_dl in map_downlinks {
-            let addr = Address::from(&map_dl.address);
-            context.open_value_downlink(addr);
-        }
+        open_downlinks(&self.configuration, context);
+    }
+}
+
+fn open_downlinks(config: &KafkaEgressConfiguration, context: &mut dyn EgressContext) {
+    let KafkaEgressConfiguration {
+        value_downlinks,
+        map_downlinks,
+        ..
+    } = config;
+    for value_dl in value_downlinks {
+        let addr = Address::from(&value_dl.address);
+        context.open_value_downlink(addr);
+    }
+    for map_dl in map_downlinks {
+        let addr = Address::from(&map_dl.address);
+        context.open_map_downlink(addr);
     }
 }
 
@@ -236,6 +237,7 @@ impl MessageSelectors {
         &self,
         init_complete: trigger::Sender,
         semaphore: Arc<Semaphore>,
+        additional_parties: u32,
     ) -> impl EventHandler<ConnectorAgent> + 'static {
         let handler_context = ConnHandlerContext::default();
         let total = self.total_lanes();
@@ -243,7 +245,7 @@ impl MessageSelectors {
         let wait_handle = semaphore.clone();
         let await_done = async move {
             let result = wait_handle
-                .acquire_many(ADDITIONAL_PARTIES + total)
+                .acquire_many(additional_parties + total)
                 .await
                 .map(|_| ());
             handler_context

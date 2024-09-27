@@ -38,7 +38,8 @@ use crate::{
     KafkaIngressConnector,
 };
 
-use super::{run_handler_with_futures, setup_agent};
+use super::setup_agent;
+use crate::connector::test_util::run_handler_with_futures;
 
 fn props() -> HashMap<String, String> {
     [("key".to_string(), "value".to_string())]

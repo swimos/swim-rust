@@ -17,36 +17,23 @@ mod end_to_end;
 mod integration;
 
 use std::{
-    cell::RefCell,
     collections::{HashMap, HashSet},
     time::Duration,
 };
 
-use bytes::BytesMut;
-use futures::{future::join, stream::FuturesUnordered, StreamExt};
-use swimos_agent::{
-    agent_model::{
-        downlink::BoxDownlinkChannelFactory, AgentSpec, ItemDescriptor, ItemFlags, WarpLaneKind,
-    },
-    event_handler::{
-        ActionContext, DownlinkSpawnOnDone, EventHandler, HandlerFuture, LaneSpawnOnDone,
-        LaneSpawner, LinkSpawner, Spawner, StepResult,
-    },
-    AgentMetadata,
-};
-use swimos_api::{
-    address::Address,
-    agent::AgentConfig,
-    error::{CommanderRegistrationError, DynamicRegistrationError},
-};
+use futures::future::join;
+use swimos_agent::agent_model::{AgentSpec, ItemDescriptor, ItemFlags, WarpLaneKind};
 use swimos_connector::ConnectorAgent;
-use swimos_model::{Item, Text, Value};
+use swimos_model::{Item, Value};
 use swimos_recon::print_recon_compact;
-use swimos_utilities::{routing::RouteUri, trigger};
+use swimos_utilities::trigger;
 use tokio::time::timeout;
 
 use crate::{
-    connector::ingress::{InvalidLanes, MessageSelector},
+    connector::{
+        ingress::{InvalidLanes, MessageSelector},
+        test_util::{run_handler, run_handler_with_futures, TestSpawner},
+    },
     deser::{MessageDeserializer, MessageView, ReconDeserializer},
     error::{DeserializationError, LaneSelectorError},
     selector::{
@@ -57,173 +44,6 @@ use crate::{
 };
 
 use super::Lanes;
-
-struct LaneRequest {
-    name: String,
-    is_map: bool,
-    on_done: LaneSpawnOnDone<ConnectorAgent>,
-}
-
-impl std::fmt::Debug for LaneRequest {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("LaneRequest")
-            .field("name", &self.name)
-            .field("is_map", &self.is_map)
-            .field("on_done", &"...")
-            .finish()
-    }
-}
-
-#[derive(Default, Debug)]
-struct TestSpawner {
-    suspended: FuturesUnordered<HandlerFuture<ConnectorAgent>>,
-    lane_requests: RefCell<Vec<LaneRequest>>,
-}
-
-impl Spawner<ConnectorAgent> for TestSpawner {
-    fn spawn_suspend(&self, fut: HandlerFuture<ConnectorAgent>) {
-        self.suspended.push(fut);
-    }
-
-    fn schedule_timer(&self, _at: tokio::time::Instant, _id: u64) {
-        panic!("Unexpected timer");
-    }
-}
-
-impl LinkSpawner<ConnectorAgent> for TestSpawner {
-    fn spawn_downlink(
-        &self,
-        _path: Address<Text>,
-        _make_channel: BoxDownlinkChannelFactory<ConnectorAgent>,
-        _on_done: DownlinkSpawnOnDone<ConnectorAgent>,
-    ) {
-        panic!("Opening downlinks not supported.");
-    }
-
-    fn register_commander(&self, _path: Address<Text>) -> Result<u16, CommanderRegistrationError> {
-        panic!("Registering commanders not supported.");
-    }
-}
-
-impl LaneSpawner<ConnectorAgent> for TestSpawner {
-    fn spawn_warp_lane(
-        &self,
-        name: &str,
-        kind: WarpLaneKind,
-        on_done: LaneSpawnOnDone<ConnectorAgent>,
-    ) -> Result<(), DynamicRegistrationError> {
-        let is_map = match kind {
-            WarpLaneKind::Map => true,
-            WarpLaneKind::Value => false,
-            _ => panic!("Unexpected lane kind: {}", kind),
-        };
-        self.lane_requests.borrow_mut().push(LaneRequest {
-            name: name.to_string(),
-            is_map,
-            on_done,
-        });
-        Ok(())
-    }
-}
-
-const CONFIG: AgentConfig = AgentConfig::DEFAULT;
-const NODE_URI: &str = "/node";
-
-fn make_uri() -> RouteUri {
-    RouteUri::try_from(NODE_URI).expect("Bad URI.")
-}
-
-fn make_meta<'a>(
-    uri: &'a RouteUri,
-    route_params: &'a HashMap<String, String>,
-) -> AgentMetadata<'a> {
-    AgentMetadata::new(uri, route_params, &CONFIG)
-}
-
-async fn run_handler_with_futures<H: EventHandler<ConnectorAgent>>(
-    agent: &ConnectorAgent,
-    handler: H,
-) -> HashSet<u64> {
-    let mut spawner = TestSpawner::default();
-    let mut modified = run_handler(agent, &spawner, handler);
-    let mut handlers = vec![];
-    let reg = move |req: LaneRequest| {
-        let LaneRequest {
-            name,
-            is_map,
-            on_done,
-        } = req;
-        let kind = if is_map {
-            WarpLaneKind::Map
-        } else {
-            WarpLaneKind::Value
-        };
-        let descriptor = ItemDescriptor::WarpLane {
-            kind,
-            flags: ItemFlags::TRANSIENT,
-        };
-        let result = agent.register_dynamic_item(&name, descriptor);
-        on_done(result.map_err(Into::into))
-    };
-    for request in std::mem::take::<Vec<LaneRequest>>(spawner.lane_requests.borrow_mut().as_mut()) {
-        handlers.push(reg(request));
-    }
-
-    while !(handlers.is_empty() && spawner.suspended.is_empty()) {
-        let m = if let Some(h) = handlers.pop() {
-            run_handler(agent, &spawner, h)
-        } else {
-            let h = spawner.suspended.next().await.expect("No handler.");
-            run_handler(agent, &spawner, h)
-        };
-        modified.extend(m);
-        for request in
-            std::mem::take::<Vec<LaneRequest>>(spawner.lane_requests.borrow_mut().as_mut())
-        {
-            handlers.push(reg(request));
-        }
-    }
-    modified
-}
-
-fn run_handler<H: EventHandler<ConnectorAgent>>(
-    agent: &ConnectorAgent,
-    spawner: &TestSpawner,
-    mut handler: H,
-) -> HashSet<u64> {
-    let route_params = HashMap::new();
-    let uri = make_uri();
-    let meta = make_meta(&uri, &route_params);
-    let mut join_lane_init = HashMap::new();
-    let mut command_buffer = BytesMut::new();
-
-    let mut action_context = ActionContext::new(
-        spawner,
-        spawner,
-        spawner,
-        &mut join_lane_init,
-        &mut command_buffer,
-    );
-
-    let mut modified = HashSet::new();
-
-    loop {
-        match handler.step(&mut action_context, meta, agent) {
-            StepResult::Continue { modified_item } => {
-                if let Some(m) = modified_item {
-                    modified.insert(m.id());
-                }
-            }
-            StepResult::Fail(err) => panic!("Handler Failed: {}", err),
-            StepResult::Complete { modified_item, .. } => {
-                if let Some(m) = modified_item {
-                    modified.insert(m.id());
-                }
-                break modified;
-            }
-        }
-    }
-}
 
 #[test]
 fn lanes_from_spec() {
