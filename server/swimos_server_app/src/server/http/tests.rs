@@ -31,6 +31,7 @@ use hyper::body::Incoming;
 use hyper::{client::conn::http1, header::HeaderValue, Request, Response, Uri};
 use hyper_util::rt::TokioIo;
 use ratchet::{CloseReason, Message, NoExt, NoExtProvider, WebSocket, WebSocketConfig};
+use ratchet_core::{HttpError, SubprotocolRegistry};
 use swimos_api::{
     agent::{HttpLaneRequest, RawHttpLaneResponse},
     http::{StatusCode, Version},
@@ -56,11 +57,16 @@ async fn client(tx: &mpsc::Sender<DuplexStream>, tag: &str) {
 
     tx.send(server).await.expect("Failed to open channel.");
 
-    let mut websocket =
-        ratchet::subscribe(WebSocketConfig::default(), client, "ws://localhost:8080")
-            .await
-            .expect("Client handshake failed.")
-            .into_websocket();
+    let mut websocket = ratchet::subscribe_with(
+        WebSocketConfig::default(),
+        client,
+        "ws://localhost:8080",
+        NoExtProvider,
+        SubprotocolRegistry::new(["warp0"]).unwrap(),
+    )
+    .await
+    .expect("Client handshake failed.")
+    .into_websocket();
 
     websocket
         .write_text(format!("Hello: {}", tag))
@@ -187,6 +193,34 @@ async fn single_client() {
         drop(tx);
     };
 
+    join(server, client).await;
+}
+
+#[tokio::test]
+async fn no_subprotocol() {
+    let (tx, rx) = mpsc::channel(8);
+    let (find_tx, _find_rx) = mpsc::channel(CHANNEL_SIZE.get());
+    let server = run_server(rx, find_tx);
+    let client = async move {
+        let (client, server) = tokio::io::duplex(BUFFER_SIZE);
+        tx.send(server).await.expect("Failed to open channel.");
+
+        let result = ratchet::subscribe_with(
+            WebSocketConfig::default(),
+            client,
+            "ws://localhost:8080",
+            NoExtProvider,
+            SubprotocolRegistry::default(),
+        )
+        .await;
+        let err = result.expect_err("Expected a HTTP error");
+        let err = err
+            .downcast_ref::<HttpError>()
+            .expect("Expected Http error");
+        assert!(matches!(err, HttpError::Status(400)));
+
+        drop(tx);
+    };
     join(server, client).await;
 }
 
