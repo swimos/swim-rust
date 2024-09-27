@@ -11,6 +11,7 @@ homepage.workspace = true
 [dependencies]
 futures = { workspace = true }
 ratchet = { workspace = true }
+ratchet_core = { workspace = true }
 hyper = { workspace = true }
 http = { workspace = true }
 httparse = { workspace = true }
