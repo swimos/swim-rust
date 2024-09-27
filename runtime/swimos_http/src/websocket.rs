@@ -12,11 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{
-    pin::Pin,
-    task::{Context, Poll},
-};
-
 use bytes::{Bytes, BytesMut};
 use futures::{ready, Future, FutureExt};
 use http::request::Parts;
@@ -31,6 +26,11 @@ use ratchet::{
     Extension, ExtensionProvider, Role, SubprotocolRegistry, WebSocket, WebSocketConfig,
 };
 use ratchet_core::server::{build_response, parse_request_parts, UpgradeRequestParts};
+use std::fmt::Display;
+use std::{
+    pin::Pin,
+    task::{Context, Poll},
+};
 
 const UPGRADE_STR: &str = "Upgrade";
 const WEBSOCKET_STR: &str = "websocket";
@@ -85,7 +85,6 @@ where
             headers,
             ..
         } = &parts;
-
         UpgradeStatus::Upgradeable {
             result: parse_request_parts(*version, method, headers, extension_provider, registry),
             request: Request::from_parts(parts, body),
@@ -96,7 +95,7 @@ where
 }
 
 /// Produce a bad request response for a bad websocket upgrade request.
-pub fn fail_upgrade(error: ratchet::Error) -> Response<Full<Bytes>> {
+pub fn fail_upgrade(error: impl Display) -> Response<Full<Bytes>> {
     Response::builder()
         .status(http::StatusCode::BAD_REQUEST)
         .body(Full::from(error.to_string()))
