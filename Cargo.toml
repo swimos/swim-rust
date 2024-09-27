@@ -47,7 +47,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Swim Inc. developers info@swim.ai"]
 edition = "2021"
 license = "Apache-2.0"
@@ -64,31 +64,31 @@ debug = false
 opt-level = "z"
 
 [workspace.dependencies]
-swimos_msgpack = { path = "api/formats/swimos_msgpack", version = "0.1.0" }
-swimos_recon = { path = "api/formats/swimos_recon", version = "0.1.0" }
-swimos_agent_protocol = { path = "api/swimos_agent_protocol", version = "0.1.0" }
-swimos_api = { path = "api/swimos_api", version = "0.1.0" }
-swimos_client_api = { path = "api/swimos_client_api", version = "0.1.0" }
-swimos_form = { path = "api/swimos_form", version = "0.1.0" }
-swimos_form_derive = { path = "api/swimos_form_derive", version = "0.1.0" }
-swimos_meta = { path = "api/swimos_meta", version = "0.1.0" }
-swimos_model = { path = "api/swimos_model", version = "0.1.0" }
-swimos_http = { path = "runtime/swimos_http", version = "0.1.0" }
-swimos_messages = { path = "runtime/swimos_messages", version = "0.1.0" }
-swimos_remote = { path = "runtime/swimos_remote", version = "0.1.0" }
-swimos_rocks_store = { path = "runtime/swimos_rocks_store", version = "0.1.0" }
-swimos_runtime = { path = "runtime/swimos_runtime", version = "0.1.0" }
-swimos_agent = { path = "server/swimos_agent", version = "0.1.0" }
-swimos_agent_derive = { path = "server/swimos_agent_derive", version = "0.1.0" }
-swimos_introspection = { path = "server/swimos_introspection", version = "0.1.0" }
-swimos_server_app = { path = "server/swimos_server_app", version = "0.1.0" }
-swimos_connector = { path = "server/swimos_connector", version = "0.1.0" }
-swimos_connector_kafka = { path = "server/swimos_connector_kafka", version = "0.1.0" }
-swimos = { path = "swimos", version = "0.1.0" }
-swimos_client = { path = "swimos_client", version = "0.1.0" }
-swimos_downlink = { path = "swimos_downlink", version = "0.1.0" }
-swimos_macro_utilities = { path = "swimos_macro_utilities", version = "0.1.0" }
-swimos_utilities = { path = "swimos_utilities", version = "0.1.0" }
+swimos_msgpack = { path = "api/formats/swimos_msgpack", version = "0.1.1" }
+swimos_recon = { path = "api/formats/swimos_recon", version = "0.1.1" }
+swimos_agent_protocol = { path = "api/swimos_agent_protocol", version = "0.1.1" }
+swimos_api = { path = "api/swimos_api", version = "0.1.1" }
+swimos_client_api = { path = "api/swimos_client_api", version = "0.1.1" }
+swimos_form = { path = "api/swimos_form", version = "0.1.1" }
+swimos_form_derive = { path = "api/swimos_form_derive", version = "0.1.1" }
+swimos_meta = { path = "api/swimos_meta", version = "0.1.1" }
+swimos_model = { path = "api/swimos_model", version = "0.1.1" }
+swimos_http = { path = "runtime/swimos_http", version = "0.1.1" }
+swimos_messages = { path = "runtime/swimos_messages", version = "0.1.1" }
+swimos_remote = { path = "runtime/swimos_remote", version = "0.1.1" }
+swimos_rocks_store = { path = "runtime/swimos_rocks_store", version = "0.1.1" }
+swimos_runtime = { path = "runtime/swimos_runtime", version = "0.1.1" }
+swimos_agent = { path = "server/swimos_agent", version = "0.1.1" }
+swimos_agent_derive = { path = "server/swimos_agent_derive", version = "0.1.1" }
+swimos_introspection = { path = "server/swimos_introspection", version = "0.1.1" }
+swimos_server_app = { path = "server/swimos_server_app", version = "0.1.1" }
+swimos_connector = { path = "server/swimos_connector", version = "0.1.1" }
+swimos_connector_kafka = { path = "server/swimos_connector_kafka", version = "0.1.1" }
+swimos = { path = "swimos", version = "0.1.1" }
+swimos_client = { path = "swimos_client", version = "0.1.1" }
+swimos_downlink = { path = "swimos_downlink", version = "0.1.1" }
+swimos_macro_utilities = { path = "swimos_macro_utilities", version = "0.1.1" }
+swimos_utilities = { path = "swimos_utilities", version = "0.1.1" }
 swimos_byte_channel = { path = "swimos_utilities/swimos_byte_channel" }
 swimos_multi_reader = { path = "swimos_utilities/swimos_multi_reader" }
 swimos_algebra = { path = "swimos_utilities/swimos_algebra" }
