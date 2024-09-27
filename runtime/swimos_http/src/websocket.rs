@@ -85,7 +85,6 @@ where
             headers,
             ..
         } = &parts;
-
         UpgradeStatus::Upgradeable {
             result: parse_request_parts(*version, method, headers, extension_provider, registry),
             request: Request::from_parts(parts, body),
@@ -96,7 +95,7 @@ where
 }
 
 /// Produce a bad request response for a bad websocket upgrade request.
-pub fn fail_upgrade(error: ratchet::Error) -> Response<Full<Bytes>> {
+pub fn fail_upgrade(error: impl ToString) -> Response<Full<Bytes>> {
     Response::builder()
         .status(http::StatusCode::BAD_REQUEST)
         .body(Full::from(error.to_string()))
