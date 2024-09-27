@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{collections::VecDeque, rc::Rc};
+use std::{collections::VecDeque, sync::Arc};
 
 use cursive::{
     direction::Direction,
@@ -40,7 +40,7 @@ impl HistoryEditView {
     #[must_use]
     pub fn on_submit<F>(mut self, callback: F) -> Self
     where
-        F: Fn(&mut Cursive, &str) + 'static,
+        F: Fn(&mut Cursive, &str) + Send + Sync + 'static,
     {
         self.set_on_submit(callback);
         self
@@ -48,7 +48,7 @@ impl HistoryEditView {
 
     pub fn set_on_submit<F>(&mut self, callback: F)
     where
-        F: Fn(&mut Cursive, &str) + 'static,
+        F: Fn(&mut Cursive, &str) + Send + Sync + 'static,
     {
         let HistoryEditView { inner, .. } = self;
         inner.set_on_submit(callback);
@@ -56,7 +56,7 @@ impl HistoryEditView {
 
     pub fn set_on_submit_mut<F>(&mut self, callback: F)
     where
-        F: FnMut(&mut Cursive, &str) + 'static,
+        F: FnMut(&mut Cursive, &str) + Send + Sync + 'static,
     {
         let HistoryEditView { inner, .. } = self;
         inner.set_on_submit_mut(callback);
@@ -65,7 +65,7 @@ impl HistoryEditView {
     #[must_use]
     pub fn on_submit_mut<F>(mut self, callback: F) -> Self
     where
-        F: FnMut(&mut Cursive, &str) + 'static,
+        F: FnMut(&mut Cursive, &str) + Send + Sync + 'static,
     {
         self.set_on_submit_mut(callback);
         self
@@ -74,7 +74,7 @@ impl HistoryEditView {
     #[must_use]
     pub fn on_edit<F>(mut self, callback: F) -> Self
     where
-        F: Fn(&mut Cursive, &str, usize) + 'static,
+        F: Fn(&mut Cursive, &str, usize) + Send + Sync + 'static,
     {
         self.set_on_edit(callback);
         self
@@ -82,7 +82,7 @@ impl HistoryEditView {
 
     pub fn set_on_edit<F>(&mut self, callback: F)
     where
-        F: Fn(&mut Cursive, &str, usize) + 'static,
+        F: Fn(&mut Cursive, &str, usize) + Send + Sync + 'static,
     {
         let HistoryEditView { inner, .. } = self;
         inner.set_on_edit(callback);
@@ -90,7 +90,7 @@ impl HistoryEditView {
 
     pub fn set_on_edit_mut<F>(&mut self, callback: F)
     where
-        F: FnMut(&mut Cursive, &str, usize) + 'static,
+        F: FnMut(&mut Cursive, &str, usize) + Send + Sync + 'static,
     {
         let HistoryEditView { inner, .. } = self;
         inner.set_on_edit_mut(callback);
@@ -99,13 +99,13 @@ impl HistoryEditView {
     #[must_use]
     pub fn on_edit_mut<F>(mut self, callback: F) -> Self
     where
-        F: FnMut(&mut Cursive, &str, usize) + 'static,
+        F: FnMut(&mut Cursive, &str, usize) + Send + Sync + 'static,
     {
         self.set_on_edit_mut(callback);
         self
     }
 
-    pub fn get_content(&self) -> Rc<String> {
+    pub fn get_content(&self) -> Arc<String> {
         self.inner.get_content()
     }
 
