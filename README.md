@@ -51,7 +51,7 @@ server.
 
 ```toml
 [dependencies]
-swimos = { version = "0.1.0", features = ["server", "agent"] }
+swimos = { version = "0.1.1", features = ["server", "agent"] }
 ```
 
 ```rust

@@ -375,8 +375,6 @@ where
     }
 }
 
-type BytesHyperResult = Result<Response<Full<Bytes>>, hyper::Error>;
-
 /// Perform the websocket negotiation and assign the upgrade future to the target parameter.
 fn perform_upgrade<Ext, Sock, B>(
     config: WebSocketConfig,
@@ -384,20 +382,36 @@ fn perform_upgrade<Ext, Sock, B>(
     request: Request<B>,
     scheme: Scheme,
     addr: SocketAddr,
-) -> (BytesHyperResult, Option<UpgradeFutureWithSock<Ext, Sock>>)
+) -> (
+    Response<Full<Bytes>>,
+    Option<UpgradeFutureWithSock<Ext, Sock>>,
+)
 where
     Sock: Send + 'static,
     Ext: Extension + Send,
 {
-    let result = result.and_then(|parts| {
-        swimos_http::upgrade(parts, request, Some(config), ReclaimSock::<Sock>::default())
-    });
     match result {
-        Ok(Upgrade { response, future }) => (
-            Ok(response),
-            Some(UpgradeFutureWithSock::new(future, scheme, addr)),
-        ),
-        Err(err) => (Ok(swimos_http::fail_upgrade(err)), None),
+        Ok(parts) => {
+            if parts.subprotocol.is_none() {
+                // We can only speak warp0 so fail the upgrade.
+                let response = swimos_http::fail_upgrade("Failed to negotiate warp0 subprotocol");
+                (response, None)
+            } else {
+                match swimos_http::upgrade(
+                    parts,
+                    request,
+                    Some(config),
+                    ReclaimSock::<Sock>::default(),
+                ) {
+                    Ok(Upgrade { response, future }) => (
+                        response,
+                        Some(UpgradeFutureWithSock::new(future, scheme, addr)),
+                    ),
+                    Err(err) => (swimos_http::fail_upgrade(err), None),
+                }
+            }
+        }
+        Err(err) => (swimos_http::fail_upgrade(err), None),
     }
 }
 
@@ -535,7 +549,7 @@ where
             config,
         } = websocket_spec;
 
-        // If the request in a websocket upgrade, perform the upgrade, otherwise attempt to delegate
+        // If the request is a websocket upgrade, perform the upgrade, otherwise attempt to delegate
         // the request to an HTTP lane on an agent.
         match swimos_http::negotiate_upgrade(
             request,
@@ -551,11 +565,11 @@ where
                     async move {
                         // This can only fail if the server is no longer running, in which case it is irrelevant.
                         let _ = tx.send(upgrade_fut).await;
-                        upgrade_result
+                        Ok(upgrade_result)
                     }
                     .boxed()
                 } else {
-                    async move { upgrade_result }.boxed()
+                    async move { Ok(upgrade_result) }.boxed()
                 }
             }
             UpgradeStatus::NotRequested { request } => {
