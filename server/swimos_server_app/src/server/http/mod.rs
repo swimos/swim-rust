@@ -487,9 +487,13 @@ where
     }
 }
 
+/// Wrapper for the WebSocket parts used to negotiate new connections using Ratchet.
 pub struct WebSocketSpec<Ext> {
+    /// The extension provider to use for connections.
     extension_provider: Arc<Ext>,
+    /// The subprotocols that the WebSocket can use to negotiate a connection.
     subprotocol_registry: SubprotocolRegistry,
+    /// The configuration that will be used to open new WebSocket connections with.
     config: WebSocketConfig,
 }
 
