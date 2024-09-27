@@ -22,7 +22,7 @@ use std::{
     sync::Arc,
     time::Duration,
 };
-use swimos_http::NoUnwrap;
+use swimos_http::{NoUnwrap, Upgrade, UpgradeStatus};
 
 use futures::{
     channel::oneshot,
@@ -34,7 +34,10 @@ use hyper::body::Incoming;
 use hyper_util::rt::{TokioExecutor, TokioIo};
 use hyper_util::server::conn::auto::Builder;
 use hyper_util::server::graceful::GracefulShutdown;
-use ratchet::{CloseCode, CloseReason, Message, NoExt, NoExtProvider, PayloadType, WebSocket};
+use ratchet::{
+    CloseCode, CloseReason, Message, NoExt, NoExtProvider, PayloadType, SubprotocolRegistry,
+    WebSocket,
+};
 use thiserror::Error;
 use tokio::net::TcpListener;
 use tokio::{net::TcpSocket, sync::Notify};
@@ -49,8 +52,15 @@ async fn run_server(
 
     let (io, _) = listener.accept().await?;
     let builder = Builder::new(TokioExecutor::new());
-    let connection =
-        builder.serve_connection_with_upgrades(TokioIo::new(io), service_fn(upgrade_server));
+
+    let connection = builder.serve_connection_with_upgrades(
+        TokioIo::new(io),
+        service_fn(move |req| {
+            let registry =
+                SubprotocolRegistry::new(["warp0"]).expect("Failed to build subprotocol registry");
+            async move { upgrade_server(req, &registry).await }
+        }),
+    );
     let shutdown = GracefulShutdown::new();
 
     let server = pin!(shutdown.watch(connection));
@@ -70,16 +80,30 @@ async fn run_server(
 
 async fn upgrade_server(
     request: Request<Incoming>,
-) -> Result<Response<Full<Bytes>>, hyper::http::Error> {
-    let protocols = ["warp0"].into_iter().collect();
-    match swimos_http::negotiate_upgrade(&request, &protocols, &NoExtProvider) {
-        Ok(Some(negotiated)) => {
-            let (response, upgraded) = swimos_http::upgrade(request, negotiated, None, NoUnwrap);
-            tokio::spawn(run_websocket(upgraded));
+    registry: &SubprotocolRegistry,
+) -> Result<Response<Full<Bytes>>, ratchet::Error> {
+    match swimos_http::negotiate_upgrade(request, registry, &NoExtProvider) {
+        UpgradeStatus::Upgradeable {
+            result: Ok(parts),
+            request,
+        } => {
+            let Upgrade { response, future } =
+                swimos_http::upgrade(parts, request, None, NoUnwrap)?;
+            tokio::spawn(run_websocket(future));
             Ok(response)
         }
-        Ok(None) => Response::builder().body(Full::from("Success")),
-        Err(err) => Ok(swimos_http::fail_upgrade(err)),
+        UpgradeStatus::Upgradeable {
+            result: Err(err), ..
+        } => {
+            if err.is_io() {
+                Err(err)
+            } else {
+                Ok(swimos_http::fail_upgrade(err))
+            }
+        }
+        UpgradeStatus::NotRequested { request: _ } => Response::builder()
+            .body(Full::from("Success"))
+            .map_err(Into::into),
     }
 }
 
