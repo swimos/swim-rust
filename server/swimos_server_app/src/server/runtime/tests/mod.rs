@@ -24,9 +24,7 @@ use futures::{
     future::{join, join3},
     Future,
 };
-use ratchet::{
-    Message, NegotiatedExtension, NoExt, NoExtProvider, Role, WebSocket, WebSocketConfig,
-};
+use ratchet::{Message, NoExt, NoExtProvider, Role, WebSocket, WebSocketConfig};
 use swimos_api::{address::RelativeAddress, persistence::StoreDisabled};
 use swimos_form::write::StructuralWritable;
 use swimos_recon::print_recon_compact;
@@ -206,7 +204,7 @@ impl TestClient {
             ws: WebSocket::from_upgraded(
                 WebSocketConfig::default(),
                 stream,
-                NegotiatedExtension::from(None),
+                None,
                 BytesMut::new(),
                 Role::Client,
             ),

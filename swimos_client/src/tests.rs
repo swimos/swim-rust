@@ -39,8 +39,8 @@ use futures_util::future::{ready, BoxFuture};
 use futures_util::stream::BoxStream;
 use futures_util::{FutureExt, StreamExt};
 use ratchet::{
-    ExtensionProvider, Message, NegotiatedExtension, NoExt, PayloadType, Role, WebSocket,
-    WebSocketConfig, WebSocketStream,
+    ExtensionProvider, Message, NoExt, PayloadType, Role, WebSocket, WebSocketConfig,
+    WebSocketStream,
 };
 use std::borrow::BorrowMut;
 use std::collections::HashMap;
@@ -210,7 +210,7 @@ impl WebsocketClient for MockWs {
             Some(WsAction::Open) => Ok(WebSocket::from_upgraded(
                 WebSocketConfig::default(),
                 socket,
-                NegotiatedExtension::from(None),
+                None,
                 BytesMut::default(),
                 Role::Client,
             )),
@@ -477,7 +477,7 @@ impl Server {
             transport: WebSocket::from_upgraded(
                 WebSocketConfig::default(),
                 transport,
-                NegotiatedExtension::from(NoExt),
+                Some(NoExt),
                 BytesMut::default(),
                 Role::Server,
             ),
@@ -549,7 +549,7 @@ async fn transport_opens_connection_ok() {
     let mut ws_server = WebSocket::from_upgraded(
         WebSocketConfig::default(),
         server,
-        NegotiatedExtension::from(NoExt),
+        Some(NoExt),
         buf,
         Role::Server,
     );

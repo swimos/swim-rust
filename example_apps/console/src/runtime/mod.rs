@@ -25,7 +25,7 @@ use futures::{
 use parking_lot::RwLock;
 use ratchet::{
     CloseCode, CloseReason, ErrorKind, Message, NoExt, NoExtDecoder, NoExtEncoder, NoExtProvider,
-    ProtocolRegistry, WebSocket, WebSocketConfig,
+    SubprotocolRegistry, WebSocket, WebSocketConfig,
 };
 use swimos_messages::warp::{peel_envelope_header_str, RawEnvelope};
 use swimos_model::Value;
@@ -516,7 +516,7 @@ fn into_stream(remote: Host, rx: Rx) -> impl Stream<Item = Result<(Host, String)
 
 async fn open_connection(host: &Host) -> Result<WebSocket<TcpStream, NoExt>, ratchet::Error> {
     let socket = TcpStream::connect(&host.host_only()).await?;
-    let subprotocols = ProtocolRegistry::new(vec!["warp0"]).unwrap();
+    let subprotocols = SubprotocolRegistry::new(vec!["warp0"]).unwrap();
     let r = ratchet::subscribe_with(
         WebSocketConfig::default(),
         socket,

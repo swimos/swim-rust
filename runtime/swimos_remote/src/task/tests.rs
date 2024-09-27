@@ -20,8 +20,8 @@ use futures::{
     Future, SinkExt, StreamExt,
 };
 use ratchet::{
-    CloseCode, CloseReason, Message, NegotiatedExtension, NoExt, NoExtDecoder, Receiver, Role,
-    WebSocket, WebSocketConfig,
+    CloseCode, CloseReason, Message, NoExt, NoExtDecoder, Receiver, Role, WebSocket,
+    WebSocketConfig,
 };
 use swimos_api::address::RelativeAddress;
 use swimos_messages::{
@@ -607,20 +607,8 @@ fn make_fake_ws() -> (
     let (server, client) = duplex(BUFFER_SIZE.get());
     let config = WebSocketConfig::default();
 
-    let server = WebSocket::from_upgraded(
-        config,
-        server,
-        NegotiatedExtension::from(NoExt),
-        BytesMut::new(),
-        Role::Server,
-    );
-    let client = WebSocket::from_upgraded(
-        config,
-        client,
-        NegotiatedExtension::from(NoExt),
-        BytesMut::new(),
-        Role::Client,
-    );
+    let server = WebSocket::from_upgraded(config, server, None, BytesMut::new(), Role::Server);
+    let client = WebSocket::from_upgraded(config, client, None, BytesMut::new(), Role::Client);
     (server, client)
 }
 
@@ -766,20 +754,10 @@ where
     let (server, client) = duplex(BUFFER_SIZE.get());
     let config = WebSocketConfig::default();
 
-    let server = WebSocket::from_upgraded(
-        config,
-        server,
-        NegotiatedExtension::from(NoExt),
-        BytesMut::new(),
-        Role::Server,
-    );
-    let client = WebSocket::from_upgraded(
-        config,
-        client,
-        NegotiatedExtension::from(NoExt),
-        BytesMut::new(),
-        Role::Client,
-    );
+    let server =
+        WebSocket::from_upgraded(config, server, Some(NoExt), BytesMut::new(), Role::Server);
+    let client =
+        WebSocket::from_upgraded(config, client, Some(NoExt), BytesMut::new(), Role::Client);
 
     let (mut server_tx, server_rx) = server.split().expect("Split failed.");
 
@@ -1010,20 +988,10 @@ where
     let (server, client) = duplex(BUFFER_SIZE.get());
     let config = WebSocketConfig::default();
 
-    let server = WebSocket::from_upgraded(
-        config,
-        server,
-        NegotiatedExtension::from(NoExt),
-        BytesMut::new(),
-        Role::Server,
-    );
-    let client = WebSocket::from_upgraded(
-        config,
-        client,
-        NegotiatedExtension::from(NoExt),
-        BytesMut::new(),
-        Role::Client,
-    );
+    let server =
+        WebSocket::from_upgraded(config, server, Some(NoExt), BytesMut::new(), Role::Server);
+    let client =
+        WebSocket::from_upgraded(config, client, Some(NoExt), BytesMut::new(), Role::Client);
 
     let context = CombinedTestContext {
         stop_tx: Some(stop_tx),

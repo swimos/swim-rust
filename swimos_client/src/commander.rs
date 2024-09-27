@@ -18,7 +18,7 @@ use bytes::BytesMut;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use ratchet::{
-    CloseCode, CloseReason, NoExt, NoExtProvider, ProtocolRegistry, WebSocket, WebSocketConfig,
+    CloseCode, CloseReason, NoExt, NoExtProvider, SubprotocolRegistry, WebSocket, WebSocketConfig,
 };
 use swimos_form::write::StructuralWritable;
 use swimos_recon::print_recon_compact;
@@ -121,7 +121,7 @@ async fn open_connection(shp: SchemeHostPort) -> Result<WebSocket<TcpStream, NoE
     let remote = format!("{}:{}", host, port);
     let url = format!("{}://{}:{}", scheme, host, port);
     let socket = TcpStream::connect(remote).await?;
-    let subprotocols = ProtocolRegistry::new(vec!["warp0"]).unwrap();
+    let subprotocols = SubprotocolRegistry::new(vec!["warp0"]).unwrap();
     let ws = ratchet::subscribe_with(
         WebSocketConfig::default(),
         socket,
