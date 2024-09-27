@@ -74,6 +74,7 @@ fn convert_avro_value(value: AvroValue) -> Result<Value, AvroError> {
             let n = BigInt::from(d);
             Value::BigInt(n)
         }
+        AvroValue::BigDecimal(_) => return Err(AvroError::UnsupportedAvroKind),
         AvroValue::TimeMillis(n) => Duration::from_millis(n as u64).into_value(),
         AvroValue::TimeMicros(n) => Duration::from_micros(n as u64).into_value(),
         AvroValue::TimestampMillis(offset) => {
@@ -85,6 +86,11 @@ fn convert_avro_value(value: AvroValue) -> Result<Value, AvroError> {
         AvroValue::TimestampMicros(offset) => {
             let utc_dt =
                 DateTime::from_timestamp_micros(offset).unwrap_or(DateTime::<Utc>::MAX_UTC);
+            let ts = Timestamp::from(utc_dt);
+            ts.into_value()
+        }
+        AvroValue::TimestampNanos(offset) => {
+            let utc_dt = DateTime::from_timestamp_nanos(offset);
             let ts = Timestamp::from(utc_dt);
             ts.into_value()
         }
@@ -109,6 +115,19 @@ fn convert_avro_value(value: AvroValue) -> Result<Value, AvroError> {
             };
             let local_time = NaiveDateTime::UNIX_EPOCH
                 .checked_add_signed(TimeDelta::microseconds(n))
+                .unwrap_or(def);
+            let dt = local_time.and_local_timezone(Local).unwrap();
+            let ts = Timestamp::from(dt);
+            ts.into_value()
+        }
+        AvroValue::LocalTimestampNanos(n) => {
+            let def = if n <= 0 {
+                NaiveDateTime::MIN
+            } else {
+                NaiveDateTime::MAX
+            };
+            let local_time = NaiveDateTime::UNIX_EPOCH
+                .checked_add_signed(TimeDelta::nanoseconds(n))
                 .unwrap_or(def);
             let dt = local_time.and_local_timezone(Local).unwrap();
             let ts = Timestamp::from(dt);
