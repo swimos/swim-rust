@@ -394,7 +394,7 @@ where
         Ok(parts) => {
             if parts.subprotocol.is_none() {
                 // We can only speak warp0 so fail the upgrade.
-                let response = swimos_http::fail_upgrade("Failed to warp0 subprotocol");
+                let response = swimos_http::fail_upgrade("Failed to negotiate warp0 subprotocol");
                 (response, None)
             } else {
                 match swimos_http::upgrade(
