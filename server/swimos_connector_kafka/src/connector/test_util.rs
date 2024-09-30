@@ -88,7 +88,7 @@ impl Spawner<ConnectorAgent> for TestSpawner {
 
 pub struct DownlinkRequest {
     pub path: Address<String>,
-    pub make_channel: BoxDownlinkChannelFactory<ConnectorAgent>,
+    _make_channel: BoxDownlinkChannelFactory<ConnectorAgent>,
     _on_done: DownlinkSpawnOnDone<ConnectorAgent>,
 }
 
@@ -106,13 +106,13 @@ impl LinkSpawner<ConnectorAgent> for TestSpawner {
     fn spawn_downlink(
         &self,
         path: Address<Text>,
-        make_channel: BoxDownlinkChannelFactory<ConnectorAgent>,
+        _make_channel: BoxDownlinkChannelFactory<ConnectorAgent>,
         _on_done: DownlinkSpawnOnDone<ConnectorAgent>,
     ) {
         if self.allow_downlinks {
             self.downlinks.borrow_mut().push(DownlinkRequest {
                 path: path.into(),
-                make_channel,
+                _make_channel,
                 _on_done,
             })
         } else {
