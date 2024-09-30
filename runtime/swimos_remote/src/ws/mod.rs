@@ -20,7 +20,9 @@ use futures::Stream;
 use swimos_messages::remote_protocol::FindNode;
 use swimos_utilities::errors::Recoverable;
 
-use ratchet::{ExtensionProvider, ProtocolRegistry, WebSocket, WebSocketConfig, WebSocketStream};
+use ratchet::{
+    ExtensionProvider, SubprotocolRegistry, WebSocket, WebSocketConfig, WebSocketStream,
+};
 use thiserror::Error;
 use tokio::sync::mpsc;
 
@@ -111,7 +113,7 @@ impl WebsocketClient for RatchetClient {
     {
         let config = self.0;
         Box::pin(async move {
-            let subprotocols = ProtocolRegistry::new([WARP])?;
+            let subprotocols = SubprotocolRegistry::new([WARP])?;
             let socket = ratchet::subscribe_with(config, socket, addr, provider, subprotocols)
                 .await?
                 .into_websocket();
