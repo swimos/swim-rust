@@ -260,3 +260,15 @@ pub fn run_handler<H: EventHandler<ConnectorAgent>>(
         }
     }
 }
+
+pub fn create_kafka_props() -> HashMap<String, String> {
+    [
+        ("bootstrap.servers", "datagen.nstream.cloud:9092"),
+        ("message.timeout.ms", "5000"),
+        ("group.id", "rust-consumer-test"),
+        ("auto.offset.reset", "smallest"),
+    ]
+    .into_iter()
+    .map(|(k, v)| (k.to_string(), v.to_string()))
+    .collect()
+}

@@ -13,8 +13,8 @@
 // limitations under the License.
 
 use crate::{
-    DataFormat, Endianness, IngressMapLaneSpec, IngressValueLaneSpec, KafkaIngressConfiguration,
-    KafkaIngressConnector, KafkaLogLevel,
+    connector::test_util::create_kafka_props, DataFormat, Endianness, IngressMapLaneSpec,
+    IngressValueLaneSpec, KafkaIngressConfiguration, KafkaIngressConnector, KafkaLogLevel,
 };
 use futures::{future::join, TryStreamExt};
 use swimos_connector::{BaseConnector, ConnectorAgent, IngressConnector};
@@ -24,15 +24,7 @@ use crate::connector::test_util::{run_handler, run_handler_with_futures, TestSpa
 
 fn make_config() -> KafkaIngressConfiguration {
     KafkaIngressConfiguration {
-        properties: [
-            ("bootstrap.servers", "datagen.nstream.cloud:9092"),
-            ("message.timeout.ms", "5000"),
-            ("group.id", "rust-consumer-test"),
-            ("auto.offset.reset", "smallest"),
-        ]
-        .into_iter()
-        .map(|(k, v)| (k.to_string(), v.to_string()))
-        .collect(),
+        properties: create_kafka_props(),
         log_level: KafkaLogLevel::Debug,
         value_lanes: vec![IngressValueLaneSpec::new(Some("latest_key"), "$key", true)],
         map_lanes: vec![IngressMapLaneSpec::new(
@@ -42,7 +34,7 @@ fn make_config() -> KafkaIngressConfiguration {
             false,
             true,
         )],
-        key_deserializer: DataFormat::Int32(Endianness::LittleEndian),
+        key_deserializer: DataFormat::Int32(Endianness::BigEndian),
         payload_deserializer: DataFormat::Json,
         topics: vec!["cellular-integer-json".to_string()],
     }

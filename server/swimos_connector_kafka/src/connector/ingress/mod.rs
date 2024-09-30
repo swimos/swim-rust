@@ -67,7 +67,7 @@ impl<F> KafkaIngressConnector<F> {
 }
 
 impl KafkaIngressConnector<KafkaFactory> {
-    /// Create a [`KafkaConnector`] with the provided configuration. The configuration is only validated when
+    /// Create a [`KafkaIngressConnector`] with the provided configuration. The configuration is only validated when
     /// the agent attempts to start so this will never fail.
     ///
     /// # Arguments

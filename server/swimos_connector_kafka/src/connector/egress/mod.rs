@@ -32,7 +32,7 @@ use tokio::sync::Semaphore;
 
 use crate::{
     config::KafkaEgressConfiguration,
-    facade::{KafkaProducer, ProduceResult, ProducerFactory},
+    facade::{KafkaFactory, KafkaProducer, ProduceResult, ProducerFactory},
     selector::{MessageSelector, MessageSelectors},
     ser::{SerializationError, SharedMessageSerializer},
     LoadError,
@@ -56,6 +56,18 @@ impl<F: ProducerFactory> KafkaEgressConnector<F> {
             configuration,
             state: Default::default(),
         }
+    }
+}
+
+impl KafkaEgressConnector<KafkaFactory> {
+    /// Create a [`KafkaEgressConnector`] with the provided configuration. The configuration is only validated when
+    /// the agent attempts to start so this will never fail.
+    ///
+    /// # Arguments
+    /// * `configuration` - The connector configuration, specifying the connection details for the Kafka consumer
+    ///   an the lanes that the connector agent should expose.
+    pub fn for_config(configuration: KafkaEgressConfiguration) -> Self {
+        Self::new(KafkaFactory, configuration)
     }
 }
 

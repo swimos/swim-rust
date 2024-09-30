@@ -38,6 +38,8 @@ use crate::{
 
 use super::open_downlinks;
 
+#[cfg(feature = "json")]
+mod end_to_end;
 mod integration;
 
 const FIXED_TOPIC: &str = "fixed";
