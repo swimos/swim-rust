@@ -49,6 +49,16 @@ pub struct KafkaEgressConnector<F: ProducerFactory> {
     state: RefCell<Option<ConnectorState>>,
 }
 
+impl<F: ProducerFactory> KafkaEgressConnector<F> {
+    pub fn new(factory: F, configuration: KafkaEgressConfiguration) -> Self {
+        KafkaEgressConnector {
+            factory,
+            configuration,
+            state: Default::default(),
+        }
+    }
+}
+
 struct ConnectorState {
     serializers: Serializers,
     extractors: Arc<MessageSelectors>,

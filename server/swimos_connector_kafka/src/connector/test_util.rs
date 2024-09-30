@@ -56,8 +56,24 @@ impl std::fmt::Debug for LaneRequest {
 
 #[derive(Default, Debug)]
 pub struct TestSpawner {
+    allow_downlinks: bool,
+    downlinks: RefCell<Vec<DownlinkRequest>>,
     suspended: FuturesUnordered<HandlerFuture<ConnectorAgent>>,
     lane_requests: RefCell<Vec<LaneRequest>>,
+}
+
+impl TestSpawner {
+    pub fn with_downlinks() -> TestSpawner {
+        TestSpawner {
+            allow_downlinks: true,
+            ..Default::default()
+        }
+    }
+
+    pub fn take_downlinks(&self) -> Vec<DownlinkRequest> {
+        let mut guard = self.downlinks.borrow_mut();
+        std::mem::take(&mut *guard)
+    }
 }
 
 impl Spawner<ConnectorAgent> for TestSpawner {
@@ -70,14 +86,38 @@ impl Spawner<ConnectorAgent> for TestSpawner {
     }
 }
 
+pub struct DownlinkRequest {
+    pub path: Address<String>,
+    pub make_channel: BoxDownlinkChannelFactory<ConnectorAgent>,
+    _on_done: DownlinkSpawnOnDone<ConnectorAgent>,
+}
+
+impl std::fmt::Debug for DownlinkRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DownlinkRequest")
+            .field("path", &self.path)
+            .field("make_channel", &"...")
+            .field("_on_done", &"...")
+            .finish()
+    }
+}
+
 impl LinkSpawner<ConnectorAgent> for TestSpawner {
     fn spawn_downlink(
         &self,
-        _path: Address<Text>,
-        _make_channel: BoxDownlinkChannelFactory<ConnectorAgent>,
+        path: Address<Text>,
+        make_channel: BoxDownlinkChannelFactory<ConnectorAgent>,
         _on_done: DownlinkSpawnOnDone<ConnectorAgent>,
     ) {
-        panic!("Opening downlinks not supported.");
+        if self.allow_downlinks {
+            self.downlinks.borrow_mut().push(DownlinkRequest {
+                path: path.into(),
+                make_channel,
+                _on_done,
+            })
+        } else {
+            panic!("Opening downlinks not supported.");
+        }
     }
 
     fn register_commander(&self, _path: Address<Text>) -> Result<u16, CommanderRegistrationError> {
@@ -120,12 +160,28 @@ fn make_meta<'a>(
     AgentMetadata::new(uri, route_params, &CONFIG)
 }
 
+pub async fn run_handler_with_futures_dl<H: EventHandler<ConnectorAgent>>(
+    agent: &ConnectorAgent,
+    handler: H,
+) -> (HashSet<u64>, Vec<DownlinkRequest>) {
+    let mut spawner = TestSpawner::with_downlinks();
+    let modified = run_handler_with_futures_inner(agent, handler, &mut spawner).await;
+    (modified, spawner.take_downlinks())
+}
+
 pub async fn run_handler_with_futures<H: EventHandler<ConnectorAgent>>(
     agent: &ConnectorAgent,
     handler: H,
 ) -> HashSet<u64> {
-    let mut spawner = TestSpawner::default();
-    let mut modified = run_handler(agent, &spawner, handler);
+    run_handler_with_futures_inner(agent, handler, &mut TestSpawner::default()).await
+}
+
+async fn run_handler_with_futures_inner<H: EventHandler<ConnectorAgent>>(
+    agent: &ConnectorAgent,
+    handler: H,
+    spawner: &mut TestSpawner,
+) -> HashSet<u64> {
+    let mut modified = run_handler(agent, spawner, handler);
     let mut handlers = vec![];
     let reg = move |req: LaneRequest| {
         let LaneRequest {
@@ -151,10 +207,10 @@ pub async fn run_handler_with_futures<H: EventHandler<ConnectorAgent>>(
 
     while !(handlers.is_empty() && spawner.suspended.is_empty()) {
         let m = if let Some(h) = handlers.pop() {
-            run_handler(agent, &spawner, h)
+            run_handler(agent, spawner, h)
         } else {
             let h = spawner.suspended.next().await.expect("No handler.");
-            run_handler(agent, &spawner, h)
+            run_handler(agent, spawner, h)
         };
         modified.extend(m);
         for request in

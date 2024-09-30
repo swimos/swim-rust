@@ -183,3 +183,14 @@ impl PartialEq<Address<Text>> for Address<String> {
         self.borrow_parts::<str>() == other.borrow_parts()
     }
 }
+
+impl From<Address<Text>> for Address<String> {
+    fn from(value: Address<Text>) -> Self {
+        let Address { host, node, lane } = value;
+        Address {
+            host: host.map(Into::into),
+            node: node.into(),
+            lane: lane.into(),
+        }
+    }
+}

@@ -19,6 +19,7 @@ mod test_util;
 
 type ConnHandlerContext = HandlerContext<ConnectorAgent>;
 
+pub use egress::KafkaEgressConnector;
 pub use ingress::KafkaIngressConnector;
 use swimos_agent::agent_lifecycle::HandlerContext;
 use swimos_connector::ConnectorAgent;

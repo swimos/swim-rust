@@ -46,6 +46,20 @@ pub enum SendResult<F, E> {
     Fail(E),
 }
 
+impl<F, E: std::fmt::Debug> std::fmt::Debug for SendResult<F, E> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Suspend(_) => f.debug_tuple("Suspend").field(&"...").finish(),
+            Self::RequestCallback(arg0, arg1) => f
+                .debug_tuple("RequestCallback")
+                .field(arg0)
+                .field(arg1)
+                .finish(),
+            Self::Fail(arg0) => f.debug_tuple("Fail").field(arg0).finish(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub enum MessageSource<'a> {
     Lane(&'a str),

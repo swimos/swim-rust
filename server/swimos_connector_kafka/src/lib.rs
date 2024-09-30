@@ -21,10 +21,11 @@ mod selector;
 mod ser;
 
 pub use config::{
-    DataFormat, DownlinkAddress, ExtractionSpec, IngressMapLaneSpec, IngressValueLaneSpec,
-    KafkaIngressConfiguration, KafkaLogLevel,
+    DataFormat, DownlinkAddress, EgressMapLaneSpec, EgressValueLaneSpec, ExtractionSpec,
+    IngressMapLaneSpec, IngressValueLaneSpec, KafkaEgressConfiguration, KafkaIngressConfiguration,
+    KafkaLogLevel, MapDownlinkSpec, ValueDownlinkSpec,
 };
-pub use connector::KafkaIngressConnector;
+pub use connector::{KafkaEgressConnector, KafkaIngressConnector};
 pub use deser::Endianness;
 pub use error::{
     BadSelector, DeserializationError, DoubleInitialization, InvalidExtractor, InvalidExtractors,

@@ -38,6 +38,8 @@ use crate::{
 
 use super::open_downlinks;
 
+mod integration;
+
 const FIXED_TOPIC: &str = "fixed";
 
 fn empty_config() -> KafkaEgressConfiguration {
