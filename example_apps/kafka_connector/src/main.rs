@@ -32,7 +32,7 @@ use swimos::{
     route::{RoutePattern, RouteUri},
     server::{Server, ServerBuilder},
 };
-use swimos_connector::ConnectorModel;
+use swimos_connector::IngressConnectorModel;
 use swimos_connector_kafka::{KafkaIngressConfiguration, KafkaIngressConnector};
 use swimos_recon::parser::parse_recognize;
 
@@ -56,8 +56,9 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
 
     let route = RoutePattern::parse_str("/kafka")?;
 
-    let connector_agent =
-        ConnectorModel::for_fn(move || KafkaIngressConnector::for_config(connector_config.clone()));
+    let connector_agent = IngressConnectorModel::for_fn(move || {
+        KafkaIngressConnector::for_config(connector_config.clone())
+    });
 
     let server = ServerBuilder::with_plane_name("Example Plane")
         .set_bind_addr("127.0.0.1:8080".parse()?)

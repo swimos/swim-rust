@@ -27,4 +27,4 @@ pub use connector::{
 pub use error::ConnectorInitError;
 pub use generic::{ConnectorAgent, MapLaneSelectorFn, ValueLaneSelectorFn};
 pub use lifecycle::{EgressConnectorLifecycle, IngressConnectorLifecycle};
-pub use route::ConnectorModel;
+pub use route::{EgressConnectorModel, IngressConnectorModel};
