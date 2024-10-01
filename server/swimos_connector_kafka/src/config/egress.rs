@@ -32,10 +32,10 @@ pub struct KafkaEgressConfiguration {
     pub payload_serializer: DataFormat,
     /// The topic to publish to the record does not specify it.
     pub fixed_topic: Option<String>,
-    pub value_lanes: Vec<EgressValueLaneSpec>,
-    pub map_lanes: Vec<EgressMapLaneSpec>,
-    pub value_downlinks: Vec<ValueDownlinkSpec>,
-    pub map_downlinks: Vec<MapDownlinkSpec>,
+    pub value_lanes: Vec<EgressLaneSpec>,
+    pub map_lanes: Vec<EgressLaneSpec>,
+    pub value_downlinks: Vec<EgressDownlinkSpec>,
+    pub map_downlinks: Vec<EgressDownlinkSpec>,
     pub retry_timeout_ms: u64,
 }
 
@@ -62,16 +62,8 @@ pub struct ExtractionSpec {
 }
 
 #[derive(Clone, Debug, Form, PartialEq, Eq)]
-#[form(tag = "ValueLaneSpec")]
-pub struct EgressValueLaneSpec {
-    /// A name to use for the lane.
-    pub name: String,
-    pub extractor: ExtractionSpec,
-}
-
-#[derive(Clone, Debug, Form, PartialEq, Eq)]
-#[form(tag = "MapLaneSpec")]
-pub struct EgressMapLaneSpec {
+#[form(tag = "LaneSpec")]
+pub struct EgressLaneSpec {
     /// A name to use for the lane.
     pub name: String,
     pub extractor: ExtractionSpec,
@@ -92,14 +84,8 @@ impl From<&DownlinkAddress> for Address<String> {
 }
 
 #[derive(Clone, Debug, Form, PartialEq, Eq)]
-pub struct ValueDownlinkSpec {
-    /// The address of the lane to link from.
-    pub address: DownlinkAddress,
-    pub extractor: ExtractionSpec,
-}
-
-#[derive(Clone, Debug, Form, PartialEq, Eq)]
-pub struct MapDownlinkSpec {
+#[form(tag = "DownlinkSpec")]
+pub struct EgressDownlinkSpec {
     /// The address of the lane to link from.
     pub address: DownlinkAddress,
     pub extractor: ExtractionSpec,

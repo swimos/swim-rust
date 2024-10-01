@@ -27,7 +27,7 @@ use tokio::time::sleep;
 use crate::config::TopicSpecifier;
 use crate::{
     connector::test_util::{create_kafka_props, run_handler_with_futures},
-    DataFormat, EgressValueLaneSpec, Endianness, ExtractionSpec, KafkaEgressConfiguration,
+    DataFormat, EgressLaneSpec, Endianness, ExtractionSpec, KafkaEgressConfiguration,
     KafkaEgressConnector, KafkaLogLevel,
 };
 const LANE: &str = "lane";
@@ -39,7 +39,7 @@ fn make_config() -> KafkaEgressConfiguration {
         key_serializer: DataFormat::Int32(Endianness::BigEndian),
         payload_serializer: DataFormat::Json,
         fixed_topic: Some("cellular-integer-json".to_string()),
-        value_lanes: vec![EgressValueLaneSpec {
+        value_lanes: vec![EgressLaneSpec {
             name: LANE.to_string(),
             extractor: ExtractionSpec {
                 topic_specifier: TopicSpecifier::Fixed,

@@ -37,10 +37,7 @@ use swimos_recon::print_recon_compact;
 use swimos_utilities::trigger;
 
 use crate::{
-    config::{
-        EgressMapLaneSpec, EgressValueLaneSpec, KafkaEgressConfiguration, MapDownlinkSpec,
-        TopicSpecifier, ValueDownlinkSpec,
-    },
+    config::{EgressDownlinkSpec, EgressLaneSpec, KafkaEgressConfiguration, TopicSpecifier},
     connector::{
         egress::KafkaEgressConnector,
         test_util::{run_handler_with_futures, run_handler_with_futures_dl},
@@ -146,10 +143,10 @@ const FIXED: &str = "fixed";
 
 fn make_connector(
     is_busy: Arc<AtomicBool>,
-    value_lanes: Vec<EgressValueLaneSpec>,
-    map_lanes: Vec<EgressMapLaneSpec>,
-    value_downlinks: Vec<ValueDownlinkSpec>,
-    map_downlinks: Vec<MapDownlinkSpec>,
+    value_lanes: Vec<EgressLaneSpec>,
+    map_lanes: Vec<EgressLaneSpec>,
+    value_downlinks: Vec<EgressDownlinkSpec>,
+    map_downlinks: Vec<EgressDownlinkSpec>,
 ) -> (MockFactory, KafkaEgressConnector<MockFactory>) {
     let configuration = KafkaEgressConfiguration {
         properties: props(),
@@ -204,19 +201,19 @@ async fn init_agent(agent: &ConnectorAgent, connector: &KafkaEgressConnector<Moc
 async fn connector_on_start() {
     let (_, connector) = make_connector(
         Default::default(),
-        vec![EgressValueLaneSpec {
+        vec![EgressLaneSpec {
             name: VALUE_LANE.to_string(),
             extractor: ExtractionSpec::default(),
         }],
-        vec![EgressMapLaneSpec {
+        vec![EgressLaneSpec {
             name: MAP_LANE.to_string(),
             extractor: ExtractionSpec::default(),
         }],
-        vec![ValueDownlinkSpec {
+        vec![EgressDownlinkSpec {
             address: addr1(),
             extractor: ExtractionSpec::default(),
         }],
-        vec![MapDownlinkSpec {
+        vec![EgressDownlinkSpec {
             address: addr2(),
             extractor: ExtractionSpec::default(),
         }],
@@ -237,19 +234,19 @@ async fn connector_on_start() {
 async fn create_sender() {
     let (_, connector) = make_connector(
         Default::default(),
-        vec![EgressValueLaneSpec {
+        vec![EgressLaneSpec {
             name: VALUE_LANE.to_string(),
             extractor: ExtractionSpec::default(),
         }],
-        vec![EgressMapLaneSpec {
+        vec![EgressLaneSpec {
             name: MAP_LANE.to_string(),
             extractor: ExtractionSpec::default(),
         }],
-        vec![ValueDownlinkSpec {
+        vec![EgressDownlinkSpec {
             address: addr1(),
             extractor: ExtractionSpec::default(),
         }],
-        vec![MapDownlinkSpec {
+        vec![EgressDownlinkSpec {
             address: addr2(),
             extractor: ExtractionSpec::default(),
         }],
@@ -286,19 +283,19 @@ fn map_ext_spec() -> ExtractionSpec {
 async fn produce_message_from_value_lane() {
     let (factory, connector) = make_connector(
         Default::default(),
-        vec![EgressValueLaneSpec {
+        vec![EgressLaneSpec {
             name: VALUE_LANE.to_string(),
             extractor: value_ext_spec(),
         }],
-        vec![EgressMapLaneSpec {
+        vec![EgressLaneSpec {
             name: MAP_LANE.to_string(),
             extractor: map_ext_spec(),
         }],
-        vec![ValueDownlinkSpec {
+        vec![EgressDownlinkSpec {
             address: addr1(),
             extractor: value_ext_spec(),
         }],
-        vec![MapDownlinkSpec {
+        vec![EgressDownlinkSpec {
             address: addr2(),
             extractor: map_ext_spec(),
         }],
@@ -344,19 +341,19 @@ async fn produce_message_from_value_lane() {
 async fn produce_message_from_map_lane() {
     let (factory, connector) = make_connector(
         Default::default(),
-        vec![EgressValueLaneSpec {
+        vec![EgressLaneSpec {
             name: VALUE_LANE.to_string(),
             extractor: value_ext_spec(),
         }],
-        vec![EgressMapLaneSpec {
+        vec![EgressLaneSpec {
             name: MAP_LANE.to_string(),
             extractor: map_ext_spec(),
         }],
-        vec![ValueDownlinkSpec {
+        vec![EgressDownlinkSpec {
             address: addr1(),
             extractor: value_ext_spec(),
         }],
-        vec![MapDownlinkSpec {
+        vec![EgressDownlinkSpec {
             address: addr2(),
             extractor: map_ext_spec(),
         }],
@@ -406,19 +403,19 @@ async fn produce_message_from_value_dl() {
 
     let (factory, connector) = make_connector(
         Default::default(),
-        vec![EgressValueLaneSpec {
+        vec![EgressLaneSpec {
             name: VALUE_LANE.to_string(),
             extractor: value_ext_spec(),
         }],
-        vec![EgressMapLaneSpec {
+        vec![EgressLaneSpec {
             name: MAP_LANE.to_string(),
             extractor: map_ext_spec(),
         }],
-        vec![ValueDownlinkSpec {
+        vec![EgressDownlinkSpec {
             address: addr,
             extractor: value_ext_spec(),
         }],
-        vec![MapDownlinkSpec {
+        vec![EgressDownlinkSpec {
             address: addr2(),
             extractor: map_ext_spec(),
         }],
@@ -467,19 +464,19 @@ async fn produce_message_from_map_dl() {
 
     let (factory, connector) = make_connector(
         Default::default(),
-        vec![EgressValueLaneSpec {
+        vec![EgressLaneSpec {
             name: VALUE_LANE.to_string(),
             extractor: value_ext_spec(),
         }],
-        vec![EgressMapLaneSpec {
+        vec![EgressLaneSpec {
             name: MAP_LANE.to_string(),
             extractor: map_ext_spec(),
         }],
-        vec![ValueDownlinkSpec {
+        vec![EgressDownlinkSpec {
             address: addr1(),
             extractor: value_ext_spec(),
         }],
-        vec![MapDownlinkSpec {
+        vec![EgressDownlinkSpec {
             address: addr,
             extractor: map_ext_spec(),
         }],
@@ -527,19 +524,19 @@ async fn produce_message_when_busy() {
     let is_busy = Arc::new(AtomicBool::new(true));
     let (factory, connector) = make_connector(
         is_busy.clone(),
-        vec![EgressValueLaneSpec {
+        vec![EgressLaneSpec {
             name: VALUE_LANE.to_string(),
             extractor: value_ext_spec(),
         }],
-        vec![EgressMapLaneSpec {
+        vec![EgressLaneSpec {
             name: MAP_LANE.to_string(),
             extractor: map_ext_spec(),
         }],
-        vec![ValueDownlinkSpec {
+        vec![EgressDownlinkSpec {
             address: addr1(),
             extractor: value_ext_spec(),
         }],
-        vec![MapDownlinkSpec {
+        vec![EgressDownlinkSpec {
             address: addr2(),
             extractor: map_ext_spec(),
         }],

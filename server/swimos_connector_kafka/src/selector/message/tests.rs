@@ -18,10 +18,7 @@ use swimos_api::address::Address;
 use swimos_model::{Item, Value};
 
 use crate::{
-    config::{
-        EgressMapLaneSpec, EgressValueLaneSpec, KafkaEgressConfiguration, MapDownlinkSpec,
-        TopicSpecifier, ValueDownlinkSpec,
-    },
+    config::{EgressDownlinkSpec, EgressLaneSpec, KafkaEgressConfiguration, TopicSpecifier},
     selector::{BasicSelector, ChainSelector, SlotSelector},
     DataFormat, DownlinkAddress, Endianness, ExtractionSpec, InvalidExtractors, KafkaLogLevel,
 };
@@ -53,7 +50,7 @@ fn empty_config() -> KafkaEgressConfiguration {
 }
 
 fn test_config() -> KafkaEgressConfiguration {
-    let value_lanes = vec![EgressValueLaneSpec {
+    let value_lanes = vec![EgressLaneSpec {
         name: VALUE_LANE.to_string(),
         extractor: ExtractionSpec {
             topic_specifier: TopicSpecifier::Fixed,
@@ -61,7 +58,7 @@ fn test_config() -> KafkaEgressConfiguration {
             payload_selector: Some("$value.field".to_string()),
         },
     }];
-    let vec = vec![EgressMapLaneSpec {
+    let vec = vec![EgressLaneSpec {
         name: MAP_LANE.to_string(),
         extractor: ExtractionSpec {
             topic_specifier: TopicSpecifier::Specified(OTHER_TOPIC.to_string()),
@@ -70,7 +67,7 @@ fn test_config() -> KafkaEgressConfiguration {
         },
     }];
     let map_lanes = vec;
-    let value_downlinks = vec![ValueDownlinkSpec {
+    let value_downlinks = vec![EgressDownlinkSpec {
         address: DownlinkAddress {
             host: Some(HOST.to_string()),
             node: NODE1.to_string(),
@@ -82,7 +79,7 @@ fn test_config() -> KafkaEgressConfiguration {
             payload_selector: Some("$value.payload".to_string()),
         },
     }];
-    let map_downlinks = vec![MapDownlinkSpec {
+    let map_downlinks = vec![EgressDownlinkSpec {
         address: DownlinkAddress {
             host: Some(HOST.to_string()),
             node: NODE2.to_string(),
@@ -332,11 +329,11 @@ fn message_selector_no_value_selector() {
 fn duplicate_value_lane() {
     let config = KafkaEgressConfiguration {
         value_lanes: vec![
-            EgressValueLaneSpec {
+            EgressLaneSpec {
                 name: VALUE_LANE.to_string(),
                 extractor: Default::default(),
             },
-            EgressValueLaneSpec {
+            EgressLaneSpec {
                 name: VALUE_LANE.to_string(),
                 extractor: Default::default(),
             },
@@ -354,11 +351,11 @@ fn duplicate_value_lane() {
 fn duplicate_map_lane() {
     let config = KafkaEgressConfiguration {
         map_lanes: vec![
-            EgressMapLaneSpec {
+            EgressLaneSpec {
                 name: MAP_LANE.to_string(),
                 extractor: Default::default(),
             },
-            EgressMapLaneSpec {
+            EgressLaneSpec {
                 name: MAP_LANE.to_string(),
                 extractor: Default::default(),
             },
@@ -375,11 +372,11 @@ fn duplicate_map_lane() {
 #[test]
 fn duplicate_value_and_map_lane() {
     let config = KafkaEgressConfiguration {
-        value_lanes: vec![EgressValueLaneSpec {
+        value_lanes: vec![EgressLaneSpec {
             name: VALUE_LANE.to_string(),
             extractor: Default::default(),
         }],
-        map_lanes: vec![EgressMapLaneSpec {
+        map_lanes: vec![EgressLaneSpec {
             name: VALUE_LANE.to_string(),
             extractor: Default::default(),
         }],
@@ -402,11 +399,11 @@ fn duplicate_value_downlink() {
     let expected = Address::<String>::from(&addr);
     let config = KafkaEgressConfiguration {
         value_downlinks: vec![
-            ValueDownlinkSpec {
+            EgressDownlinkSpec {
                 address: addr.clone(),
                 extractor: ExtractionSpec::default(),
             },
-            ValueDownlinkSpec {
+            EgressDownlinkSpec {
                 address: addr,
                 extractor: ExtractionSpec::default(),
             },
@@ -430,11 +427,11 @@ fn duplicate_map_downlink() {
     let expected = Address::<String>::from(&addr);
     let config = KafkaEgressConfiguration {
         map_downlinks: vec![
-            MapDownlinkSpec {
+            EgressDownlinkSpec {
                 address: addr.clone(),
                 extractor: ExtractionSpec::default(),
             },
-            MapDownlinkSpec {
+            EgressDownlinkSpec {
                 address: addr,
                 extractor: ExtractionSpec::default(),
             },
@@ -457,11 +454,11 @@ fn duplicate_value_and_map_downlink() {
     };
     let expected = Address::<String>::from(&addr);
     let config = KafkaEgressConfiguration {
-        value_downlinks: vec![ValueDownlinkSpec {
+        value_downlinks: vec![EgressDownlinkSpec {
             address: addr.clone(),
             extractor: ExtractionSpec::default(),
         }],
-        map_downlinks: vec![MapDownlinkSpec {
+        map_downlinks: vec![EgressDownlinkSpec {
             address: addr,
             extractor: ExtractionSpec::default(),
         }],

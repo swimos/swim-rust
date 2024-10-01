@@ -27,10 +27,7 @@ use tokio::{
 };
 
 use crate::{
-    config::{
-        EgressMapLaneSpec, EgressValueLaneSpec, KafkaEgressConfiguration, MapDownlinkSpec,
-        TopicSpecifier, ValueDownlinkSpec,
-    },
+    config::{EgressDownlinkSpec, EgressLaneSpec, KafkaEgressConfiguration, TopicSpecifier},
     connector::test_util::run_handler_with_futures,
     selector::MessageSelectors,
     DataFormat, DownlinkAddress, ExtractionSpec, KafkaLogLevel,
@@ -84,7 +81,7 @@ fn addr2() -> DownlinkAddress {
 
 fn lanes_config() -> KafkaEgressConfiguration {
     KafkaEgressConfiguration {
-        value_lanes: vec![EgressValueLaneSpec {
+        value_lanes: vec![EgressLaneSpec {
             name: VALUE_LANE.to_string(),
             extractor: ExtractionSpec {
                 topic_specifier: TopicSpecifier::Fixed,
@@ -92,7 +89,7 @@ fn lanes_config() -> KafkaEgressConfiguration {
                 payload_selector: None,
             },
         }],
-        map_lanes: vec![EgressMapLaneSpec {
+        map_lanes: vec![EgressLaneSpec {
             name: MAP_LANE.to_string(),
             extractor: ExtractionSpec {
                 topic_specifier: TopicSpecifier::Fixed,
@@ -106,7 +103,7 @@ fn lanes_config() -> KafkaEgressConfiguration {
 
 fn downlinks_config() -> KafkaEgressConfiguration {
     KafkaEgressConfiguration {
-        value_downlinks: vec![ValueDownlinkSpec {
+        value_downlinks: vec![EgressDownlinkSpec {
             address: addr1(),
             extractor: ExtractionSpec {
                 topic_specifier: TopicSpecifier::Fixed,
@@ -114,7 +111,7 @@ fn downlinks_config() -> KafkaEgressConfiguration {
                 payload_selector: None,
             },
         }],
-        map_downlinks: vec![MapDownlinkSpec {
+        map_downlinks: vec![EgressDownlinkSpec {
             address: addr2(),
             extractor: ExtractionSpec {
                 topic_specifier: TopicSpecifier::Fixed,

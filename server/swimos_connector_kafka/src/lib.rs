@@ -21,9 +21,9 @@ mod selector;
 mod ser;
 
 pub use config::{
-    DataFormat, DownlinkAddress, EgressMapLaneSpec, EgressValueLaneSpec, ExtractionSpec,
+    DataFormat, DownlinkAddress, EgressDownlinkSpec, EgressLaneSpec, ExtractionSpec,
     IngressMapLaneSpec, IngressValueLaneSpec, KafkaEgressConfiguration, KafkaIngressConfiguration,
-    KafkaLogLevel, MapDownlinkSpec, ValueDownlinkSpec,
+    KafkaLogLevel,
 };
 pub use connector::{KafkaEgressConnector, KafkaIngressConnector};
 pub use deser::Endianness;

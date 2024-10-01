@@ -22,8 +22,8 @@ use swimos_model::Value;
 
 use crate::{
     config::{
-        EgressMapLaneSpec, EgressValueLaneSpec, ExtractionSpec, KafkaEgressConfiguration,
-        MapDownlinkSpec, TopicSpecifier, ValueDownlinkSpec,
+        EgressDownlinkSpec, EgressLaneSpec, ExtractionSpec, KafkaEgressConfiguration,
+        TopicSpecifier,
     },
     selector::make_chain_selector,
     BadSelector, InvalidExtractor, InvalidExtractors,
@@ -296,7 +296,7 @@ impl TryFrom<&KafkaEgressConfiguration> for MessageSelectors {
         let mut map_lane_selectors = HashMap::new();
         let mut value_dl_selectors = HashMap::new();
         let mut map_dl_selectors = HashMap::new();
-        for EgressValueLaneSpec { name, extractor } in value_lanes {
+        for EgressLaneSpec { name, extractor } in value_lanes {
             match value_lane_selectors.entry(name.clone()) {
                 Entry::Occupied(entry) => {
                     let (name, _) = entry.remove_entry();
@@ -308,7 +308,7 @@ impl TryFrom<&KafkaEgressConfiguration> for MessageSelectors {
                 }
             }
         }
-        for EgressMapLaneSpec { name, extractor } in map_lanes {
+        for EgressLaneSpec { name, extractor } in map_lanes {
             if value_lane_selectors.contains_key(name) {
                 return Err(InvalidExtractors::NameCollision(name.clone()));
             }
@@ -323,7 +323,7 @@ impl TryFrom<&KafkaEgressConfiguration> for MessageSelectors {
                 }
             }
         }
-        for ValueDownlinkSpec { address, extractor } in value_downlinks {
+        for EgressDownlinkSpec { address, extractor } in value_downlinks {
             let address = Address::<String>::from(address);
             match value_dl_selectors.entry(address.clone()) {
                 Entry::Occupied(entry) => {
@@ -336,7 +336,7 @@ impl TryFrom<&KafkaEgressConfiguration> for MessageSelectors {
                 }
             }
         }
-        for MapDownlinkSpec { address, extractor } in map_downlinks {
+        for EgressDownlinkSpec { address, extractor } in map_downlinks {
             let address = Address::<String>::from(address);
             if value_dl_selectors.contains_key(&address) {
                 return Err(InvalidExtractors::AddressCollision(address.clone()));
