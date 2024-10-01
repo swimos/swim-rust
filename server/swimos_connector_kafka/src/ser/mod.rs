@@ -14,7 +14,7 @@
 
 use bytes::{Buf, BufMut, BytesMut};
 use std::{fmt::Write, sync::Arc};
-use swimos_model::{Item, Value, ValueKind};
+use swimos_model::Value;
 use swimos_recon::print_recon_compact;
 
 #[cfg(feature = "avro")]
@@ -315,14 +315,15 @@ impl MessageSerializer for UuidSerializer {
 }
 
 #[cfg(any(feature = "json", feature = "avro"))]
-fn is_array(items: &[Item]) -> bool {
+fn is_array(items: &[swimos_model::Item]) -> bool {
     use swimos_model::Item;
 
     items.iter().all(|item| matches!(item, Item::ValueItem(_)))
 }
 
 #[cfg(any(feature = "json", feature = "avro"))]
-fn is_record(items: &[Item]) -> bool {
+fn is_record(items: &[swimos_model::Item]) -> bool {
+    use swimos_model::{Item, ValueKind};
     items
         .iter()
         .all(|item| matches!(item, Item::Slot(key, _) if key.kind() == ValueKind::Text))

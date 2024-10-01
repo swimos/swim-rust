@@ -187,7 +187,7 @@ fn parse_topic() {
 
     assert_eq!(
         super::parse_selector("$topic[0]"),
-        Err(BadSelector::InvalidRoot)
+        Err(BadSelector::TopicWithComponent)
     );
     assert_eq!(
         super::parse_selector("$topic.slot"),
