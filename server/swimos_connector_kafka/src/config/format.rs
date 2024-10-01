@@ -79,6 +79,7 @@ impl DataFormat {
         }
     }
 
+    /// Attempt to load a serializer based on the format descriptor.
     pub async fn load_serializer(&self) -> Result<SharedMessageSerializer, LoadError> {
         match self {
             DataFormat::Bytes => Ok(BytesSerializer.shared()),

@@ -17,7 +17,7 @@ use std::collections::HashMap;
 use super::{DataFormat, KafkaLogLevel};
 use swimos_form::Form;
 
-/// Configuration parameters for the Kafka connector.
+/// Configuration parameters for the Kafka ingress connector.
 #[derive(Clone, Debug, Form, PartialEq, Eq)]
 #[form(tag = "kafka")]
 pub struct KafkaIngressConfiguration {

@@ -37,11 +37,11 @@ use swimos_connector::{BaseConnector, ConnectorAgent, ConnectorStream, IngressCo
 
 use super::ConnHandlerContext;
 
-/// A [connector](Connector) to ingest a stream of Kafka messages into a Swim application. This should be used to
+/// A [connector](IngressConnector) to ingest a stream of Kafka messages into a Swim application. This should be used to
 /// provide a lifecycle for a [connector agent](ConnectorAgent).
 ///
 /// The details of the Kafka brokers and the topics to subscribe to are provided through the
-/// [configuration](KafkaConnectorConfiguration) which also includes descriptors of the lanes that the agent should
+/// [configuration](KafkaIngressConfiguration) which also includes descriptors of the lanes that the agent should
 /// expose. When the agent starts, the connector will register all of the lanes specified in the configuration and
 /// then attempt to open a Kafka consumer which will be spawned into the agent's own task. Each time a Kafka message
 /// is received, an event handler will be executed in the agent which updates the states of the lanes, according

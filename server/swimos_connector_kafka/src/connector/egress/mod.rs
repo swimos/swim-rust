@@ -16,7 +16,6 @@ use std::{cell::RefCell, collections::HashMap, sync::Arc, time::Duration};
 
 use bytes::BytesMut;
 use futures::{channel::oneshot, FutureExt};
-use rdkafka::error::KafkaError;
 use swimos_agent::event_handler::{
     EventHandler, HandlerActionExt, Sequentially, TryHandlerActionExt, UnitHandler,
 };
@@ -27,15 +26,15 @@ use swimos_connector::{
 };
 use swimos_model::Value;
 use swimos_utilities::trigger;
-use thiserror::Error;
 use tokio::sync::Semaphore;
 
 use crate::{
     config::KafkaEgressConfiguration,
+    error::SerializationError,
     facade::{KafkaFactory, KafkaProducer, ProduceResult, ProducerFactory},
     selector::{MessageSelector, MessageSelectors},
-    ser::{SerializationError, SharedMessageSerializer},
-    LoadError,
+    ser::SharedMessageSerializer,
+    KafkaSenderError, LoadError,
 };
 
 use super::ConnHandlerContext;
@@ -43,6 +42,18 @@ use super::ConnHandlerContext;
 #[cfg(test)]
 mod tests;
 
+/// A [connector](EgressConnector) to export a stream values from a Swim agent to one or more Kafka topics. This
+/// should be used to provide a lifecycle for a [connector agent](ConnectorAgent).
+///
+/// The details of the Kafka brokers and the topics to subscribe to are provided through the
+/// [configuration](KafkaEgressConfiguration) which also includes descriptors of the lanes that the agent should
+/// expose and downlinks that it should open to remote lanes. When the agent starts, the connector will register all
+/// of the lanes and open all of the downlinks, specified in the configuration, and then attempt to open a Kafka producer.
+/// Each time the state of one of the lanes changes, or a message is received on one of the downlinks, a message will
+/// be generated and sent via the producer.
+///
+/// If the producer fails or a message cannot be serialized using the provided configuration, the agent will stop with
+/// an error.
 pub struct KafkaEgressConnector<F: ProducerFactory> {
     factory: F,
     configuration: KafkaEgressConfiguration,
@@ -343,16 +354,6 @@ impl<P> SerializingProducer<P> {
             buffers: Default::default(),
         }
     }
-}
-
-#[derive(Debug, Error)]
-pub enum KafkaSenderError {
-    #[error(transparent)]
-    Kafka(#[from] KafkaError),
-    #[error(transparent)]
-    Serialization(#[from] SerializationError),
-    #[error("The connector was not initialized.")]
-    NotInitialized,
 }
 
 impl<P> SerializingProducer<P>

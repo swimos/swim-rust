@@ -29,5 +29,6 @@ pub use connector::{KafkaEgressConnector, KafkaIngressConnector};
 pub use deser::Endianness;
 pub use error::{
     BadSelector, DeserializationError, DoubleInitialization, InvalidExtractor, InvalidExtractors,
-    InvalidLaneSpec, InvalidLanes, KafkaConnectorError, LaneSelectorError, LoadError,
+    InvalidLaneSpec, InvalidLanes, KafkaConnectorError, KafkaSenderError, LaneSelectorError,
+    LoadError, SerializationError,
 };

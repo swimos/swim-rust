@@ -17,8 +17,11 @@ use serde_json::error::Category;
 use serde_json::{Map, Number, Value as JsonValue};
 use swimos_model::{Attr, Item, Value, ValueKind};
 
-use super::{is_array, is_record, MessageSerializer, SerializationError};
+use crate::SerializationError;
 
+use super::{is_array, is_record, MessageSerializer};
+
+/// A serializer that will write out the value as a UTF8 formatted JSON document.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct JsonSerializer;
 

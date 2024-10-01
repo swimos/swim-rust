@@ -16,6 +16,7 @@ use std::num::ParseIntError;
 
 use rdkafka::error::KafkaError;
 use swimos_api::address::Address;
+use swimos_model::{Value, ValueKind};
 use thiserror::Error;
 
 /// An error type that boxes any type of error that could be returned by a message deserializer.
@@ -161,3 +162,30 @@ pub enum InvalidExtractors {
 #[derive(Clone, Copy, Default, Debug, PartialEq, Eq, Error)]
 #[error("Connector agent initialized twice.")]
 pub struct DoubleInitialization;
+
+/// An error type that boxes any type of error that could be returned by a message serializer.
+#[derive(Debug, Error)]
+pub enum SerializationError {
+    /// The value is not supported by the serialization format.
+    #[error("The serializations scheme does not support values of kind: {0}")]
+    InvalidKind(ValueKind),
+    /// An integer in a value was out of range for the serialization format.
+    #[error("Integer value {0} out of range for the serialization scheme.")]
+    IntegerOutOfRange(Value),
+    /// An floating point number in a value was out of range for the serialization format.
+    #[error("Float value {0} out of range for the serialization scheme.")]
+    FloatOutOfRange(f64),
+    /// The serializer failed with an error.
+    #[error("A value serializer failed: {0}")]
+    SerializerFailed(Box<dyn std::error::Error + Send>),
+}
+
+#[derive(Debug, Error)]
+pub enum KafkaSenderError {
+    #[error(transparent)]
+    Kafka(#[from] KafkaError),
+    #[error(transparent)]
+    Serialization(#[from] SerializationError),
+    #[error("The connector was not initialized.")]
+    NotInitialized,
+}

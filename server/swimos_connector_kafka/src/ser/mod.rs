@@ -16,7 +16,6 @@ use bytes::{Buf, BufMut, BytesMut};
 use std::{fmt::Write, sync::Arc};
 use swimos_model::{Item, Value, ValueKind};
 use swimos_recon::print_recon_compact;
-use thiserror::Error;
 
 #[cfg(feature = "avro")]
 mod avro;
@@ -30,23 +29,18 @@ mod json;
 #[cfg(feature = "json")]
 pub use json::JsonSerializer;
 
-use crate::Endianness;
+use crate::{Endianness, SerializationError};
 
-#[derive(Debug, Error)]
-pub enum SerializationError {
-    #[error("The serializations scheme does not support values of kind: {0}")]
-    InvalidKind(ValueKind),
-    #[error("Integer value {0} out of range for the serialization scheme.")]
-    IntegerOutOfRange(Value),
-    #[error("Float value {0} out of range for the serialization scheme.")]
-    FloatOutOfRange(f64),
-    #[error("A value serializer failed: {0}")]
-    SerializerFailed(Box<dyn std::error::Error + Send>),
-}
-
+/// A serializer that will attempt to produce a component of a Kafka message from a [value](Value).
 pub trait MessageSerializer {
+    /// Attempt to serialize the value to a buffer.
+    ///
+    /// # Arguments
+    /// * `message` - The value to serialize.
+    /// * `target` - The buffer into which to write the serialized data.
     fn serialize(&self, message: &Value, target: &mut BytesMut) -> Result<(), SerializationError>;
 
+    /// Wrap this serializer to be used via dynamic dispatch and shared between threads.
     fn shared(self) -> SharedMessageSerializer
     where
         Self: Sized + Send + Sync + 'static,
@@ -55,10 +49,15 @@ pub trait MessageSerializer {
     }
 }
 
+/// A serializer that will only write out UTF8 strings.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct StringSerializer;
+
+/// A serializer that writes out Recon strings as UTF8.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct ReconSerializer;
+
+/// A serializer that will only write out raw bytes data.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct BytesSerializer;
 
@@ -107,6 +106,7 @@ impl MessageSerializer for BytesSerializer {
     }
 }
 
+/// A serializer that will only write 32-bit signed integers.
 #[derive(Clone, Copy, Default, Debug)]
 pub struct I32Serializer(Endianness);
 
@@ -116,6 +116,7 @@ impl I32Serializer {
     }
 }
 
+/// A serializer that will only write 64-bit signed integers.
 #[derive(Clone, Copy, Default, Debug)]
 pub struct I64Serializer(Endianness);
 
@@ -125,6 +126,7 @@ impl I64Serializer {
     }
 }
 
+/// A serializer that will only write 32-bit unsigned integers.
 #[derive(Clone, Copy, Default, Debug)]
 pub struct U32Serializer(Endianness);
 
@@ -134,6 +136,7 @@ impl U32Serializer {
     }
 }
 
+/// A serializer that will only write 64-bit unsigned integers.
 #[derive(Clone, Copy, Default, Debug)]
 pub struct U64Serializer(Endianness);
 
@@ -143,6 +146,7 @@ impl U64Serializer {
     }
 }
 
+/// A serializer that will only write 32-bit floating point numbers.
 #[derive(Clone, Copy, Default, Debug)]
 pub struct F32Serializer(Endianness);
 
@@ -152,6 +156,7 @@ impl F32Serializer {
     }
 }
 
+/// A serializer that will only write 64-bit floating point numbers.
 #[derive(Clone, Copy, Default, Debug)]
 pub struct F64Serializer(Endianness);
 
@@ -289,6 +294,7 @@ impl MessageSerializer for F64Serializer {
     }
 }
 
+/// A serializer that will only write big integers as UUIDs.
 #[derive(Clone, Copy, Default, Debug)]
 pub struct UuidSerializer;
 
@@ -322,6 +328,7 @@ fn is_record(items: &[Item]) -> bool {
         .all(|item| matches!(item, Item::Slot(key, _) if key.kind() == ValueKind::Text))
 }
 
+/// A message serializer wrapped in an [`Arc`] to share between threads, called via dynamic dispatch.
 pub type SharedMessageSerializer = Arc<dyn MessageSerializer + Send + Sync + 'static>;
 
 impl MessageSerializer for SharedMessageSerializer {

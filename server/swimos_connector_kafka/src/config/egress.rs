@@ -18,7 +18,7 @@ use swimos_form::Form;
 
 use super::{DataFormat, KafkaLogLevel};
 
-/// Configuration parameters for the Kafka connector.
+/// Configuration parameters for the Kafka egress connector.
 #[derive(Clone, Debug, Form, PartialEq, Eq)]
 #[form(tag = "kafka")]
 pub struct KafkaEgressConfiguration {
@@ -32,10 +32,19 @@ pub struct KafkaEgressConfiguration {
     pub payload_serializer: DataFormat,
     /// The topic to publish to the record does not specify it.
     pub fixed_topic: Option<String>,
+    /// Descriptors for the value lanes of the connector agent and how to extract messages
+    /// from them to send to the egress sink.
     pub value_lanes: Vec<EgressLaneSpec>,
+    /// Descriptors for the map lanes of the connector agent and how to extract messages
+    /// from them to send to the egress sink.
     pub map_lanes: Vec<EgressLaneSpec>,
+    /// Descriptors for the value downlinks (to remote lanes) of the connector agent and how to extract messages
+    /// from the received events to send to the egress sink.
     pub value_downlinks: Vec<EgressDownlinkSpec>,
+    /// Descriptors for the map downlinks (to remote lanes) of the connector agent and how to extract messages
+    /// from the received events to send to the egress sink.
     pub map_downlinks: Vec<EgressDownlinkSpec>,
+    /// Time to wait before retrying a message if the connector is initially busy, in milliseconds.
     pub retry_timeout_ms: u64,
 }
 
@@ -61,14 +70,17 @@ pub struct ExtractionSpec {
     pub payload_selector: Option<String>,
 }
 
+/// Specification of a lane for the connector agent.
 #[derive(Clone, Debug, Form, PartialEq, Eq)]
 #[form(tag = "LaneSpec")]
 pub struct EgressLaneSpec {
     /// A name to use for the lane.
     pub name: String,
+    /// Specification for extracting the Kafka message from the lane events.
     pub extractor: ExtractionSpec,
 }
 
+/// Target lane for a remote downlink.
 #[derive(Clone, Debug, Form, PartialEq, Eq)]
 pub struct DownlinkAddress {
     pub host: Option<String>,
@@ -83,10 +95,12 @@ impl From<&DownlinkAddress> for Address<String> {
     }
 }
 
+/// Specification of a downlink (to a remote lane) for the connector agent.
 #[derive(Clone, Debug, Form, PartialEq, Eq)]
 #[form(tag = "DownlinkSpec")]
 pub struct EgressDownlinkSpec {
     /// The address of the lane to link from.
     pub address: DownlinkAddress,
+    /// Specification for extracting the Kafka message from the downlink events.
     pub extractor: ExtractionSpec,
 }

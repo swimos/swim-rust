@@ -22,6 +22,7 @@ use super::{MessageSerializer, SerializationError};
 
 type AvroValue = apache_avro::types::Value;
 
+/// A serializer that will write out the value in Avro format.
 pub struct AvroSerializer(Schema);
 
 impl AvroSerializer {
