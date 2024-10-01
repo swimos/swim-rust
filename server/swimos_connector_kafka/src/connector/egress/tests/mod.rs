@@ -161,7 +161,7 @@ struct TestEgressContext {
 }
 
 impl EgressContext for TestEgressContext {
-    fn open_value_downlink(&mut self, address: Address<String>) {
+    fn open_event_downlink(&mut self, address: Address<String>) {
         self.value.push(address);
     }
 

@@ -387,23 +387,23 @@ fn dynamic_agent_impl() {
     let agent = ConnectorAgent::default();
     let (value_id, map_id) = init(&agent);
 
-    let guard = agent.lane("value_lane").expect("Lane missing.");
+    let guard = agent.item("value_lane").expect("Lane missing.");
     match guard.borrow_item() {
         DynamicItem::ValueLane(l) => {
             assert_eq!(l.id(), value_id);
         }
-        DynamicItem::MapLane(_) => panic!("Expected value lane."),
+        _ => panic!("Expected value lane."),
     }
 
-    let guard = agent.lane("map_lane").expect("Lane missing.");
+    let guard = agent.item("map_lane").expect("Lane missing.");
     match guard.borrow_item() {
-        DynamicItem::ValueLane(_) => panic!("Expected map lane."),
         DynamicItem::MapLane(l) => {
             assert_eq!(l.id(), map_id);
         }
+        _ => panic!("Expected map lane."),
     }
 
-    assert!(agent.lane("other").is_none());
+    assert!(agent.item("other").is_none());
 }
 
 struct NoSpawn;

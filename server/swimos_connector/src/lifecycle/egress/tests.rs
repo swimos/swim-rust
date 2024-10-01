@@ -181,7 +181,7 @@ impl EgressConnector for TestConnector {
     type Sender = TestSender;
 
     fn open_downlinks(&self, context: &mut dyn EgressContext) {
-        context.open_value_downlink(value_lane_addr());
+        context.open_event_downlink(value_lane_addr());
         context.open_map_downlink(map_lane_addr());
     }
 

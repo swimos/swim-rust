@@ -47,10 +47,11 @@ use tracing::{error, info};
 type GenericValueLane = ValueLane<Value>;
 type GenericMapLane = MapLane<Value, Value>;
 
-/// A generic agent type to be used by implementations of [`crate::Connector`]. By default, a [`ConnectorAgent`] does
-/// not define any lanes or stores and these most be opened dynamically by the agent lifecycle (which is determined by
-/// the [`crate::Connector`] implementation). Only value and map lanes are supported and an attempt to open any other
-/// kind of lane or store will result in the agent terminating with an error.
+/// A generic agent type to be used by implementations of [`crate::IngressConnector`] and [`crate::EgressConnector`].
+/// By default, a [`ConnectorAgent`] does not define any lanes or stores and these most be opened dynamically by the agent
+/// lifecycle (which is determined by the [`crate::IngressConnector`] or [`crate::EgressConnector`] implementation). Only
+/// value and map lanes are supported and an attempt to open any other kind of lane or store will result in the agent
+/// terminating with an error.
 #[derive(Default, Debug)]
 pub struct ConnectorAgent {
     id_counter: Cell<u64>,
@@ -111,10 +112,18 @@ impl ConnectorAgent {
         }
     }
 
+    /// Read the flags associated with the agent instance (the meaning of the flags is determined by the
+    /// agent lifecycle).
     pub fn read_flags(&self) -> u64 {
         self.flags.get()
     }
 
+    /// Set the flags associated with the agent instance (the meaning of the flags is determined by the
+    /// agent lifecycle). This returns an [event handler](`swimos_agent::event_handler::EventHandler`)
+    /// that must be executed to set the flags.
+    ///
+    /// # Arguments
+    /// * `flags` - The new value for the flags.
     pub fn set_flags(flags: u64) -> SetFlags {
         SetFlags(Some(flags))
     }
@@ -351,6 +360,8 @@ impl SelectorFn<ConnectorAgent> for MapLaneSelectorFn {
     }
 }
 
+/// An [event handler](`swimos_agent::event_handler::EventHandler`) that will set the flags associated with a
+/// [`ConnectorAgent`].
 #[derive(Default, Debug)]
 pub struct SetFlags(Option<u64>);
 
@@ -398,7 +409,7 @@ impl DynamicAgent for ConnectorAgent {
         where
             Self: 'a;
 
-    fn lane<'a>(&'a self, name: &'a str) -> Option<Self::Borrowed<'a>> {
+    fn item<'a>(&'a self, name: &'a str) -> Option<Self::Borrowed<'a>> {
         let ConnectorAgent {
             value_lanes,
             map_lanes,

@@ -231,7 +231,7 @@ fn open_downlinks(config: &KafkaEgressConfiguration, context: &mut dyn EgressCon
     } = config;
     for value_dl in value_downlinks {
         let addr = Address::from(&value_dl.address);
-        context.open_value_downlink(addr);
+        context.open_event_downlink(addr);
     }
     for map_dl in map_downlinks {
         let addr = Address::from(&map_dl.address);

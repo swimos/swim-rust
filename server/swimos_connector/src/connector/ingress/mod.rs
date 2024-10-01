@@ -27,8 +27,8 @@ use crate::generic::ConnectorAgent;
 
 use super::{BaseConnector, ConnectorHandler};
 
-/// A connector is a specialized [agent lifecycle](swimos_agent::agent_lifecycle::AgentLifecycle) that provides an
-/// agent that acts as an ingress point for a Swim application for some external data source.
+/// An ingress connector is a specialized [agent lifecycle](swimos_agent::agent_lifecycle::AgentLifecycle) that provides
+/// an agent that acts as an ingress point for a Swim application for some external data source.
 ///
 /// It is intended to be used with the generic [connector agent](crate::ConnectorAgent) model type. This provides no
 /// lanes, by default, but allows for them to be added dynamically by the lifecycle. The lanes that a connector
@@ -36,20 +36,21 @@ use super::{BaseConnector, ConnectorHandler};
 /// it is only possible to register dynamic lanes in the initialization phase of the agent (during the `on_start`
 /// event). This restriction should be relaxed in the future.
 ///
-/// The core of a connector is the [create_stream](Connector::create_stream) method that creates a fallible
-/// stream that consumes events from the external data source and converts them into [event handlers](EventHandler)
-/// that modify the state of the agent. This stream is suspended into the agents task and will be polled repeatedly
-/// until it either terminates (or fails) that will cause the connector agent to stop.
+/// The core of a connector is the [create_stream](IngressConnector::create_stream) method that creates a fallible
+/// stream that consumes events from the external data source and converts them into
+/// [event handlers](swimos_agent::event_handler::EventHandler) that modify the state of the agent. This stream is suspended
+/// into the agents task and will be polled repeatedly until it either terminates (or fails) that will cause the connector
+/// agent to stop.
 pub trait IngressConnector: BaseConnector {
     /// The type of the errors produced by the connector stream.
     type StreamError: Error + Send + 'static;
 
-    /// Create an asynchronous stream that consumes events from the external data source and produces [event handlers](EventHandler)
-    /// from them which modify the state of the agent.
+    /// Create an asynchronous stream that consumes events from the external data source and produces
+    /// [event handlers](swimos_agent::event_handler::EventHandler) from them which modify the state of the agent.
     fn create_stream(&self) -> Result<impl ConnectorStream<Self::StreamError>, Self::StreamError>;
 }
 
-/// A trait for fallible streams of event handlers that are returned by a [`Connector`].
+/// A trait for fallible streams of event handlers that are returned by a [`IngressConnector`].
 pub trait ConnectorStream<E>:
     TryStream<Ok: ConnectorHandler, Error = E> + Send + Unpin + 'static
 {

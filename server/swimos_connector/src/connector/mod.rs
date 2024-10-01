@@ -16,9 +16,9 @@ mod egress;
 mod ingress;
 
 pub use egress::{
-    ConnectorFuture, EgressConnector, EgressConnectorSender, EgressContext, MessageSource,
-    SendResult,
+    EgressConnector, EgressConnectorSender, EgressContext, MessageSource, SendResult,
 };
+use futures::TryFuture;
 pub use ingress::{suspend_connector, ConnectorStream, IngressConnector};
 use swimos_agent::event_handler::EventHandler;
 use swimos_utilities::trigger;
@@ -42,3 +42,14 @@ pub trait BaseConnector {
 pub trait ConnectorHandler: EventHandler<ConnectorAgent> + Send + 'static {}
 
 impl<H> ConnectorHandler for H where H: EventHandler<ConnectorAgent> + Send + 'static {}
+
+/// A future that results in a [`ConnectorHandler`] or an error.
+pub trait ConnectorFuture<E>:
+    TryFuture<Ok: ConnectorHandler, Error = E> + Send + Unpin + 'static
+{
+}
+
+impl<S, E> ConnectorFuture<E> for S where
+    S: TryFuture<Ok: ConnectorHandler, Error = E> + Send + Unpin + 'static
+{
+}

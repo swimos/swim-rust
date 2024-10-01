@@ -47,6 +47,8 @@ use crate::{
 #[cfg(test)]
 mod tests;
 
+/// An [agent lifecycle](swimos_agent::agent_lifecycle::AgentLifecycle) implementation that serves as an adapter for
+/// an [egress connector](EgressConnector).
 pub struct EgressConnectorLifecycle<C: EgressConnector> {
     lifecycle: C,
     sender: OnceCell<C::Sender>,
@@ -86,7 +88,7 @@ where
 bitflags! {
 
     #[derive(Default, Debug, Copy, Clone)]
-    pub struct EgressFlags: u64 {
+    struct EgressFlags: u64 {
         /// Initialization has completed.
         const INITIALIZED = 0b1;
     }
@@ -100,7 +102,7 @@ struct DownlinkCollector {
 }
 
 impl EgressContext for DownlinkCollector {
-    fn open_value_downlink(&mut self, address: Address<String>) {
+    fn open_event_downlink(&mut self, address: Address<String>) {
         self.value_downlinks.push(address);
     }
 
