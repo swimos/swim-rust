@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! An example demonstrating a Kafka ingress connector.
+//! An example demonstrating a Kafka egress connector.
 //!
 //! Run the server using the following:
 //! ```text
-//! $ cargo run --bin kafka-ingress-connector
+//! $ cargo run --bin kafka-egress-connector
 //! ```
 //!
 //! And run the client with the following:
@@ -32,8 +32,8 @@ use swimos::{
     route::{RoutePattern, RouteUri},
     server::{Server, ServerBuilder},
 };
-use swimos_connector::IngressConnectorModel;
-use swimos_connector_kafka::{KafkaIngressConfiguration, KafkaIngressConnector};
+use swimos_connector::EgressConnectorModel;
+use swimos_connector_kafka::{KafkaEgressConfiguration, KafkaEgressConnector};
 use swimos_recon::parser::parse_recognize;
 
 mod params;
@@ -47,17 +47,18 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     let Params {
         config,
         enable_logging,
+        bootstrap_servers,
     } = Params::parse();
     if enable_logging {
         setup_logging()?;
     }
 
-    let connector_config = load_config(config).await?;
+    let connector_config = load_config(config, bootstrap_servers).await?;
 
     let route = RoutePattern::parse_str("/kafka")?;
 
-    let connector_agent = IngressConnectorModel::for_fn(move || {
-        KafkaIngressConnector::for_config(connector_config.clone())
+    let connector_agent = EgressConnectorModel::for_fn(move || {
+        KafkaEgressConnector::for_config(connector_config.clone())
     });
 
     let server = ServerBuilder::with_plane_name("Example Plane")
@@ -91,15 +92,17 @@ const CONNECTOR_CONFIG: &str = include_str!("kafka_connector.recon");
 
 async fn load_config(
     path: Option<String>,
-) -> Result<KafkaIngressConfiguration, Box<dyn Error + Send + Sync>> {
-    let content: String;
+    bootstrap_servers: Option<String>,
+) -> Result<KafkaEgressConfiguration, Box<dyn Error + Send + Sync>> {
+    
     let recon = if let Some(path) = path {
-        content = tokio::fs::read_to_string(path).await?;
-        &content
+        tokio::fs::read_to_string(path).await?
+    } else if let Some(bootstrap) = bootstrap_servers {
+        CONNECTOR_CONFIG.replace("##SERVERS##", &bootstrap)
     } else {
-        CONNECTOR_CONFIG
+        panic!("Either a configuration file or bootstrap servers must be specified.");
     };
-    let config = parse_recognize::<KafkaIngressConfiguration>(recon, true)?;
+    let config = parse_recognize::<KafkaEgressConfiguration>(recon.as_str(), true)?;
     Ok(config)
 }
 

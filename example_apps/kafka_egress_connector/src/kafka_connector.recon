@@ -1,0 +1,25 @@
+@kafka {
+    properties: {
+        "message.timeout.ms": "5000",
+        "group.id": rust-consumer-test,
+        "bootstrap.servers": "##SERVERS##"
+    },
+    log_level: @Debug,
+    key_serializer: @Int32(@BigEndian),
+    payload_serializer: @Json,
+    fixed_topic: cellular-integer-json,
+    value_lanes: {
+        @LaneSpec {
+            name: event,
+            extractor: @ExtractionSpec {
+                topic_specifier: @Fixed,
+                key_selector: "$value.key",
+                payload_selector: "$value.payload"
+            }
+        }
+    },
+    map_lanes: {},
+    value_downlinks: {},
+    map_downlinks: {},
+    retry_timeout_ms: 5000
+}

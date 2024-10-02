@@ -23,7 +23,7 @@ mod ser;
 pub use config::{
     DataFormat, DownlinkAddress, EgressDownlinkSpec, EgressLaneSpec, ExtractionSpec,
     IngressMapLaneSpec, IngressValueLaneSpec, KafkaEgressConfiguration, KafkaIngressConfiguration,
-    KafkaLogLevel,
+    KafkaLogLevel, TopicSpecifier
 };
 pub use connector::{KafkaEgressConnector, KafkaIngressConnector};
 pub use deser::Endianness;
