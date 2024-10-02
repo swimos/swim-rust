@@ -14,19 +14,21 @@
 
 use std::error::Error;
 use swimos_client::Commander;
-use tokio::time::{Duration, sleep};
+use tokio::time::{sleep, Duration};
 
 mod model;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let host = "ws://127.0.0.1:8080";
-    
+
     let mut commander = Commander::default();
 
     for _ in 0..10 {
         let record = model::random_record();
-        commander.send_command(host, "/kafka", "event", &record).await?;
+        commander
+            .send_command(host, "/kafka", "event", &record)
+            .await?;
         sleep(Duration::from_secs(5)).await;
     }
     commander.close().await;

@@ -94,7 +94,6 @@ async fn load_config(
     path: Option<String>,
     bootstrap_servers: Option<String>,
 ) -> Result<KafkaEgressConfiguration, Box<dyn Error + Send + Sync>> {
-    
     let recon = if let Some(path) = path {
         tokio::fs::read_to_string(path).await?
     } else if let Some(bootstrap) = bootstrap_servers {

@@ -115,16 +115,16 @@ fn to_json_array(items: &[Item]) -> Result<JsonValue, SerializationError> {
     Ok(JsonValue::Array(items))
 }
 
-fn flatten_attrs(
-    attrs: &[Attr],
-    items: &[Item],
-) -> Result<JsonValue, SerializationError> {
-    let mut all_fields = attrs.iter().map(|Attr { name, value }| {
-        let field_name = format!("@{}", name);
-        convert_recon_value(value).map(move |v| (field_name, v))
-    }).collect::<Result<Map<_, _>, _>>()?;
+fn flatten_attrs(attrs: &[Attr], items: &[Item]) -> Result<JsonValue, SerializationError> {
+    let mut all_fields = attrs
+        .iter()
+        .map(|Attr { name, value }| {
+            let field_name = format!("@{}", name);
+            convert_recon_value(value).map(move |v| (field_name, v))
+        })
+        .collect::<Result<Map<_, _>, _>>()?;
     let mut item_fields = to_json_fields(items)?;
-    
+
     all_fields.append(&mut item_fields);
     Ok(JsonValue::Object(all_fields))
 }
