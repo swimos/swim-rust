@@ -17,7 +17,7 @@ use std::{collections::HashMap, error::Error, time::Duration};
 use swimos_api::address::Address;
 use swimos_model::Value;
 
-use super::{BaseConnector, ConnectorFuture};
+use super::{BaseConnector, ConnectorFuture, InitializationContext};
 
 /// An egress connector is a specialized [agent lifecycle](swimos_agent::agent_lifecycle::AgentLifecycle) that provides
 /// an agent that acts as an egress point for a Swim application to some external data source.
@@ -47,7 +47,7 @@ pub trait EgressConnector: BaseConnector {
     ///
     /// # Arguments
     /// * `context` - The connector makes calls to the context to request the downlinks.
-    fn open_downlinks(&self, context: &mut dyn EgressContext);
+    fn open_downlinks(&self, context: &mut dyn InitializationContext);
 
     /// Create sender for the connector which is used to send messages to the external data sink. This is called
     /// exactly ones during the agent's `on_start` event but must implement [`Clone`] so that copies can be passed
@@ -59,22 +59,6 @@ pub trait EgressConnector: BaseConnector {
         &self,
         agent_params: &HashMap<String, String>,
     ) -> Result<Self::Sender, Self::SendError>;
-}
-
-/// A reference to an egress context is passed to an [`EgressConnector`] when it starts allowing it
-/// to request that downlinks be opened to remote lanes.
-pub trait EgressContext {
-    /// Request an event downlink to a remote lane.
-    ///
-    /// # Arguments
-    /// * `address` - The address of the remote lane.
-    fn open_event_downlink(&mut self, address: Address<String>);
-
-    /// Request a map-event downlink to a remote lane.
-    ///
-    /// # Arguments
-    /// * `address` - The address of the remote lane.
-    fn open_map_downlink(&mut self, address: Address<String>);
 }
 
 /// Possible results of sending a message to the external sink.

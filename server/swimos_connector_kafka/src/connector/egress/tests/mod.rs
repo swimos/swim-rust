@@ -19,7 +19,7 @@ use std::{
 
 use futures::future::join;
 use swimos_api::address::Address;
-use swimos_connector::{ConnectorAgent, EgressContext};
+use swimos_connector::{ConnectorAgent, InitializationContext};
 use swimos_utilities::trigger;
 use tokio::{
     sync::Semaphore,
@@ -157,7 +157,7 @@ struct TestEgressContext {
     map: Vec<Address<String>>,
 }
 
-impl EgressContext for TestEgressContext {
+impl InitializationContext for TestEgressContext {
     fn open_event_downlink(&mut self, address: Address<String>) {
         self.value.push(address);
     }

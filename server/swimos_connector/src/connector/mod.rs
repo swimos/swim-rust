@@ -15,12 +15,11 @@
 mod egress;
 mod ingress;
 
-pub use egress::{
-    EgressConnector, EgressConnectorSender, EgressContext, MessageSource, SendResult,
-};
+pub use egress::{EgressConnector, EgressConnectorSender, MessageSource, SendResult};
 use futures::TryFuture;
 pub use ingress::{suspend_connector, ConnectorStream, IngressConnector};
 use swimos_agent::event_handler::EventHandler;
+use swimos_api::address::Address;
 use swimos_utilities::trigger;
 
 use crate::ConnectorAgent;
@@ -52,4 +51,20 @@ pub trait ConnectorFuture<E>:
 impl<S, E> ConnectorFuture<E> for S where
     S: TryFuture<Ok: ConnectorHandler, Error = E> + Send + Unpin + 'static
 {
+}
+
+/// A reference to an egress context is passed to an connector when it starts allowing it
+/// to request that lanes or downlinks to remote lanes be opened.
+pub trait InitializationContext {
+    /// Request an event downlink to a remote lane.
+    ///
+    /// # Arguments
+    /// * `address` - The address of the remote lane.
+    fn open_event_downlink(&mut self, address: Address<String>);
+
+    /// Request a map-event downlink to a remote lane.
+    ///
+    /// # Arguments
+    /// * `address` - The address of the remote lane.
+    fn open_map_downlink(&mut self, address: Address<String>);
 }

@@ -41,7 +41,7 @@ use swimos_utilities::trigger;
 use crate::{
     connector::{EgressConnector, EgressConnectorSender},
     error::ConnectorInitError,
-    ConnectorAgent, EgressContext, MessageSource, SendResult,
+    ConnectorAgent, InitializationContext, MessageSource, SendResult,
 };
 
 #[cfg(test)]
@@ -101,7 +101,7 @@ struct DownlinkCollector {
     map_downlinks: Vec<Address<String>>,
 }
 
-impl EgressContext for DownlinkCollector {
+impl InitializationContext for DownlinkCollector {
     fn open_event_downlink(&mut self, address: Address<String>) {
         self.value_downlinks.push(address);
     }

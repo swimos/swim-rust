@@ -22,7 +22,7 @@ use swimos_agent::event_handler::{
 use swimos_api::address::Address;
 use swimos_connector::{
     BaseConnector, ConnectorAgent, ConnectorFuture, EgressConnector, EgressConnectorSender,
-    EgressContext, MessageSource, SendResult,
+    InitializationContext, MessageSource, SendResult,
 };
 use swimos_model::Value;
 use swimos_utilities::trigger;
@@ -229,12 +229,12 @@ where
         Ok(sender)
     }
 
-    fn open_downlinks(&self, context: &mut dyn EgressContext) {
+    fn open_downlinks(&self, context: &mut dyn InitializationContext) {
         open_downlinks(&self.configuration, context);
     }
 }
 
-fn open_downlinks(config: &KafkaEgressConfiguration, context: &mut dyn EgressContext) {
+fn open_downlinks(config: &KafkaEgressConfiguration, context: &mut dyn InitializationContext) {
     let KafkaEgressConfiguration {
         value_downlinks,
         map_downlinks,

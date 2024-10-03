@@ -43,7 +43,7 @@ use crate::lifecycle::fixture::{
 };
 use crate::{
     BaseConnector, ConnectorAgent, ConnectorFuture, EgressConnector, EgressConnectorLifecycle,
-    EgressConnectorSender, EgressContext, MapLaneSelectorFn, MessageSource, SendResult,
+    EgressConnectorSender, InitializationContext, MapLaneSelectorFn, MessageSource, SendResult,
     ValueLaneSelectorFn,
 };
 
@@ -180,7 +180,7 @@ impl EgressConnector for TestConnector {
 
     type Sender = TestSender;
 
-    fn open_downlinks(&self, context: &mut dyn EgressContext) {
+    fn open_downlinks(&self, context: &mut dyn InitializationContext) {
         context.open_event_downlink(value_lane_addr());
         context.open_map_downlink(map_lane_addr());
     }
