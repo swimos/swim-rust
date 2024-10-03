@@ -14,30 +14,27 @@
 
 use std::{cell::RefCell, collections::HashMap, sync::Arc, time::Duration};
 
+use super::ConnHandlerContext;
+use crate::selector::message::{MessageSelector, MessageSelectors};
+use crate::{
+    config::KafkaEgressConfiguration,
+    facade::{KafkaFactory, KafkaProducer, ProduceResult, ProducerFactory},
+    KafkaSenderError,
+};
 use bytes::BytesMut;
 use futures::{channel::oneshot, FutureExt};
 use swimos_agent::event_handler::{
     EventHandler, HandlerActionExt, Sequentially, TryHandlerActionExt, UnitHandler,
 };
 use swimos_api::address::Address;
+use swimos_connector::ser::SharedMessageSerializer;
 use swimos_connector::{
     BaseConnector, ConnectorAgent, ConnectorFuture, EgressConnector, EgressConnectorSender,
-    EgressContext, MessageSource, SendResult,
+    EgressContext, LoadError, MessageSource, SendResult, SerializationError,
 };
 use swimos_model::Value;
 use swimos_utilities::trigger;
 use tokio::sync::Semaphore;
-
-use crate::{
-    config::KafkaEgressConfiguration,
-    error::SerializationError,
-    facade::{KafkaFactory, KafkaProducer, ProduceResult, ProducerFactory},
-    selector::{MessageSelector, MessageSelectors},
-    ser::SharedMessageSerializer,
-    KafkaSenderError, LoadError,
-};
-
-use super::ConnHandlerContext;
 
 #[cfg(test)]
 mod tests;

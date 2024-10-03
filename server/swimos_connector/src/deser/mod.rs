@@ -26,8 +26,8 @@ pub use json::JsonDeserializer;
 #[cfg(feature = "avro")]
 pub use avro::AvroDeserializer;
 
+use std::error::Error;
 use std::{array::TryFromSliceError, convert::Infallible};
-
 use swimos_form::Form;
 use swimos_model::{Blob, Value};
 use swimos_recon::parser::{parse_recognize, AsyncParseError};
@@ -36,7 +36,7 @@ use uuid::Uuid;
 
 use crate::error::DeserializationError;
 
-/// An uninterpreted view of the components of a Kafka message.
+/// An uninterpreted view of the components of a message.
 pub struct MessageView<'a> {
     pub topic: &'a str,
     pub key: &'a [u8],
@@ -71,7 +71,7 @@ pub enum MessagePart {
     Payload,
 }
 
-/// A deserializer that will attempt to produce a [value](Value) from a component of a Kafka message.
+/// A deserializer that will attempt to produce a [value](Value) from a component of a message.
 pub trait MessageDeserializer {
     type Error: std::error::Error;
 
@@ -265,5 +265,31 @@ impl MessageDeserializer for BoxMessageDeserializer {
         Self::Error: Send + 'static,
     {
         self
+    }
+}
+
+/// Deserializer which delegates to a function.
+#[derive(Clone, Copy, Default, Debug)]
+pub struct FnDeserializer<F>(F);
+
+impl<F> FnDeserializer<F> {
+    pub fn new(f: F) -> FnDeserializer<F> {
+        FnDeserializer(f)
+    }
+}
+
+impl<F, E> MessageDeserializer for FnDeserializer<F>
+where
+    F: for<'a> Fn(&'a MessageView<'a>, MessagePart) -> Result<Value, E>,
+    E: Error,
+{
+    type Error = E;
+
+    fn deserialize<'a>(
+        &'a self,
+        message: &'a MessageView<'a>,
+        part: MessagePart,
+    ) -> Result<Value, Self::Error> {
+        self.0(message, part)
     }
 }

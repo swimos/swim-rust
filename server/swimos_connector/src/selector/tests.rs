@@ -12,19 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swimos_model::{Attr, Item, Value};
-
-use crate::deser::MessagePart;
-use crate::error::DeserializationError;
-use crate::selector::{
-    BadSelector, InvalidLaneSpec, MessageField, SelectorComponent, SelectorDescriptor,
-};
-use crate::{IngressMapLaneSpec, IngressValueLaneSpec};
-
 use super::{
     AttrSelector, BasicSelector, ChainSelector, Deferred, IdentitySelector, IndexSelector,
-    LaneSelector, MapLaneSelector, Selector, SlotSelector, ValueLaneSelector,
+    MapLaneSelector, Selector, SlotSelector, ValueLaneSelector, ValueSelector,
 };
+use crate::config::{IngressMapLaneSpec, IngressValueLaneSpec};
+use crate::deser::MessagePart;
+use crate::selector::{MessageField, SelectorComponent, SelectorDescriptor};
+use crate::{BadSelector, DeserializationError, InvalidLaneSpec};
+use swimos_model::{Attr, Item, Value};
 
 #[test]
 fn init_regex_creation() {
@@ -299,13 +295,13 @@ fn index_selector() {
 fn chain_selector() {
     let value = test_value();
 
-    let selector1 = ChainSelector::new(vec![]);
-    let selector2 = ChainSelector::new(vec![BasicSelector::Slot(SlotSelector::for_field("name"))]);
-    let selector3 = ChainSelector::new(vec![
+    let selector1 = ChainSelector::from(vec![]);
+    let selector2 = ChainSelector::from(vec![BasicSelector::Slot(SlotSelector::for_field("name"))]);
+    let selector3 = ChainSelector::from(vec![
         BasicSelector::Slot(SlotSelector::for_field("inner")),
         BasicSelector::Slot(SlotSelector::for_field("green")),
     ]);
-    let selector4 = ChainSelector::new(vec![
+    let selector4 = ChainSelector::from(vec![
         BasicSelector::Slot(SlotSelector::for_field("name")),
         BasicSelector::Slot(SlotSelector::for_field("green")),
     ]);
@@ -344,7 +340,7 @@ impl Deferred for TestDeferred {
 
 #[test]
 fn select_topic() {
-    let selector = LaneSelector::Topic;
+    let selector = ValueSelector::Topic;
 
     let topic = Value::text("topic_name");
     let mut key = TestDeferred::new(Value::Extant);
@@ -360,12 +356,12 @@ fn select_topic() {
 
 #[test]
 fn select_key() {
-    let selector = ChainSelector::new(vec![
+    let selector = ChainSelector::from(vec![
         BasicSelector::Slot(SlotSelector::for_field("inner")),
         BasicSelector::Slot(SlotSelector::for_field("green")),
     ]);
 
-    let lane_selector = LaneSelector::Key(selector);
+    let lane_selector = ValueSelector::Key(selector);
 
     let topic = Value::text("topic_name");
     let mut key = TestDeferred::new(test_value());
@@ -381,12 +377,12 @@ fn select_key() {
 
 #[test]
 fn select_payload() {
-    let selector = ChainSelector::new(vec![
+    let selector = ChainSelector::from(vec![
         BasicSelector::Slot(SlotSelector::for_field("inner")),
         BasicSelector::Slot(SlotSelector::for_field("green")),
     ]);
 
-    let lane_selector = LaneSelector::Payload(selector);
+    let lane_selector = ValueSelector::Payload(selector);
 
     let topic = Value::text("topic_name");
     let mut key = TestDeferred::new(Value::Extant);
@@ -412,7 +408,7 @@ fn topic_selector_descriptor() {
 fn key_selector_descriptor() {
     let selector = super::parse_selector("$key").expect("Invalid selector.");
     assert_eq!(selector.field(), MessageField::Key);
-    assert_eq!(selector.selector(), Some(ChainSelector::new(vec![])));
+    assert_eq!(selector.selector(), Some(ChainSelector::from(vec![])));
     assert_eq!(selector.suggested_name(), Some("key"));
 }
 
@@ -420,7 +416,7 @@ fn key_selector_descriptor() {
 fn payload_selector_descriptor() {
     let selector = super::parse_selector("$payload").expect("Invalid selector.");
     assert_eq!(selector.field(), MessageField::Payload);
-    assert_eq!(selector.selector(), Some(ChainSelector::new(vec![])));
+    assert_eq!(selector.selector(), Some(ChainSelector::from(vec![])));
     assert_eq!(selector.suggested_name(), Some("payload"));
 }
 
@@ -430,7 +426,7 @@ fn indexed_selector_descriptor() {
     assert_eq!(selector.field(), MessageField::Payload);
     assert_eq!(
         selector.selector(),
-        Some(ChainSelector::new(vec![BasicSelector::Index(
+        Some(ChainSelector::from(vec![BasicSelector::Index(
             IndexSelector::new(1)
         )]))
     );
@@ -443,7 +439,7 @@ fn attr_selector_descriptor() {
     assert_eq!(selector.field(), MessageField::Payload);
     assert_eq!(
         selector.selector(),
-        Some(ChainSelector::new(vec![BasicSelector::Attr(
+        Some(ChainSelector::from(vec![BasicSelector::Attr(
             AttrSelector::new("attr".to_string())
         )]))
     );
@@ -456,7 +452,7 @@ fn slot_selector_descriptor() {
     assert_eq!(selector.field(), MessageField::Payload);
     assert_eq!(
         selector.selector(),
-        Some(ChainSelector::new(vec![BasicSelector::Slot(
+        Some(ChainSelector::from(vec![BasicSelector::Slot(
             SlotSelector::for_field("slot")
         )]))
     );
@@ -469,7 +465,7 @@ fn complex_selector_descriptor_named() {
     assert_eq!(selector.field(), MessageField::Payload);
     assert_eq!(
         selector.selector(),
-        Some(ChainSelector::new(vec![
+        Some(ChainSelector::from(vec![
             BasicSelector::Attr(AttrSelector::new("attr".to_string())),
             BasicSelector::Index(IndexSelector::new(3)),
             BasicSelector::Slot(SlotSelector::for_field("inner"))
@@ -484,7 +480,7 @@ fn complex_selector_descriptor_unnamed() {
     assert_eq!(selector.field(), MessageField::Payload);
     assert_eq!(
         selector.selector(),
-        Some(ChainSelector::new(vec![
+        Some(ChainSelector::from(vec![
             BasicSelector::Attr(AttrSelector::new("attr".to_string())),
             BasicSelector::Index(IndexSelector::new(3)),
             BasicSelector::Slot(SlotSelector::for_field("inner")),
@@ -502,7 +498,7 @@ fn value_lane_selector_from_spec_inferred_name() {
     assert!(&selector.required);
     assert_eq!(
         selector.selector,
-        LaneSelector::Key(ChainSelector::default())
+        ValueSelector::Key(ChainSelector::default())
     );
 }
 
@@ -514,7 +510,7 @@ fn value_lane_selector_from_spec_named() {
     assert!(!&selector.required);
     assert_eq!(
         selector.selector,
-        LaneSelector::Key(ChainSelector::new(vec![BasicSelector::Index(
+        ValueSelector::Key(ChainSelector::from(vec![BasicSelector::Index(
             IndexSelector::new(0)
         )]))
     );
@@ -543,11 +539,11 @@ fn map_lane_selector_from_spec() {
     assert!(selector.remove_when_no_value);
     assert_eq!(
         selector.key_selector,
-        LaneSelector::Key(ChainSelector::default())
+        ValueSelector::Key(ChainSelector::default())
     );
     assert_eq!(
         selector.value_selector,
-        LaneSelector::Payload(ChainSelector::default())
+        ValueSelector::Payload(ChainSelector::default())
     );
 }
 

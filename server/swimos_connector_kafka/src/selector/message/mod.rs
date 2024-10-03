@@ -18,6 +18,10 @@ use std::{
 };
 
 use swimos_api::address::Address;
+use swimos_connector::selector::{
+    ChainSelector, RawSelectorDescriptor, Selector, SelectorComponent,
+};
+use swimos_connector::BadSelector;
 use swimos_model::Value;
 
 use crate::{
@@ -25,12 +29,7 @@ use crate::{
         EgressDownlinkSpec, EgressLaneSpec, ExtractionSpec, KafkaEgressConfiguration,
         TopicSpecifier,
     },
-    selector::make_chain_selector,
-    BadSelector, InvalidExtractor, InvalidExtractors,
-};
-
-use super::{
-    parse_raw_selector, ChainSelector, RawSelectorDescriptor, Selector, SelectorComponent,
+    InvalidExtractor, InvalidExtractors,
 };
 
 #[cfg(test)]
@@ -138,7 +137,7 @@ impl<'a> From<FieldSelectorSpec<'a>> for FieldSelector {
             index,
             components,
         } = value;
-        FieldSelector::new(part, make_chain_selector(index, &components))
+        FieldSelector::new(part, ChainSelector::new(index, &components))
     }
 }
 
@@ -196,7 +195,7 @@ impl<'a> TryFrom<RawSelectorDescriptor<'a>> for FieldSelectorSpec<'a> {
 
 /// Attempt to parse a field selector from a string.
 fn parse_field_selector(descriptor: &str) -> Result<FieldSelectorSpec<'_>, BadSelector> {
-    parse_raw_selector(descriptor)?.try_into()
+    RawSelectorDescriptor::try_from(descriptor)?.try_into()
 }
 
 impl MessageSelector {

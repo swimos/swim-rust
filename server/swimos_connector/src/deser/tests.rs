@@ -15,15 +15,12 @@
 use swimos_model::{Attr, Item, Value};
 use uuid::Uuid;
 
-use crate::{
-    deser::{
-        F32Deserializer, F64Deserializer, I32Deserializer, I64Deserializer, MessagePart,
-        ReconDeserializer, U32Deserializer, U64Deserializer, UuidDeserializer,
-    },
-    Endianness,
+use crate::deser::{
+    F32Deserializer, F64Deserializer, I32Deserializer, I64Deserializer, MessagePart,
+    ReconDeserializer, U32Deserializer, U64Deserializer, UuidDeserializer,
 };
 
-use super::{MessageDeserializer, MessageView, StringDeserializer};
+use super::{Endianness, MessageDeserializer, MessageView, StringDeserializer};
 
 pub fn view_of(bytes: &[u8], part: MessagePart) -> MessageView<'_> {
     match part {

@@ -26,14 +26,13 @@ use tokio::{
     time::{timeout, Duration},
 };
 
+use super::open_downlinks;
+use crate::selector::message::MessageSelectors;
 use crate::{
     config::{EgressDownlinkSpec, EgressLaneSpec, KafkaEgressConfiguration, TopicSpecifier},
     connector::test_util::run_handler_with_futures,
-    selector::MessageSelectors,
     DataFormat, DownlinkAddress, ExtractionSpec, KafkaLogLevel,
 };
-
-use super::open_downlinks;
 
 #[cfg(feature = "json")]
 mod end_to_end;

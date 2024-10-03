@@ -12,4 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod message;
+mod selector;
+#[cfg(test)]
+mod tests;
+
+pub use crate::relay::selector::{
+    LaneSelector, NodeSelector, ParseError, PayloadSelector, Relays, Selectors,
+};
