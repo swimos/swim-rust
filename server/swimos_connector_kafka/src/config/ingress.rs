@@ -14,12 +14,8 @@
 
 use super::{DataFormat, KafkaLogLevel};
 use std::collections::HashMap;
-use std::str::FromStr;
 use swimos_connector::config::{IngressMapLaneSpec, IngressValueLaneSpec};
-use swimos_connector::{
-    LaneSelector, MapRelaySpecification, NodeSelector, ParseError, PayloadSelector, Relay,
-    RelaySpecification, Relays, ValueRelaySpecification,
-};
+use swimos_connector::{ParseError, RelaySpecification, Relays};
 use swimos_form::Form;
 
 /// Configuration parameters for the Kafka ingress connector.
@@ -59,44 +55,6 @@ impl KafkaIngressSpecification {
             relays,
         } = self;
 
-        let mut chain = Vec::with_capacity(relays.len());
-
-        for spec in relays {
-            match spec {
-                RelaySpecification::Value(ValueRelaySpecification {
-                    node,
-                    lane,
-                    payload,
-                    required,
-                }) => {
-                    let node = NodeSelector::from_str(node.as_str())?;
-                    let lane = LaneSelector::from_str(lane.as_str())?;
-                    let payload = PayloadSelector::value(payload.as_str(), required)?;
-
-                    chain.push(Relay::new(node, lane, payload));
-                }
-                RelaySpecification::Map(MapRelaySpecification {
-                    node,
-                    lane,
-                    key,
-                    value,
-                    required,
-                    remove_when_no_value,
-                }) => {
-                    let node = NodeSelector::from_str(node.as_str())?;
-                    let lane = LaneSelector::from_str(lane.as_str())?;
-                    let payload = PayloadSelector::map(
-                        key.as_str(),
-                        value.as_str(),
-                        required,
-                        remove_when_no_value,
-                    )?;
-
-                    chain.push(Relay::new(node, lane, payload));
-                }
-            }
-        }
-
         Ok(KafkaIngressConfiguration {
             properties,
             log_level,
@@ -105,7 +63,7 @@ impl KafkaIngressSpecification {
             key_deserializer,
             payload_deserializer,
             topics,
-            relays: Relays::from(chain),
+            relays: Relays::try_from(relays)?,
         })
     }
 }

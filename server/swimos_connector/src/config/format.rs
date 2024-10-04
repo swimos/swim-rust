@@ -26,7 +26,7 @@ use crate::ser::{
 };
 use crate::LoadError;
 
-/// Supported deserialization formats to use to interpret a component of a Kafka message.
+/// Supported deserialization formats to use to interpret a component of a message.
 #[derive(Clone, Form, Debug, Default, PartialEq, Eq)]
 pub enum DataFormat {
     #[default]

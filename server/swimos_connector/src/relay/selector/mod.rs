@@ -26,6 +26,7 @@ use crate::relay::selector::payload::GenericSendCommandOp;
 use crate::selector::Deferred;
 use crate::SelectorError;
 use std::slice::Iter;
+use std::str::FromStr;
 use std::sync::Arc;
 use swimos_form::Form;
 use swimos_model::Value;
@@ -63,24 +64,67 @@ pub struct Relays {
 }
 
 impl Relays {
-    pub fn len(&self) -> usize {
-        self.inner.chain.len()
-    }
-}
-
-impl<I> From<I> for Relays
-where
-    I: IntoIterator<Item = Relay>,
-{
-    fn from(chain: I) -> Relays {
+    pub fn new<I>(chain: I) -> Relays
+    where
+        I: IntoIterator<Item = Relay>,
+    {
         Relays {
             inner: Arc::new(Inner {
                 chain: chain.into_iter().collect(),
             }),
         }
     }
+
+    pub fn len(&self) -> usize {
+        self.inner.chain.len()
+    }
 }
 
+impl TryFrom<Vec<RelaySpecification>> for Relays {
+    type Error = ParseError;
+
+    fn try_from(value: Vec<RelaySpecification>) -> Result<Self, Self::Error> {
+        let mut chain = Vec::with_capacity(value.len());
+
+        for spec in value {
+            match spec {
+                RelaySpecification::Value(ValueRelaySpecification {
+                    node,
+                    lane,
+                    payload,
+                    required,
+                }) => {
+                    let node = NodeSelector::from_str(node.as_str())?;
+                    let lane = LaneSelector::from_str(lane.as_str())?;
+                    let payload = PayloadSelector::value(payload.as_str(), required)?;
+
+                    chain.push(Relay::new(node, lane, payload));
+                }
+                RelaySpecification::Map(MapRelaySpecification {
+                    node,
+                    lane,
+                    key,
+                    value,
+                    required,
+                    remove_when_no_value,
+                }) => {
+                    let node = NodeSelector::from_str(node.as_str())?;
+                    let lane = LaneSelector::from_str(lane.as_str())?;
+                    let payload = PayloadSelector::map(
+                        key.as_str(),
+                        value.as_str(),
+                        required,
+                        remove_when_no_value,
+                    )?;
+
+                    chain.push(Relay::new(node, lane, payload));
+                }
+            }
+        }
+
+        Ok(Relays::new(chain))
+    }
+}
 impl From<Relay> for Relays {
     fn from(relays: Relay) -> Relays {
         Relays {

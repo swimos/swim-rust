@@ -1,8 +1,23 @@
+// Copyright 2015-2024 Swim Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+use crate::config::FluvioIngressConfiguration;
 use crate::FluvioConnectorError;
 use fluvio::consumer::{ConsumerConfigExt, ConsumerStream, Record};
 use fluvio::dataplane::link::ErrorCode;
 use fluvio::dataplane::record::ConsumerRecord;
-use fluvio::{Fluvio, FluvioConfig, FluvioError, Offset};
+use fluvio::{Fluvio, FluvioError};
 use futures::stream::unfold;
 use futures::Stream;
 use futures::StreamExt;
@@ -12,46 +27,19 @@ use swimos_agent::event_handler::{
     Either, EventHandler, HandlerActionExt, TryHandlerActionExt, UnitHandler,
 };
 use swimos_connector::config::format::DataFormat;
-use swimos_connector::config::{IngressMapLaneSpec, IngressValueLaneSpec};
 use swimos_connector::deser::{BoxMessageDeserializer, MessageView};
 use swimos_connector::ingress::{Lanes, MessageSelector};
 use swimos_connector::{
-    BaseConnector, ConnectorAgent, ConnectorStream, IngressConnector, LoadError, Relays,
+    BaseConnector, ConnectorAgent, ConnectorStream, IngressConnector, LoadError,
 };
 use swimos_utilities::trigger::Sender;
 use tracing::{debug, error};
-
-/// Configuration parameters for the Fluvio connector.
-#[derive(Debug, Clone)]
-pub struct FluvioIngressConnectorConfiguration {
-    /// The topic to consume from.
-    pub topic: String,
-    /// Fluvio library configuration.
-    pub fluvio: FluvioConfig,
-    /// The partition to consume from.
-    pub partition: u32,
-    /// The offset to start consuming from.
-    pub offset: Offset,
-    /// Specifications for the value lanes to define for the connector. This includes a pattern to
-    /// define a selector that will pick out values to set to that lane, from a Fluvio message.
-    pub value_lanes: Vec<IngressValueLaneSpec>,
-    /// Specifications for the map lanes to define for the connector. This includes a pattern to
-    /// define a selector that will pick out updates to apply to that lane, from a Fluvio message.
-    pub map_lanes: Vec<IngressMapLaneSpec>,
-    /// Deserialization format to use to interpret the contents of the keys of the Fluvio messages.
-    pub key_deserializer: DataFormat,
-    /// Deserialization format to use to interpret the contents of the payloads of the Fluvio
-    /// messages.
-    pub payload_deserializer: DataFormat,
-    /// Collection of selectors used for forwarding messages to lanes on agents.
-    pub relays: Relays,
-}
 
 /// A Fluivo ingress [connector](`swimos_connector::IngressConnector`) to ingest a stream of Fluvio
 /// records into a Swim application.
 #[derive(Debug, Clone)]
 pub struct FluvioIngressConnector {
-    configuration: FluvioIngressConnectorConfiguration,
+    configuration: FluvioIngressConfiguration,
     lanes: RefCell<Lanes>,
 }
 
@@ -94,7 +82,7 @@ impl IngressConnector for FluvioIngressConnector {
             configuration,
             lanes,
         } = self;
-        let FluvioIngressConnectorConfiguration {
+        let FluvioIngressConfiguration {
             topic,
             key_deserializer,
             payload_deserializer,
@@ -175,7 +163,7 @@ impl IngressConnector for FluvioIngressConnector {
 }
 
 enum ConnectorState<C> {
-    Uninit(FluvioIngressConnectorConfiguration),
+    Uninit(FluvioIngressConfiguration),
     Running {
         fluvio: Fluvio,
         topic: String,
@@ -212,7 +200,7 @@ where
 }
 
 async fn open(
-    config: FluvioIngressConnectorConfiguration,
+    config: FluvioIngressConfiguration,
 ) -> Result<
     (
         Fluvio,
@@ -220,7 +208,7 @@ async fn open(
     ),
     FluvioConnectorError,
 > {
-    let FluvioIngressConnectorConfiguration {
+    let FluvioIngressConfiguration {
         topic,
         fluvio,
         partition,
