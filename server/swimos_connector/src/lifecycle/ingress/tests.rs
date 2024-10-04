@@ -143,6 +143,7 @@ async fn connector_lifecycle_start() {
     assert_eq!(
         events,
         vec![
+            Event::Init,
             Event::Start,
             Event::Item(0),
             Event::Item(1),
