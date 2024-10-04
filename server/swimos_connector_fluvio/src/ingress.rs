@@ -33,7 +33,7 @@ use swimos_connector::{
     BaseConnector, ConnectorAgent, ConnectorStream, IngressConnector, LoadError,
 };
 use swimos_utilities::trigger::Sender;
-use tracing::{debug, error};
+use tracing::{debug, error, info, trace};
 
 /// A Fluivo ingress [connector](`swimos_connector::IngressConnector`) to ingest a stream of Fluvio
 /// records into a Swim application.
@@ -183,18 +183,34 @@ where
 {
     match consumer.next().await {
         Some(Ok(record)) => {
-            let inner = record.into_inner();
+            let ConsumerRecord {
+                offset,
+                partition,
+                record,
+                ..
+            } = record;
+
+            trace!(?offset, ?partition, topic=%topic, "Handling record");
+
             let view = MessageView {
                 topic,
-                key: inner.key().map(|k| k.as_ref()).unwrap_or_default(),
-                payload: inner.value().as_ref(),
+                key: record.key().map(|k| k.as_ref()).unwrap_or_default(),
+                payload: record.value().as_ref(),
             };
 
-            Some(message_selector.handle_message(&view).map_err(Into::into))
+            let handle_result = message_selector.handle_message(&view).map_err(Into::into);
+            if let Err(err) = &handle_result {
+                error!(error = %err, "Failed to handle message");
+            }
+
+            Some(handle_result)
         }
-        Some(Err(code)) => Some(Err(FluvioConnectorError::Native(FluvioError::Other(
-            code.to_string(),
-        )))),
+        Some(Err(code)) => {
+            error!(%code, "Fluvio consumer failed to read");
+            Some(Err(FluvioConnectorError::Native(FluvioError::Other(
+                code.to_string(),
+            ))))
+        }
         None => None,
     }
 }
@@ -225,17 +241,27 @@ async fn open(
                 .build()
             {
                 Ok(config) => config,
-                Err(e) => {
-                    return Err(FluvioConnectorError::Message(e.to_string()));
+                Err(error) => {
+                    error!(?error, "Failed to build consumer config");
+                    return Err(FluvioConnectorError::Message(error.to_string()));
                 }
             };
 
             match handle.consumer_with_config(consumer_config).await {
-                Ok(consumer) => Ok((handle, consumer)),
-                Err(e) => Err(FluvioConnectorError::Message(e.to_string())),
+                Ok(consumer) => {
+                    info!("Fluvio consumer successfully opened");
+                    Ok((handle, consumer))
+                }
+                Err(error) => {
+                    error!(?error, "Failed to create Fluvio consumer");
+                    Err(FluvioConnectorError::Message(error.to_string()))
+                }
             }
         }
-        Err(e) => Err(FluvioConnectorError::Message(e.to_string())),
+        Err(error) => {
+            error!(?error, "Failed to connect to Fluvio cluster");
+            Err(FluvioConnectorError::Message(error.to_string()))
+        }
     }
 }
 

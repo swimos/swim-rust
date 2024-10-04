@@ -15,9 +15,16 @@
 mod config;
 mod ingress;
 
-use fluvio::dataplane::link::ErrorCode;
-use fluvio::FluvioError;
-use swimos_connector::{LoadError, SelectorError};
+pub use config::*;
+pub use fluvio::dataplane::link::ErrorCode;
+pub use fluvio::FluvioError;
+pub use ingress::FluvioIngressConnector;
+pub use swimos_connector::{
+    config::{IngressMapLaneSpec, IngressValueLaneSpec},
+    deser::Endianness,
+    BadSelector, DeserializationError, InvalidLaneSpec, InvalidLanes, LoadError, SelectorError,
+    SerializationError,
+};
 
 /// Errors that can be produced by the Fluvio connector.
 #[derive(thiserror::Error, Debug)]

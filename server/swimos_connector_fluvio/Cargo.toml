@@ -8,6 +8,11 @@ homepage.workspace = true
 description = "SwimOS Connector for Fluvio"
 repository = "https://github.com/swimos/swim-rust/tree/main/server/swimos_connector_fluvio"
 
+[features]
+default = []
+json = ["swimos_connector/json"]
+avro = ["swimos_connector/json"]
+
 [dependencies]
 fluvio = { workspace = true }
 futures = { workspace = true }
