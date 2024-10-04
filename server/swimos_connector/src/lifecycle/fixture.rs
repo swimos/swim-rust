@@ -12,7 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{cell::RefCell, collections::HashMap, num::NonZeroUsize};
+use std::{
+    cell::{Cell, RefCell},
+    collections::HashMap,
+    num::NonZeroUsize,
+};
 
 use bytes::BytesMut;
 use futures::{
@@ -23,8 +27,8 @@ use futures::{
 use swimos_agent::{
     agent_model::downlink::{BoxDownlinkChannel, BoxDownlinkChannelFactory, DownlinkChannelEvent},
     event_handler::{
-        ActionContext, DownlinkSpawnOnDone, EventHandler, EventHandlerError, HandlerFuture,
-        LaneSpawnOnDone, LaneSpawner, LinkSpawner, Spawner, StepResult,
+        ActionContext, BoxHandlerAction, DownlinkSpawnOnDone, EventHandler, EventHandlerError,
+        HandlerFuture, LaneSpawnOnDone, LaneSpawner, LinkSpawner, Spawner, StepResult,
     },
 };
 use swimos_agent_protocol::{
@@ -56,6 +60,7 @@ pub struct TestSpawner {
     downlinks: RefCell<Vec<DownlinkRecord>>,
     timers: RefCell<Vec<TimerRecord>>,
     lanes: RefCell<Vec<LaneRecord>>,
+    lane_id: Cell<u64>,
 }
 
 impl TestSpawner {
@@ -71,6 +76,19 @@ impl TestSpawner {
             timers,
             lanes,
         }
+    }
+
+    fn lanes_on_done(&self) -> Vec<BoxHandlerAction<'static, ConnectorAgent, ()>> {
+        let mut guard = self.lanes.borrow_mut();
+        let mut handlers = vec![];
+        for LaneRecord { on_done, .. } in guard.iter_mut() {
+            let n = self.lane_id.get();
+            self.lane_id.set(n + 1);
+            if let Some(on_done) = on_done.take() {
+                handlers.push(on_done(Ok(n)));
+            }
+        }
+        handlers
     }
 }
 
@@ -106,10 +124,20 @@ pub struct TimerRecord {
     pub id: u64,
 }
 
-#[derive(Debug)]
 pub struct LaneRecord {
     pub name: String,
     pub kind: WarpLaneKind,
+    pub on_done: Option<LaneSpawnOnDone<ConnectorAgent>>,
+}
+
+impl std::fmt::Debug for LaneRecord {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LaneRecord")
+            .field("name", &self.name)
+            .field("kind", &self.kind)
+            .field("on_done", &"...")
+            .finish()
+    }
 }
 
 #[derive(Debug)]
@@ -149,11 +177,12 @@ impl LaneSpawner<ConnectorAgent> for TestSpawner {
         &self,
         name: &str,
         kind: WarpLaneKind,
-        _on_done: LaneSpawnOnDone<ConnectorAgent>,
+        on_done: LaneSpawnOnDone<ConnectorAgent>,
     ) -> Result<(), DynamicRegistrationError> {
         self.lanes.borrow_mut().push(LaneRecord {
             name: name.to_string(),
             kind,
+            on_done: Some(on_done),
         });
         Ok(())
     }
@@ -175,6 +204,32 @@ where
             }
             None => break,
         }
+    }
+    Ok(spawner.take_requests())
+}
+
+pub async fn run_handle_with_futs_and_lanes<H>(
+    agent: &ConnectorAgent,
+    handler: H,
+) -> Result<RequestsRecord, Box<dyn std::error::Error + Send>>
+where
+    H: EventHandler<ConnectorAgent>,
+{
+    let mut spawner = TestSpawner::default();
+    run_handler(&spawner, agent, handler)?;
+    let mut lane_handlers = spawner.lanes_on_done();
+    while !(spawner.futures.is_empty() && lane_handlers.is_empty()) {
+        if let Some(h) = lane_handlers.pop() {
+            run_handler(&spawner, agent, h)?;
+        } else {
+            match spawner.futures.next().await {
+                Some(h) => {
+                    run_handler(&spawner, agent, h)?;
+                }
+                None => break,
+            }
+        }
+        lane_handlers.extend(spawner.lanes_on_done());
     }
     Ok(spawner.take_requests())
 }

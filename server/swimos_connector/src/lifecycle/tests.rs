@@ -20,11 +20,11 @@ use swimos_utilities::trigger;
 use tokio::time::{timeout, Duration};
 
 use crate::{
-    lifecycle::fixture::{LaneRecord, RequestsRecord},
+    lifecycle::fixture::{run_handle_with_futs_and_lanes, LaneRecord, RequestsRecord},
     ConnectorAgent,
 };
 
-use super::{fixture::run_handle_with_futs, open_lanes};
+use super::open_lanes;
 
 const TEST_TIMEOUT: Duration = Duration::from_secs(5);
 const VALUE_LANE: &str = "value_lane";
@@ -42,7 +42,8 @@ async fn open_connector_lanes() {
     let handler = open_lanes(lanes, tx);
     let agent = ConnectorAgent::default();
 
-    let handler_task = run_handle_with_futs(&agent, handler).map(|r| r.expect("Handler failed."));
+    let handler_task =
+        run_handle_with_futs_and_lanes(&agent, handler).map(|r| r.expect("Handler failed."));
 
     let (requests, done_result) = timeout(TEST_TIMEOUT, join(handler_task, rx))
         .await
@@ -53,9 +54,14 @@ async fn open_connector_lanes() {
         timers,
         lanes,
     } = requests;
+    assert!(done_result.is_ok());
     assert!(downlinks.is_empty());
     assert!(timers.is_empty());
-    assert!(done_result.is_ok());
+    assert_eq!(lanes.len(), 2);
+    let lanes_map = lanes
+        .into_iter()
+        .map(|LaneRecord { name, kind, .. }| (name, kind))
+        .collect::<HashMap<_, _>>();
 
     let expected_lanes = [
         (VALUE_LANE.to_string(), WarpLaneKind::Value),
@@ -64,10 +70,5 @@ async fn open_connector_lanes() {
     .into_iter()
     .collect::<HashMap<_, _>>();
 
-    assert_eq!(lanes.len(), 2);
-    let lanes_map = lanes
-        .into_iter()
-        .map(|LaneRecord { name, kind, .. }| (name, kind))
-        .collect::<HashMap<_, _>>();
     assert_eq!(lanes_map, expected_lanes);
 }
