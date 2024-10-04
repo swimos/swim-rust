@@ -70,6 +70,10 @@ impl Relays {
     pub fn len(&self) -> usize {
         self.inner.chain.len()
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.inner.chain.is_empty()
+    }
 }
 
 impl TryFrom<Vec<RelaySpecification>> for Relays {
@@ -179,8 +183,8 @@ impl Relay {
             lane,
             payload,
         } = self;
-        let node_uri = node.select(key, value, &topic)?;
-        let lane_uri = lane.select(key, value, &topic)?;
-        payload.select(node_uri, lane_uri, key, value, &topic)
+        let node_uri = node.select(key, value, topic)?;
+        let lane_uri = lane.select(key, value, topic)?;
+        payload.select(node_uri, lane_uri, key, value, topic)
     }
 }
