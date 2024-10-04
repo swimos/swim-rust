@@ -48,7 +48,7 @@ use swimos_model::Value;
 /// # Example
 /// ```
 /// # use std::error::Error;
-/// use swimos_connector::relay::NodeSelector;
+/// use swimos_connector::NodeSelector;
 /// use std::str::FromStr;
 ///
 /// # fn main() -> Result<(), Box<dyn Error + 'static>> {

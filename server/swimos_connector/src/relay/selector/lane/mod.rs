@@ -45,7 +45,7 @@ mod tests;
 /// # Example
 /// ```
 /// # use std::error::Error;
-/// use swimos_connector::relay::LaneSelector;
+/// use swimos_connector::LaneSelector;
 /// use std::str::FromStr;
 ///
 /// # fn main() -> Result<(), Box<dyn Error + 'static>> {

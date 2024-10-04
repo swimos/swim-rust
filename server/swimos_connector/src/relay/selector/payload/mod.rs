@@ -74,7 +74,7 @@ impl PayloadSelector {
     ///
     /// ```
     /// # use std::error::Error;
-    /// use swimos_connector::relay::PayloadSelector;
+    /// use swimos_connector::PayloadSelector;
     ///
     /// # fn main() -> Result<(), Box<dyn Error + 'static>> {
     /// let selector = PayloadSelector::value("$key.name", true)?;
@@ -105,7 +105,7 @@ impl PayloadSelector {
     ///
     /// ```
     /// # use std::error::Error;
-    /// use swimos_connector::relay::PayloadSelector;
+    /// use swimos_connector::PayloadSelector;
     ///
     /// # fn main() -> Result<(), Box<dyn Error + 'static>> {
     /// let selector = PayloadSelector::map("$key", "$value", true, true)?;
