@@ -122,7 +122,7 @@ impl<OnDone> OpenLane<OnDone> {
     /// * `name` - The name of the new lane.
     /// * `kind` - The kind of the new lane.
     /// * `on_done` - A callback tht produces an event handler that will be executed after the request completes.
-    pub(crate) fn new(name: String, kind: WarpLaneKind, on_done: OnDone) -> Self {
+    pub fn new(name: String, kind: WarpLaneKind, on_done: OnDone) -> Self {
         OpenLane {
             name,
             kind,

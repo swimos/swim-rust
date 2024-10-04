@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use futures::future::join;
 use swimos_agent::{
     agent_lifecycle::{
         item_event::ItemEvent, on_init::OnInit, on_start::OnStart, on_stop::OnStop,
@@ -22,11 +23,15 @@ use swimos_agent::{
     },
     AgentMetadata,
 };
+use swimos_api::agent::WarpLaneKind;
 use swimos_utilities::trigger;
 
 use crate::{
     connector::suspend_connector, error::ConnectorInitError, ConnectorAgent, IngressConnector,
+    IngressContext,
 };
+
+use super::open_lanes;
 
 #[cfg(test)]
 mod tests;
@@ -55,6 +60,17 @@ where
     }
 }
 
+#[derive(Default)]
+struct RequestCollector {
+    lanes: Vec<(String, WarpLaneKind)>,
+}
+
+impl IngressContext for RequestCollector {
+    fn open_lane(&mut self, name: &str, kind: WarpLaneKind) {
+        self.lanes.push((name.to_string(), kind));
+    }
+}
+
 impl<C> OnStart<ConnectorAgent> for IngressConnectorLifecycle<C>
 where
     C: IngressConnector + Send,
@@ -62,19 +78,27 @@ where
     fn on_start(&self) -> impl EventHandler<ConnectorAgent> + '_ {
         let IngressConnectorLifecycle(connector) = self;
         let handler_context: HandlerContext<ConnectorAgent> = HandlerContext::default();
-        let (tx, rx) = trigger::trigger();
+        let (on_start_tx, on_start_rx) = trigger::trigger();
+        let (lanes_tx, lanes_rx) = trigger::trigger();
+        let mut collector = RequestCollector::default();
+        connector.initialize(&mut collector);
+        let open_lanes = open_lanes(collector.lanes, lanes_tx);
         let suspend = handler_context
             .effect(|| connector.create_stream())
             .try_handler()
             .and_then(move |stream| {
                 handler_context.suspend(async move {
+                    let (r1, r2) = join(lanes_rx, on_start_rx).await;
                     handler_context
-                        .value(rx.await.map_err(|_| ConnectorInitError))
+                        .value(r1.and(r2).map_err(|_| ConnectorInitError))
                         .try_handler()
                         .followed_by(suspend_connector(stream))
                 })
             });
-        connector.on_start(tx).followed_by(suspend)
+        connector
+            .on_start(on_start_tx)
+            .followed_by(open_lanes)
+            .followed_by(suspend)
     }
 }
 

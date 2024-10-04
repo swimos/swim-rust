@@ -22,7 +22,8 @@ mod route;
 mod test_support;
 pub use connector::{
     BaseConnector, ConnectorFuture, ConnectorHandler, ConnectorStream, EgressConnector,
-    EgressConnectorSender, IngressConnector, InitializationContext, MessageSource, SendResult,
+    EgressConnectorSender, EgressContext, IngressConnector, IngressContext, MessageSource,
+    SendResult,
 };
 pub use error::ConnectorInitError;
 pub use generic::{ConnectorAgent, MapLaneSelectorFn, ValueLaneSelectorFn};

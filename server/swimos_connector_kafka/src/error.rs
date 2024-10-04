@@ -92,9 +92,6 @@ pub enum InvalidLanes {
     /// The specification of a line as not valid
     #[error(transparent)]
     Spec(#[from] InvalidLaneSpec),
-    /// A connector has too many lanes.
-    #[error("The connector has {0} lanes which cannot fit in a u32.")]
-    TooManyLanes(usize),
     /// There are lane descriptors with the same name.
     #[error("The lane name {0} occurs more than once.")]
     NameCollision(String),

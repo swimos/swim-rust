@@ -54,6 +54,17 @@ impl<T> Address<T> {
     }
 }
 
+impl Address<&str> {
+    pub fn owned(&self) -> Address<String> {
+        let Address { host, node, lane } = self;
+        Address {
+            host: host.as_ref().map(|s| s.to_string()),
+            node: node.to_string(),
+            lane: lane.to_string(),
+        }
+    }
+}
+
 impl<T: Display + Debug> Display for Address<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(

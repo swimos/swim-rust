@@ -55,6 +55,7 @@ pub struct TestSpawner {
     futures: FuturesUnordered<HandlerFuture<ConnectorAgent>>,
     downlinks: RefCell<Vec<DownlinkRecord>>,
     timers: RefCell<Vec<TimerRecord>>,
+    lanes: RefCell<Vec<LaneRecord>>,
 }
 
 impl TestSpawner {
@@ -63,7 +64,13 @@ impl TestSpawner {
         let downlinks = std::mem::take(&mut *guard);
         let mut guard = self.timers.borrow_mut();
         let timers = std::mem::take(&mut *guard);
-        RequestsRecord { downlinks, timers }
+        let mut guard = self.lanes.borrow_mut();
+        let lanes = std::mem::take(&mut *guard);
+        RequestsRecord {
+            downlinks,
+            timers,
+            lanes,
+        }
     }
 }
 
@@ -100,14 +107,21 @@ pub struct TimerRecord {
 }
 
 #[derive(Debug)]
+pub struct LaneRecord {
+    pub name: String,
+    pub kind: WarpLaneKind,
+}
+
+#[derive(Debug)]
 pub struct RequestsRecord {
     pub downlinks: Vec<DownlinkRecord>,
     pub timers: Vec<TimerRecord>,
+    pub lanes: Vec<LaneRecord>,
 }
 
 impl RequestsRecord {
     pub fn is_empty(&self) -> bool {
-        self.downlinks.is_empty() && self.timers.is_empty()
+        self.downlinks.is_empty() && self.timers.is_empty() && self.lanes.is_empty()
     }
 }
 
@@ -133,11 +147,15 @@ impl LinkSpawner<ConnectorAgent> for TestSpawner {
 impl LaneSpawner<ConnectorAgent> for TestSpawner {
     fn spawn_warp_lane(
         &self,
-        _name: &str,
-        _kind: WarpLaneKind,
+        name: &str,
+        kind: WarpLaneKind,
         _on_done: LaneSpawnOnDone<ConnectorAgent>,
     ) -> Result<(), DynamicRegistrationError> {
-        panic!("Spawning lanes not supported.");
+        self.lanes.borrow_mut().push(LaneRecord {
+            name: name.to_string(),
+            kind,
+        });
+        Ok(())
     }
 }
 

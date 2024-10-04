@@ -17,16 +17,15 @@ use std::{cell::RefCell, collections::HashMap, sync::Arc, time::Duration};
 use bytes::BytesMut;
 use futures::{channel::oneshot, FutureExt};
 use swimos_agent::event_handler::{
-    EventHandler, HandlerActionExt, Sequentially, TryHandlerActionExt, UnitHandler,
+    EventHandler, HandlerActionExt, TryHandlerActionExt, UnitHandler,
 };
-use swimos_api::address::Address;
+use swimos_api::{address::Address, agent::WarpLaneKind};
 use swimos_connector::{
     BaseConnector, ConnectorAgent, ConnectorFuture, EgressConnector, EgressConnectorSender,
-    InitializationContext, MessageSource, SendResult,
+    EgressContext, MessageSource, SendResult,
 };
 use swimos_model::Value;
 use swimos_utilities::trigger;
-use tokio::sync::Semaphore;
 
 use crate::{
     config::KafkaEgressConfiguration,
@@ -152,13 +151,11 @@ where
         } = self;
         let context: ConnHandlerContext = Default::default();
         let (ser_tx, ser_rx) = oneshot::channel();
-        let semaphore = Arc::new(Semaphore::new(0));
-        let ser_done = semaphore.clone();
         let ser_fut = load_serializers(configuration.clone()).map(move |loaded| {
             context
                 .effect(move || match ser_tx.send(loaded?) {
                     Ok(_) => {
-                        ser_done.add_permits(1);
+                        init_complete.trigger();
                         Ok(())
                     }
                     Err(_) => Err(LoadError::Cancelled),
@@ -171,12 +168,9 @@ where
             .value(MessageSelectors::try_from(configuration))
             .try_handler()
             .and_then(move |extractors: MessageSelectors| {
-                let open_lanes =
-                    extractors.open_lanes(init_complete, semaphore, ADDITIONAL_PARTIES);
-                let set_state = context.effect(move || {
+                context.effect(move || {
                     *(state.borrow_mut()) = Some(ConnectorState::new(ser_rx, extractors));
-                });
-                open_lanes.followed_by(set_state)
+                })
             });
         suspend_ser.followed_by(setup_agent)
     }
@@ -229,28 +223,39 @@ where
         Ok(sender)
     }
 
-    fn open_downlinks(&self, context: &mut dyn InitializationContext) {
+    fn initialize(&self, context: &mut dyn EgressContext) {
+        open_lanes(&self.configuration, context);
         open_downlinks(&self.configuration, context);
     }
 }
 
-fn open_downlinks(config: &KafkaEgressConfiguration, context: &mut dyn InitializationContext) {
+fn open_lanes(config: &KafkaEgressConfiguration, context: &mut dyn EgressContext) {
+    let KafkaEgressConfiguration {
+        value_lanes,
+        map_lanes,
+        ..
+    } = config;
+    for value_lane in value_lanes {
+        context.open_lane(&value_lane.name, WarpLaneKind::Value);
+    }
+    for map_lane in map_lanes {
+        context.open_lane(&map_lane.name, WarpLaneKind::Map);
+    }
+}
+
+fn open_downlinks(config: &KafkaEgressConfiguration, context: &mut dyn EgressContext) {
     let KafkaEgressConfiguration {
         value_downlinks,
         map_downlinks,
         ..
     } = config;
     for value_dl in value_downlinks {
-        let addr = Address::from(&value_dl.address);
-        context.open_event_downlink(addr);
+        context.open_event_downlink(value_dl.address.borrow_as_addr());
     }
     for map_dl in map_downlinks {
-        let addr = Address::from(&map_dl.address);
-        context.open_map_downlink(addr);
+        context.open_map_downlink(map_dl.address.borrow_as_addr());
     }
 }
-
-const ADDITIONAL_PARTIES: u32 = 1;
 
 impl MessageSelectors {
     pub fn select_source(&self, source: MessageSource<'_>) -> Option<&MessageSelector> {
@@ -264,56 +269,6 @@ impl MessageSelectors {
                 .get(addr)
                 .or_else(|| self.map_downlinks().get(addr)),
         }
-    }
-
-    fn open_lanes(
-        &self,
-        init_complete: trigger::Sender,
-        semaphore: Arc<Semaphore>,
-        additional_parties: u32,
-    ) -> impl EventHandler<ConnectorAgent> + 'static {
-        let handler_context = ConnHandlerContext::default();
-        let total = self.total_lanes();
-
-        let wait_handle = semaphore.clone();
-        let await_done = async move {
-            let result = wait_handle
-                .acquire_many(additional_parties + total)
-                .await
-                .map(|_| ());
-            handler_context
-                .value(result)
-                .try_handler()
-                .followed_by(handler_context.effect(|| {
-                    let _ = init_complete.trigger();
-                }))
-        };
-
-        let value_lanes = self.value_lanes();
-        let map_lanes = self.map_lanes();
-
-        let mut open_value_lanes = Vec::with_capacity(value_lanes.len());
-        let mut open_map_lanes = Vec::with_capacity(map_lanes.len());
-
-        for name in value_lanes.keys() {
-            let sem_cpy = semaphore.clone();
-            open_value_lanes.push(handler_context.open_value_lane(name, move |_| {
-                handler_context.effect(move || sem_cpy.add_permits(1))
-            }));
-        }
-
-        for name in map_lanes.keys() {
-            let sem_cpy = semaphore.clone();
-            open_map_lanes.push(handler_context.open_map_lane(name, move |_| {
-                handler_context.effect(move || sem_cpy.add_permits(1))
-            }));
-        }
-
-        handler_context
-            .suspend(await_done)
-            .followed_by(Sequentially::new(open_value_lanes))
-            .followed_by(Sequentially::new(open_map_lanes))
-            .discard()
     }
 }
 

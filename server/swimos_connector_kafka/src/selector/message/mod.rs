@@ -273,10 +273,6 @@ impl MessageSelectors {
     pub fn map_downlinks(&self) -> &HashMap<Address<String>, MessageSelector> {
         &self.map_downlinks
     }
-
-    pub fn total_lanes(&self) -> u32 {
-        self.total_lanes
-    }
 }
 
 impl TryFrom<&KafkaEgressConfiguration> for MessageSelectors {

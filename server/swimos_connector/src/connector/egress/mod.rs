@@ -14,10 +14,10 @@
 
 use std::{collections::HashMap, error::Error, time::Duration};
 
-use swimos_api::address::Address;
+use swimos_api::{address::Address, agent::WarpLaneKind};
 use swimos_model::Value;
 
-use super::{BaseConnector, ConnectorFuture, InitializationContext};
+use super::{BaseConnector, ConnectorFuture};
 
 /// An egress connector is a specialized [agent lifecycle](swimos_agent::agent_lifecycle::AgentLifecycle) that provides
 /// an agent that acts as an egress point for a Swim application to some external data source.
@@ -42,12 +42,12 @@ pub trait EgressConnector: BaseConnector {
     /// The type of the sender created by this connector.
     type Sender: EgressConnectorSender<Self::SendError> + 'static;
 
-    /// Open the downlinks required by the connector. This is called during the agent's `on_start`
+    /// Open the lanes and downlinks required by the connector. This is called during the agent's `on_start`
     /// event.
     ///
     /// # Arguments
-    /// * `context` - The connector makes calls to the context to request the downlinks.
-    fn open_downlinks(&self, context: &mut dyn InitializationContext);
+    /// * `context` - The connector makes calls to the context to request the lanes and downlinks.
+    fn initialize(&self, context: &mut dyn EgressContext);
 
     /// Create sender for the connector which is used to send messages to the external data sink. This is called
     /// exactly ones during the agent's `on_start` event but must implement [`Clone`] so that copies can be passed
@@ -137,4 +137,22 @@ pub trait EgressConnectorSender<SendError>: Send + Clone {
         &self,
         timer_id: u64,
     ) -> Option<SendResult<impl ConnectorFuture<SendError>, SendError>>;
+}
+
+/// A reference to an egress context is passed to an [egress connector](`EgressConnector`) when it starts
+/// allowing it to request that lanes or downlinks to remote lanes be opened.
+pub trait EgressContext {
+    fn open_lane(&mut self, name: &str, kind: WarpLaneKind);
+
+    /// Request an event downlink to a remote lane.
+    ///
+    /// # Arguments
+    /// * `address` - The address of the remote lane.
+    fn open_event_downlink(&mut self, address: Address<&str>);
+
+    /// Request a map-event downlink to a remote lane.
+    ///
+    /// # Arguments
+    /// * `address` - The address of the remote lane.
+    fn open_map_downlink(&mut self, address: Address<&str>);
 }

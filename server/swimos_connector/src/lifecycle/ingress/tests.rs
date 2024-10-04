@@ -29,11 +29,13 @@ use thiserror::Error;
 use crate::{
     connector::BaseConnector, lifecycle::fixture::run_handle_with_futs, ConnectorAgent,
     ConnectorInitError, ConnectorStream, IngressConnector, IngressConnectorLifecycle,
+    IngressContext,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Event {
     Start,
+    Init,
     Stop,
     Item(usize),
 }
@@ -122,6 +124,10 @@ impl IngressConnector for TestConnector {
                 },
             )))
         }
+    }
+
+    fn initialize(&self, _context: &mut dyn IngressContext) {
+        self.inner.lock().push(Event::Init);
     }
 }
 
