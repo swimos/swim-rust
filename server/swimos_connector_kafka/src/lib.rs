@@ -20,7 +20,7 @@ mod selector;
 
 pub use config::{
     DataFormat, DownlinkAddress, EgressDownlinkSpec, EgressLaneSpec, ExtractionSpec,
-    KafkaEgressConfiguration, KafkaIngressConfiguration, KafkaLogLevel,
+    KafkaEgressConfiguration, KafkaIngressConfiguration, KafkaIngressSpecification, KafkaLogLevel,
 };
 pub use connector::{KafkaEgressConnector, KafkaIngressConnector};
 pub use error::{
@@ -30,6 +30,6 @@ pub use error::{
 pub use swimos_connector::{
     config::{IngressMapLaneSpec, IngressValueLaneSpec},
     deser::Endianness,
-    BadSelector, DeserializationError, InvalidLaneSpec, InvalidLanes, LaneSelectorError, LoadError,
+    BadSelector, DeserializationError, InvalidLaneSpec, InvalidLanes, LoadError, SelectorError,
     SerializationError,
 };

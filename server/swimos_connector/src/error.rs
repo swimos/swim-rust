@@ -86,7 +86,7 @@ impl From<ParseIntError> for BadSelector {
 
 /// Errors that can be produced attempting to select components of a Message.
 #[derive(Debug, Error)]
-pub enum LaneSelectorError {
+pub enum SelectorError {
     /// A selector failed to provide a value for a required lane.
     #[error("The lane '{0}' is required but did not occur in a message.")]
     MissingRequiredLane(String),

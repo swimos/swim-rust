@@ -14,14 +14,18 @@
 
 use super::{DataFormat, KafkaLogLevel};
 use std::collections::HashMap;
+use std::str::FromStr;
 use swimos_connector::config::{IngressMapLaneSpec, IngressValueLaneSpec};
-use swimos_connector::Relays;
+use swimos_connector::{
+    LaneSelector, MapRelaySpecification, NodeSelector, ParseError, PayloadSelector, Relay,
+    RelaySpecification, Relays, ValueRelaySpecification,
+};
 use swimos_form::Form;
 
 /// Configuration parameters for the Kafka ingress connector.
 #[derive(Clone, Debug, Form, PartialEq, Eq)]
 #[form(tag = "kafka")]
-pub struct KafkaIngressConfiguration {
+pub struct KafkaIngressSpecification {
     /// Properties to configure the Kafka consumer.
     pub properties: HashMap<String, String>,
     /// Log level for the Kafka consumer.
@@ -38,4 +42,82 @@ pub struct KafkaIngressConfiguration {
     pub payload_deserializer: DataFormat,
     /// A list of Kafka topics to subscribe to.
     pub topics: Vec<String>,
+    /// Collection of relays used for forwarding messages to lanes on agents.
+    pub relays: Vec<RelaySpecification>,
+}
+
+impl KafkaIngressSpecification {
+    pub fn build(self) -> Result<KafkaIngressConfiguration, ParseError> {
+        let KafkaIngressSpecification {
+            properties,
+            log_level,
+            value_lanes,
+            map_lanes,
+            key_deserializer,
+            payload_deserializer,
+            topics,
+            relays,
+        } = self;
+
+        let mut chain = Vec::with_capacity(relays.len());
+
+        for spec in relays {
+            match spec {
+                RelaySpecification::Value(ValueRelaySpecification {
+                    node,
+                    lane,
+                    payload,
+                    required,
+                }) => {
+                    let node = NodeSelector::from_str(node.as_str())?;
+                    let lane = LaneSelector::from_str(lane.as_str())?;
+                    let payload = PayloadSelector::value(payload.as_str(), required)?;
+
+                    chain.push(Relay::new(node, lane, payload));
+                }
+                RelaySpecification::Map(MapRelaySpecification {
+                    node,
+                    lane,
+                    key,
+                    value,
+                    required,
+                    remove_when_no_value,
+                }) => {
+                    let node = NodeSelector::from_str(node.as_str())?;
+                    let lane = LaneSelector::from_str(lane.as_str())?;
+                    let payload = PayloadSelector::map(
+                        key.as_str(),
+                        value.as_str(),
+                        required,
+                        remove_when_no_value,
+                    )?;
+
+                    chain.push(Relay::new(node, lane, payload));
+                }
+            }
+        }
+
+        Ok(KafkaIngressConfiguration {
+            properties,
+            log_level,
+            value_lanes,
+            map_lanes,
+            key_deserializer,
+            payload_deserializer,
+            topics,
+            relays: Relays::from(chain),
+        })
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct KafkaIngressConfiguration {
+    pub properties: HashMap<String, String>,
+    pub log_level: KafkaLogLevel,
+    pub value_lanes: Vec<IngressValueLaneSpec>,
+    pub map_lanes: Vec<IngressMapLaneSpec>,
+    pub key_deserializer: DataFormat,
+    pub payload_deserializer: DataFormat,
+    pub topics: Vec<String>,
+    pub relays: Relays,
 }

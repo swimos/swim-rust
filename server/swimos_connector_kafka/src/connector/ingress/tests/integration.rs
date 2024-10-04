@@ -61,6 +61,7 @@ fn make_config() -> KafkaIngressConfiguration {
         key_deserializer: DataFormat::Recon,
         payload_deserializer: DataFormat::Recon,
         topics: vec!["topic".to_string()],
+        relays: Default::default(),
     }
 }
 

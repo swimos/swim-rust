@@ -22,7 +22,7 @@ use crate::relay::selector::{
     ParseError, Part, SelectorPatternIter,
 };
 use crate::selector::Deferred;
-use crate::LaneSelectorError;
+use crate::SelectorError;
 use nom::{
     branch::alt,
     bytes::complete::take_while_m_n,
@@ -69,7 +69,7 @@ impl NodeSelector {
         key: &mut K,
         value: &mut V,
         topic: &Value,
-    ) -> Result<String, LaneSelectorError>
+    ) -> Result<String, SelectorError>
     where
         K: Deferred,
         V: Deferred,
@@ -82,7 +82,7 @@ impl NodeSelector {
                 Part::Selector(selector) => {
                     let value = selector
                         .select(topic, key, value)?
-                        .ok_or(LaneSelectorError::InvalidRecord("".to_string()))?;
+                        .ok_or(SelectorError::InvalidRecord("".to_string()))?;
                     match value {
                         Value::BooleanValue(v) => {
                             node_uri.push_str(if *v { "true" } else { "false" })
@@ -94,9 +94,7 @@ impl NodeSelector {
                         Value::BigInt(v) => node_uri.push_str(&v.to_string()),
                         Value::BigUint(v) => node_uri.push_str(&v.to_string()),
                         Value::Text(v) => node_uri.push_str(v.as_str()),
-                        _ => {
-                            return Err(LaneSelectorError::InvalidRecord(self.pattern.to_string()))
-                        }
+                        _ => return Err(SelectorError::InvalidRecord(self.pattern.to_string())),
                     }
                 }
             }

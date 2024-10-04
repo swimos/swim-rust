@@ -2,7 +2,7 @@ use crate::config::{IngressMapLaneSpec, IngressValueLaneSpec};
 use crate::deser::{BoxMessageDeserializer, MessagePart, MessageView};
 use crate::relay::Relays;
 use crate::selector::{Computed, MapLaneSelector, ValueLaneSelector};
-use crate::{ConnectorAgent, InvalidLanes, LaneSelectorError};
+use crate::{ConnectorAgent, InvalidLanes, SelectorError};
 use std::collections::HashSet;
 use std::sync::Arc;
 use swimos_agent::agent_lifecycle::HandlerContext;
@@ -163,7 +163,7 @@ impl MessageSelector {
     pub fn handle_message<'a>(
         &self,
         message: &'a MessageView<'a>,
-    ) -> Result<impl EventHandler<ConnectorAgent> + Send + 'static, LaneSelectorError> {
+    ) -> Result<impl EventHandler<ConnectorAgent> + Send + 'static, SelectorError> {
         let MessageSelector {
             key_deserializer,
             value_deserializer,

@@ -18,9 +18,9 @@ mod tests;
 use std::cell::RefCell;
 
 use super::ConnHandlerContext;
-use crate::config::KafkaIngressConfiguration;
 use crate::error::KafkaConnectorError;
 use crate::facade::{ConsumerFactory, KafkaConsumer, KafkaFactory, KafkaMessage};
+use crate::KafkaIngressConfiguration;
 use futures::{stream::unfold, Future};
 use swimos_agent::agent_lifecycle::HandlerContext;
 use swimos_agent::event_handler::{
@@ -29,7 +29,7 @@ use swimos_agent::event_handler::{
 use swimos_connector::deser::MessageView;
 use swimos_connector::ingress::{Lanes, MessageSelector};
 use swimos_connector::{
-    BaseConnector, ConnectorAgent, ConnectorStream, IngressConnector, LaneSelectorError,
+    BaseConnector, ConnectorAgent, ConnectorStream, IngressConnector, SelectorError,
 };
 use swimos_utilities::trigger;
 use tokio::sync::mpsc;
@@ -39,7 +39,7 @@ use tracing::{debug, error, info};
 /// provide a lifecycle for a [connector agent](ConnectorAgent).
 ///
 /// The details of the Kafka brokers and the topics to subscribe to are provided through the
-/// [configuration](KafkaIngressConfiguration) which also includes descriptors of the lanes that the agent should
+/// [configuration](KafkaIngressSpecification) which also includes descriptors of the lanes that the agent should
 /// expose. When the agent starts, the connector will register all of the lanes specified in the configuration and
 /// then attempt to open a Kafka consumer which will be spawned into the agent's own task. Each time a Kafka message
 /// is received, an event handler will be executed in the agent which updates the states of the lanes, according
@@ -137,13 +137,14 @@ where
 
         let key_deser_cpy = configuration.key_deserializer.clone();
         let payload_deser_cpy = configuration.payload_deserializer.clone();
+        let relays = configuration.relays.clone();
         let lanes = lanes.take();
+
         let consumer_task = Box::pin(async move {
             debug!(key = ?key_deser_cpy, payload = ?payload_deser_cpy, "Attempting to load message deserializers.");
             let key_deser = key_deser_cpy.load_deserializer().await?;
             let payload_deser = payload_deser_cpy.load_deserializer().await?;
-            let selector =
-                MessageSelector::new(key_deser, payload_deser, lanes, Default::default());
+            let selector = MessageSelector::new(key_deser, payload_deser, lanes, relays);
             let state = MessageState::new(consumer, selector, message_to_handler, tx);
             state.consume_messages(None).await
         });
@@ -157,7 +158,7 @@ fn message_to_handler<'a>(
     selector: &'a MessageSelector,
     message: &'a MessageView<'a>,
     trigger_tx: trigger::Sender,
-) -> Result<impl EventHandler<ConnectorAgent> + Send + 'static, LaneSelectorError> {
+) -> Result<impl EventHandler<ConnectorAgent> + Send + 'static, SelectorError> {
     let handler_context = HandlerContext::default();
     selector.handle_message(message).map(|handler| {
         handler.followed_by(handler_context.effect(move || {
@@ -181,7 +182,7 @@ where
             &'a MessageSelector,
             &'a MessageView<'a>,
             trigger::Sender,
-        ) -> Result<H, LaneSelectorError>
+        ) -> Result<H, SelectorError>
         + Send
         + 'static,
     H: EventHandler<ConnectorAgent> + Send + 'static,

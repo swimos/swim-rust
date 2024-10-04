@@ -18,7 +18,7 @@ use crate::relay::selector::{
     ParseError, Part,
 };
 use crate::selector::Deferred;
-use crate::LaneSelectorError;
+use crate::SelectorError;
 use frunk::Coprod;
 use nom::{
     branch::alt,
@@ -139,7 +139,7 @@ impl PayloadSelector {
         deferred_key: &mut K,
         deferred_value: &mut V,
         topic: &Value,
-    ) -> Result<GenericSendCommandOp, LaneSelectorError>
+    ) -> Result<GenericSendCommandOp, SelectorError>
     where
         K: Deferred,
         V: Deferred,
@@ -147,24 +147,21 @@ impl PayloadSelector {
         let PayloadSelector { inner, required } = self;
 
         let op = match inner {
-            Inner::Value { input, segment } => {
-                build_value(
-                    *required,
-                    input.as_str(),
-                    segment,
-                    deferred_key,
-                    deferred_value,
-                    topic,
-                )?
-                .map(|payload| {
-                    SendCommandOp::inject(SendCommand::new(
-                        Address::new(None, node_uri, lane_uri),
-                        payload,
-                        false,
-                    ))
-                })
-                // Ok(Discard::<Option<SendCommandOp>>::new(op))
-            }
+            Inner::Value { input, segment } => build_value(
+                *required,
+                input.as_str(),
+                segment,
+                deferred_key,
+                deferred_value,
+                topic,
+            )?
+            .map(|payload| {
+                SendCommandOp::inject(SendCommand::new(
+                    Address::new(None, node_uri, lane_uri),
+                    payload,
+                    false,
+                ))
+            }),
             Inner::Map {
                 key_pattern,
                 value_pattern,
@@ -200,7 +197,6 @@ impl PayloadSelector {
                             false,
                         ));
                         Some(op)
-                        // Ok(Some(op).discard())
                     }
                     (Some(key_payload), None) if *remove_when_no_value => {
                         let op = SendCommandOp::inject(SendCommand::new(
@@ -209,12 +205,8 @@ impl PayloadSelector {
                             false,
                         ));
                         Some(op)
-                        // Ok(Some(op).discard())
                     }
-                    _ => {
-                        // Ok(None.discard())
-                        None
-                    }
+                    _ => None,
                 }
             }
         };
@@ -230,7 +222,7 @@ fn build_value<K, V>(
     key: &mut K,
     value: &mut V,
     topic: &Value,
-) -> Result<Option<Value>, LaneSelectorError>
+) -> Result<Option<Value>, SelectorError>
 where
     K: Deferred,
     V: Deferred,
@@ -240,14 +232,14 @@ where
         Part::Selector(selector) => selector
             .select(topic, key, value)
             .map(|v| v.cloned())
-            .map_err(LaneSelectorError::from),
+            .map_err(SelectorError::from),
     };
 
     match payload {
         Ok(Some(payload)) => Ok(Some(payload)),
         Ok(None) => {
             if required {
-                Err(LaneSelectorError::Selector(pattern.to_string()))
+                Err(SelectorError::Selector(pattern.to_string()))
             } else {
                 Ok(None)
             }

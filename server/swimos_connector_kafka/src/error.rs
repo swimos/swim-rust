@@ -14,7 +14,7 @@
 
 use rdkafka::error::KafkaError;
 use swimos_api::address::Address;
-use swimos_connector::{BadSelector, LaneSelectorError, LoadError, SerializationError};
+use swimos_connector::{BadSelector, LoadError, SelectorError, SerializationError};
 use thiserror::Error;
 
 /// Errors that can be produced by the Kafka connector.
@@ -28,7 +28,7 @@ pub enum KafkaConnectorError {
     Kafka(#[from] KafkaError),
     /// Attempting to select the required components of a Kafka message failed.
     #[error(transparent)]
-    Lane(#[from] LaneSelectorError),
+    Lane(#[from] SelectorError),
     #[error("A message was not handled properly and so could not be committed.")]
     MessageNotHandled,
 }

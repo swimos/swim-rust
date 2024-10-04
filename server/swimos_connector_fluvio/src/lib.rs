@@ -16,7 +16,7 @@ mod ingress;
 
 use fluvio::dataplane::link::ErrorCode;
 use fluvio::FluvioError;
-use swimos_connector::{LaneSelectorError, LoadError};
+use swimos_connector::{LoadError, SelectorError};
 
 /// Errors that can be produced by the Fluvio connector.
 #[derive(thiserror::Error, Debug)]
@@ -32,7 +32,7 @@ pub enum FluvioConnectorError {
     Configuration(#[from] LoadError),
     /// Attempting to select the required components of a Fluvio message failed.
     #[error("Failed to select from a message: {0}")]
-    Lane(#[from] LaneSelectorError),
+    Lane(#[from] SelectorError),
     /// String error message.
     #[error("{0}")]
     Message(String),

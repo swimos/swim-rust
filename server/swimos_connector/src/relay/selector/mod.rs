@@ -24,10 +24,37 @@ pub use payload::PayloadSelector;
 
 use crate::relay::selector::payload::GenericSendCommandOp;
 use crate::selector::Deferred;
-use crate::LaneSelectorError;
+use crate::SelectorError;
 use std::slice::Iter;
 use std::sync::Arc;
+use swimos_form::Form;
 use swimos_model::Value;
+
+#[derive(Clone, Debug, Form, PartialEq, Eq)]
+#[form(tag = "ValueRelaySpec")]
+pub struct ValueRelaySpecification {
+    pub node: String,
+    pub lane: String,
+    pub payload: String,
+    pub required: bool,
+}
+
+#[derive(Clone, Debug, Form, PartialEq, Eq)]
+#[form(tag = "MapRelaySpec")]
+pub struct MapRelaySpecification {
+    pub node: String,
+    pub lane: String,
+    pub key: String,
+    pub value: String,
+    pub required: bool,
+    pub remove_when_no_value: bool,
+}
+
+#[derive(Clone, Debug, Form, PartialEq, Eq)]
+pub enum RelaySpecification {
+    Value(ValueRelaySpecification),
+    Map(MapRelaySpecification),
+}
 
 /// A collection of relays which are used to derive the commands to send to lanes on agents.
 #[derive(Debug, Clone, Default)]
@@ -106,7 +133,7 @@ impl Relay {
         topic: &Value,
         key: &mut K,
         value: &mut V,
-    ) -> Result<GenericSendCommandOp, LaneSelectorError>
+    ) -> Result<GenericSendCommandOp, SelectorError>
     where
         K: Deferred,
         V: Deferred,

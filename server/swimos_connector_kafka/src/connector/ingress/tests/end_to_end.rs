@@ -37,6 +37,7 @@ fn make_config() -> KafkaIngressConfiguration {
         key_deserializer: DataFormat::Int32(Endianness::BigEndian),
         payload_deserializer: DataFormat::Json,
         topics: vec!["cellular-integer-json".to_string()],
+        relays: Default::default(),
     }
 }
 

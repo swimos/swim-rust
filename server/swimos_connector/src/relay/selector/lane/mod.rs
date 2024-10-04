@@ -21,7 +21,7 @@ use crate::relay::selector::{
     ParseError, Part, SelectorPatternIter,
 };
 use crate::selector::Deferred;
-use crate::LaneSelectorError;
+use crate::SelectorError;
 use nom::{
     branch::alt,
     bytes::complete::tag,
@@ -65,7 +65,7 @@ impl LaneSelector {
         key: &mut K,
         value: &mut V,
         topic: &Value,
-    ) -> Result<String, LaneSelectorError>
+    ) -> Result<String, SelectorError>
     where
         K: Deferred,
         V: Deferred,
@@ -77,7 +77,7 @@ impl LaneSelector {
             Part::Selector(selector) => {
                 let value = selector
                     .select(topic, key, value)?
-                    .ok_or(LaneSelectorError::InvalidRecord("".to_string()))?;
+                    .ok_or(SelectorError::InvalidRecord("".to_string()))?;
                 match value {
                     Value::BooleanValue(v) => {
                         if *v {
@@ -93,7 +93,7 @@ impl LaneSelector {
                     Value::BigInt(v) => Ok(v.to_string()),
                     Value::BigUint(v) => Ok(v.to_string()),
                     Value::Text(v) => Ok(v.to_string()),
-                    _ => Err(LaneSelectorError::InvalidRecord(self.pattern.to_string())),
+                    _ => Err(SelectorError::InvalidRecord(self.pattern.to_string())),
                 }
             }
         }

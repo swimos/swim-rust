@@ -22,6 +22,7 @@ pub use egress::{
     TopicSpecifier,
 };
 pub use ingress::KafkaIngressConfiguration;
+pub use ingress::KafkaIngressSpecification;
 pub use swimos_connector::config::format::DataFormat;
 use swimos_form::Form;
 

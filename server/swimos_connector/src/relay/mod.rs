@@ -17,5 +17,6 @@ mod selector;
 mod tests;
 
 pub use crate::relay::selector::{
-    LaneSelector, NodeSelector, ParseError, PayloadSelector, Relay, Relays,
+    LaneSelector, MapRelaySpecification, NodeSelector, ParseError, PayloadSelector, Relay,
+    RelaySpecification, Relays, ValueRelaySpecification,
 };

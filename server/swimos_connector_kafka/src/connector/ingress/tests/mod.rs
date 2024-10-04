@@ -32,7 +32,7 @@ use futures::future::join;
 use swimos_agent::agent_lifecycle::HandlerContext;
 use swimos_agent::agent_model::{AgentSpec, ItemDescriptor, ItemFlags, WarpLaneKind};
 use swimos_agent::event_handler::HandlerActionExt;
-use swimos_connector::{ConnectorAgent, InvalidLanes, LaneSelectorError};
+use swimos_connector::{ConnectorAgent, InvalidLanes, SelectorError};
 use swimos_model::{Item, Value};
 use swimos_recon::print_recon_compact;
 use swimos_utilities::trigger;
@@ -262,7 +262,7 @@ fn value_lane_selector_handler_missing_field() {
     let error = selector
         .select_handler(&topic, &mut key, &mut value)
         .expect_err("Should fail.");
-    assert!(matches!(error, LaneSelectorError::MissingRequiredLane(name) if &name == "other"));
+    assert!(matches!(error, SelectorError::MissingRequiredLane(name) if &name == "other"));
 }
 
 #[test]
@@ -342,7 +342,7 @@ fn map_lane_selector_handler_missing_field() {
     let error = selector
         .select_handler(&topic, &mut key, &mut value)
         .expect_err("Should fail.");
-    assert!(matches!(error, LaneSelectorError::MissingRequiredLane(name) if &name == "map"));
+    assert!(matches!(error, SelectorError::MissingRequiredLane(name) if &name == "map"));
 }
 
 #[test]
@@ -478,7 +478,7 @@ async fn handle_message_missing_field() {
     };
 
     let result = selector.handle_message(&message);
-    assert!(matches!(result, Err(LaneSelectorError::MissingRequiredLane(name)) if name == "map"));
+    assert!(matches!(result, Err(SelectorError::MissingRequiredLane(name)) if name == "map"));
 }
 
 #[tokio::test]
@@ -513,6 +513,6 @@ async fn handle_message_bad_data() {
     let result = selector.handle_message(&message);
     assert!(matches!(
         result,
-        Err(LaneSelectorError::DeserializationFailed(_))
+        Err(SelectorError::DeserializationFailed(_))
     ));
 }

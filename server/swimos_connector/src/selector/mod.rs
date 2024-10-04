@@ -4,8 +4,8 @@ mod tests;
 use crate::config::{IngressMapLaneSpec, IngressValueLaneSpec};
 use crate::deser::MessagePart;
 use crate::{
-    BadSelector, ConnectorAgent, DeserializationError, InvalidLaneSpec, LaneSelectorError,
-    MapLaneSelectorFn, ValueLaneSelectorFn,
+    BadSelector, ConnectorAgent, DeserializationError, InvalidLaneSpec, MapLaneSelectorFn,
+    SelectorError, ValueLaneSelectorFn,
 };
 use frunk::Coprod;
 use regex::Regex;
@@ -622,7 +622,7 @@ impl ValueLaneSelector {
         topic: &Value,
         key: &mut K,
         value: &mut V,
-    ) -> Result<GenericValueLaneSet, LaneSelectorError>
+    ) -> Result<GenericValueLaneSet, SelectorError>
     where
         K: Deferred,
         V: Deferred,
@@ -642,7 +642,7 @@ impl ValueLaneSelector {
             None => {
                 if *required {
                     error!(name, "A message did not contain a required value.");
-                    return Err(LaneSelectorError::MissingRequiredLane(name.clone()));
+                    return Err(SelectorError::MissingRequiredLane(name.clone()));
                 } else {
                     None
                 }
@@ -668,7 +668,7 @@ impl MapLaneSelector {
         topic: &Value,
         key: &mut K,
         value: &mut V,
-    ) -> Result<GenericMapLaneOp, LaneSelectorError>
+    ) -> Result<GenericMapLaneOp, SelectorError>
     where
         K: Deferred,
         V: Deferred,
@@ -689,7 +689,7 @@ impl MapLaneSelector {
                     name,
                     "A message did not contain a required map lane update/removal."
                 );
-                return Err(LaneSelectorError::MissingRequiredLane(name.clone()));
+                return Err(SelectorError::MissingRequiredLane(name.clone()));
             }
             (Some(key), None) if *remove_when_no_value => {
                 trace!(name, key = %key, "Removing an entry from a map lane with a key extracted from a message.");
