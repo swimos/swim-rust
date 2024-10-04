@@ -43,7 +43,7 @@ impl Relays {
 
 impl<I> From<I> for Relays
 where
-    I: IntoIterator<Item = Selectors>,
+    I: IntoIterator<Item = Relay>,
 {
     fn from(chain: I) -> Relays {
         Relays {
@@ -54,19 +54,19 @@ where
     }
 }
 
-impl From<Selectors> for Relays {
-    fn from(selectors: Selectors) -> Relays {
+impl From<Relay> for Relays {
+    fn from(relays: Relay) -> Relays {
         Relays {
             inner: Arc::new(Inner {
-                chain: vec![selectors],
+                chain: vec![relays],
             }),
         }
     }
 }
 
 impl<'s> IntoIterator for &'s Relays {
-    type Item = &'s Selectors;
-    type IntoIter = Iter<'s, Selectors>;
+    type Item = &'s Relay;
+    type IntoIter = Iter<'s, Relay>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.inner.as_ref().chain.as_slice().iter()
@@ -75,26 +75,26 @@ impl<'s> IntoIterator for &'s Relays {
 
 #[derive(Default, Debug)]
 struct Inner {
-    chain: Vec<Selectors>,
+    chain: Vec<Relay>,
 }
 
-/// A selector which is used to build a command to send to a lane on an agent.
+/// A relay which is used to build a command to send to a lane on an agent.
 #[derive(Debug)]
-pub struct Selectors {
+pub struct Relay {
     node: NodeSelector,
     lane: LaneSelector,
     payload: PayloadSelector,
 }
 
-impl Selectors {
-    /// Builds a new selector.
+impl Relay {
+    /// Builds a new relay.
     ///
     /// # Arguments
     /// * `node` - a selector for deriving a node URI to send a command to.
     /// * `lane` - a selector for deriving a lane URI to send a command to.
     /// * `payload` - a selector for extracting the command.
-    pub fn new(node: NodeSelector, lane: LaneSelector, payload: PayloadSelector) -> Selectors {
-        Selectors {
+    pub fn new(node: NodeSelector, lane: LaneSelector, payload: PayloadSelector) -> Relay {
+        Relay {
             node,
             lane,
             payload,
@@ -111,7 +111,7 @@ impl Selectors {
         K: Deferred,
         V: Deferred,
     {
-        let Selectors {
+        let Relay {
             node,
             lane,
             payload,

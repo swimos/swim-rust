@@ -37,5 +37,5 @@ pub use error::{
 };
 pub use generic::{ConnectorAgent, MapLaneSelectorFn, ValueLaneSelectorFn};
 pub use lifecycle::{EgressConnectorLifecycle, IngressConnectorLifecycle};
-pub use relay::{LaneSelector, NodeSelector, ParseError, PayloadSelector, Relays, Selectors};
+pub use relay::{LaneSelector, NodeSelector, ParseError, PayloadSelector, Relay, Relays};
 pub use route::{EgressConnectorModel, IngressConnectorModel};

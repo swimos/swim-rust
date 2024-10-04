@@ -15,6 +15,7 @@
 use super::{DataFormat, KafkaLogLevel};
 use std::collections::HashMap;
 use swimos_connector::config::{IngressMapLaneSpec, IngressValueLaneSpec};
+use swimos_connector::Relays;
 use swimos_form::Form;
 
 /// Configuration parameters for the Kafka ingress connector.
