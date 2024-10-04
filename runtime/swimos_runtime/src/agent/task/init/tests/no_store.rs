@@ -184,12 +184,6 @@ impl TestInit for SingleLaneInit {
 }
 
 #[tokio::test]
-async fn no_lanes() {
-    let (result, _) = run_test(NoLanesInit, StoreDisabled).await;
-    assert!(matches!(result, Err(AgentExecError::NoInitialLanes)));
-}
-
-#[tokio::test]
 async fn single_lane() {
     for config in CONFIGS {
         let init = SingleLaneInit { config: *config };

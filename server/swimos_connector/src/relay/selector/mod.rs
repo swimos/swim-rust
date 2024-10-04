@@ -32,29 +32,21 @@ use swimos_form::Form;
 use swimos_model::Value;
 
 #[derive(Clone, Debug, Form, PartialEq, Eq)]
-#[form(tag = "ValueRelaySpec")]
-pub struct ValueRelaySpecification {
-    pub node: String,
-    pub lane: String,
-    pub payload: String,
-    pub required: bool,
-}
-
-#[derive(Clone, Debug, Form, PartialEq, Eq)]
-#[form(tag = "MapRelaySpec")]
-pub struct MapRelaySpecification {
-    pub node: String,
-    pub lane: String,
-    pub key: String,
-    pub value: String,
-    pub required: bool,
-    pub remove_when_no_value: bool,
-}
-
-#[derive(Clone, Debug, Form, PartialEq, Eq)]
 pub enum RelaySpecification {
-    Value(ValueRelaySpecification),
-    Map(MapRelaySpecification),
+    Value {
+        node: String,
+        lane: String,
+        payload: String,
+        required: bool,
+    },
+    Map {
+        node: String,
+        lane: String,
+        key: String,
+        value: String,
+        required: bool,
+        remove_when_no_value: bool,
+    },
 }
 
 /// A collection of relays which are used to derive the commands to send to lanes on agents.
@@ -88,26 +80,26 @@ impl TryFrom<Vec<RelaySpecification>> for Relays {
 
         for spec in value {
             match spec {
-                RelaySpecification::Value(ValueRelaySpecification {
+                RelaySpecification::Value {
                     node,
                     lane,
                     payload,
                     required,
-                }) => {
+                } => {
                     let node = NodeSelector::from_str(node.as_str())?;
                     let lane = LaneSelector::from_str(lane.as_str())?;
                     let payload = PayloadSelector::value(payload.as_str(), required)?;
 
                     chain.push(Relay::new(node, lane, payload));
                 }
-                RelaySpecification::Map(MapRelaySpecification {
+                RelaySpecification::Map {
                     node,
                     lane,
                     key,
                     value,
                     required,
                     remove_when_no_value,
-                }) => {
+                } => {
                     let node = NodeSelector::from_str(node.as_str())?;
                     let lane = LaneSelector::from_str(lane.as_str())?;
                     let payload = PayloadSelector::map(

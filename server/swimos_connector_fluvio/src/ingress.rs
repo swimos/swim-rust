@@ -43,6 +43,15 @@ pub struct FluvioIngressConnector {
     lanes: RefCell<Lanes>,
 }
 
+impl FluvioIngressConnector {
+    pub fn for_config(configuration: FluvioIngressConfiguration) -> Self {
+        FluvioIngressConnector {
+            configuration,
+            lanes: RefCell::new(Default::default()),
+        }
+    }
+}
+
 impl BaseConnector for FluvioIngressConnector {
     fn on_start(&self, init_complete: Sender) -> impl EventHandler<ConnectorAgent> + '_ {
         let FluvioIngressConnector {

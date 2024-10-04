@@ -13,27 +13,27 @@
 // limitations under the License.
 
 use fluvio::config::{TlsCerts, TlsConfig, TlsPaths, TlsPolicy as FluvioTlsPolicy};
-use fluvio::Offset;
+use fluvio::{FluvioConfig, Offset};
 use std::path::PathBuf;
 use swimos_connector::config::format::DataFormat;
 use swimos_connector::config::{IngressMapLaneSpec, IngressValueLaneSpec};
 use swimos_connector::{RelaySpecification, Relays};
 use swimos_form::Form;
 
-type BoxError = Box<dyn std::error::Error + 'static>;
+type BoxError = Box<dyn std::error::Error + Send + Sync + 'static>;
 
 /// Configuration parameters for the Fluvio connector.
 #[derive(Clone, Debug, Form, PartialEq, Eq)]
-#[form(tag = "fluvio_specification")]
+#[form(tag = "fluvio")]
 pub struct FluvioIngressSpecification {
     /// The topic to consume from.
     pub topic: String,
     /// Fluvio library configuration.
-    pub fluvio: FluvioSpecification,
+    pub fluvio: Option<FluvioSpecification>,
     /// The partition to consume from.
     pub partition: u32,
     /// The offset to start consuming from.
-    #[form(name = "Offset")]
+    #[form(name = "offset")]
     pub offset: OffsetSpecification,
     /// Specifications for the value lanes to define for the connector. This includes a pattern to
     /// define a selector that will pick out values to set to that lane, from a Fluvio message.
@@ -64,9 +64,13 @@ impl FluvioIngressSpecification {
             relays,
         } = self;
 
+        let fluvio = match fluvio {
+            Some(native) => native.build()?,
+            None => FluvioConfig::load()?,
+        };
         Ok(FluvioIngressConfiguration {
             topic,
-            fluvio: fluvio.build()?,
+            fluvio,
             partition,
             offset: offset.build()?,
             value_lanes,
@@ -98,7 +102,7 @@ impl OffsetSpecification {
 }
 
 #[derive(Clone, Debug, Form, PartialEq, Eq)]
-#[form(tag = "fluvio")]
+#[form(tag = "Native")]
 pub struct FluvioSpecification {
     pub addr: String,
     pub use_spu_local_address: Option<bool>,

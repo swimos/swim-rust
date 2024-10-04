@@ -63,7 +63,10 @@ impl MessageDeserializer for JsonDeserializer {
             MessagePart::Key => message.key(),
             MessagePart::Payload => message.payload(),
         };
-        let v: serde_json::Value = serde_json::from_slice(payload)?;
+        let v: serde_json::Value = serde_json::from_slice(payload).map_err(|e| {
+            println!("{e:?}");
+            e
+        })?;
         Ok(convert_json_value(v))
     }
 }

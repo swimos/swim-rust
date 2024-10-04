@@ -12,10 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-mod selector;
-#[cfg(test)]
-mod tests;
+use clap::Parser;
 
-pub use crate::relay::selector::{
-    LaneSelector, NodeSelector, ParseError, PayloadSelector, Relay, RelaySpecification, Relays,
-};
+#[derive(Parser)]
+#[command(author, version, about, long_about = None)]
+pub struct Params {
+    /// Specify a Recon configuration file for the connector.
+    #[arg(long)]
+    pub config: Option<String>,
+    #[arg(long, default_value = "false")]
+    /// Specify that logging should be enabled.
+    pub enable_logging: bool,
+}

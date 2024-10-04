@@ -1,0 +1,28 @@
+@fluvio {
+    topic: "sensors",
+    partition: 0,
+    offset: @End {
+    },
+    value_lanes: {
+    },
+    map_lanes: {
+    },
+    relays: {
+        @Value {
+            node: "/sensors/$key",
+            lane: "temperature",
+            payload: "$value.temperature",
+            required: true
+        },
+        @Map {
+            node: "/sensors/$key",
+            lane: "voltage",
+            key: "$value.timestamp",
+            value: "$value.voltage",
+            required: true,
+            remove_when_no_value: true
+        }
+    },
+    key_deserializer: @UInt32(@LittleEndian),
+    payload_deserializer: @Json
+}
