@@ -185,19 +185,16 @@ impl<Store: AgentPersistence + Send + Sync> AgentInitTask<Store> {
         result?;
 
         let Initialization { reporting, .. } = initialization;
-        if endpoints.lane_endpoints.is_empty() {
-            Err(AgentExecError::NoInitialLanes)
-        } else {
-            Ok((
-                InitialEndpoints::new(
-                    reporting,
-                    request_stream.into_inner(),
-                    endpoints,
-                    ext_link_state,
-                ),
-                store,
-            ))
-        }
+
+        Ok((
+            InitialEndpoints::new(
+                reporting,
+                request_stream.into_inner(),
+                endpoints,
+                ext_link_state,
+            ),
+            store,
+        ))
     }
 }
 

@@ -32,8 +32,10 @@ use swimos::{
     route::{RoutePattern, RouteUri},
     server::{Server, ServerBuilder},
 };
-use swimos_connector::ConnectorModel;
-use swimos_connector_kafka::{KafkaConnector, KafkaConnectorConfiguration};
+use swimos_connector::IngressConnectorModel;
+use swimos_connector_kafka::{
+    KafkaIngressConfiguration, KafkaIngressConnector, KafkaIngressSpecification,
+};
 use swimos_recon::parser::parse_recognize;
 
 mod params;
@@ -56,8 +58,9 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
 
     let route = RoutePattern::parse_str("/kafka")?;
 
-    let connector_agent =
-        ConnectorModel::for_fn(move || KafkaConnector::for_config(connector_config.clone()));
+    let connector_agent = IngressConnectorModel::for_fn(move || {
+        KafkaIngressConnector::for_config(connector_config.clone())
+    });
 
     let server = ServerBuilder::with_plane_name("Example Plane")
         .set_bind_addr("127.0.0.1:8080".parse()?)
@@ -90,7 +93,7 @@ const CONNECTOR_CONFIG: &str = include_str!("kafka_connector.recon");
 
 async fn load_config(
     path: Option<String>,
-) -> Result<KafkaConnectorConfiguration, Box<dyn Error + Send + Sync>> {
+) -> Result<KafkaIngressConfiguration, Box<dyn Error + Send + Sync>> {
     let content: String;
     let recon = if let Some(path) = path {
         content = tokio::fs::read_to_string(path).await?;
@@ -98,11 +101,11 @@ async fn load_config(
     } else {
         CONNECTOR_CONFIG
     };
-    let config = parse_recognize::<KafkaConnectorConfiguration>(recon, true)?;
+    let config = parse_recognize::<KafkaIngressSpecification>(recon, true)?.build()?;
     Ok(config)
 }
 
-pub fn setup_logging() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+pub fn setup_logging() -> Result<(), Box<dyn Error + Send + Sync>> {
     let filter = example_filter()?.add_directive(LevelFilter::INFO.into());
     tracing_subscriber::fmt().with_env_filter(filter).init();
     Ok(())

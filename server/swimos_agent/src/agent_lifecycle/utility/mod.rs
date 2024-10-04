@@ -21,6 +21,7 @@ use std::{collections::HashMap, marker::PhantomData};
 
 use futures::stream::unfold;
 use futures::{Future, FutureExt, Stream, StreamExt};
+use swimos_agent_protocol::MapMessage;
 use swimos_api::agent::WarpLaneKind;
 use swimos_api::error::LaneSpawnError;
 use swimos_model::Text;
@@ -43,6 +44,7 @@ use crate::downlink_lifecycle::{EventDownlinkLifecycle, MapDownlinkLifecycle};
 use crate::event_handler::{
     run_after, run_schedule, run_schedule_async, ConstHandler, EventHandler, Fail, GetParameter,
     HandlerActionExt, ScheduleTimerEvent, SendCommand, Sequentially, Stop, Suspend, UnitHandler,
+    WithParameters,
 };
 use crate::event_handler::{GetAgentUri, HandlerAction, SideEffect};
 use crate::item::{
@@ -158,6 +160,16 @@ impl<Agent: 'static> HandlerContext<Agent> {
         name: &'a str,
     ) -> impl HandlerAction<Agent, Completion = Option<String>> + Send + 'a {
         GetParameter::new(name)
+    }
+
+    /// Compute a value from the parameters extracted from the route URI of the agent instance.
+    /// # Arguments
+    /// * `f` - The function to apply to the parameters.
+    pub fn with_parameters<F, T>(&self, f: F) -> impl HandlerAction<Agent, Completion = T>
+    where
+        F: FnOnce(&HashMap<String, String>) -> T,
+    {
+        WithParameters::new(f)
     }
 
     /// Create an event handler that will get the value of a value lane store of the agent.
@@ -743,6 +755,28 @@ impl<Agent: 'static> HandlerContext<Agent> {
         T::Rec: Send,
     {
         StatelessEventDownlinkBuilder::new(Address::text(host, node, lane), config)
+    }
+
+    /// Create a builder to construct a request to open an event downlink to a map lane.
+    /// # Arguments
+    /// * `host` - The remote host at which the agent resides (a local agent if not specified).
+    /// * `node` - The node URI of the agent.
+    /// * `lane` - The lane to downlink from.
+    /// * `config` - Configuration parameters for the downlink.
+    pub fn map_event_downlink_builder<K, V>(
+        &self,
+        host: Option<&str>,
+        node: &str,
+        lane: &str,
+        config: SimpleDownlinkConfig,
+    ) -> StatelessEventDownlinkBuilder<Agent, MapMessage<K, V>>
+    where
+        K: RecognizerReadable + Send + Sync + 'static,
+        K::Rec: Send,
+        V: RecognizerReadable + Send + Sync + 'static,
+        V::Rec: Send,
+    {
+        StatelessEventDownlinkBuilder::new_map(Address::text(host, node, lane), config)
     }
 
     /// Create a builder to construct a request to open a value downlink.

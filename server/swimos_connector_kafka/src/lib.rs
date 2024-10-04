@@ -14,17 +14,22 @@
 
 mod config;
 mod connector;
-mod deser;
 mod error;
 mod facade;
 mod selector;
 
 pub use config::{
-    DeserializationFormat, KafkaConnectorConfiguration, KafkaLogLevel, MapLaneSpec, ValueLaneSpec,
+    DataFormat, DownlinkAddress, EgressDownlinkSpec, EgressLaneSpec, ExtractionSpec,
+    KafkaEgressConfiguration, KafkaIngressConfiguration, KafkaIngressSpecification, KafkaLogLevel,
 };
-pub use connector::KafkaConnector;
-pub use deser::Endianness;
+pub use connector::{KafkaEgressConnector, KafkaIngressConnector};
 pub use error::{
-    BadSelector, DeserializationError, DeserializerLoadError, InvalidLaneSpec, InvalidLanes,
-    KafkaConnectorError, LaneSelectorError,
+    DoubleInitialization, InvalidExtractor, InvalidExtractors, KafkaConnectorError,
+    KafkaSenderError,
+};
+pub use swimos_connector::{
+    config::{IngressMapLaneSpec, IngressValueLaneSpec},
+    deser::Endianness,
+    BadSelector, DeserializationError, InvalidLaneSpec, InvalidLanes, LoadError, SelectorError,
+    SerializationError,
 };

@@ -1682,6 +1682,38 @@ where
     }
 }
 
+/// Computes a value from the parameters passed to the agent.
+pub struct WithParameters<F> {
+    f: Option<F>,
+}
+
+impl<F> WithParameters<F> {
+    pub fn new(f: F) -> Self {
+        WithParameters { f: Some(f) }
+    }
+}
+
+impl<Context, F, T> HandlerAction<Context> for WithParameters<F>
+where
+    F: FnOnce(&HashMap<String, String>) -> T,
+{
+    type Completion = T;
+
+    fn step(
+        &mut self,
+        _action_context: &mut ActionContext<Context>,
+        meta: AgentMetadata,
+        _context: &Context,
+    ) -> StepResult<Self::Completion> {
+        let WithParameters { f } = self;
+        if let Some(f) = f.take() {
+            StepResult::done(f(meta.get_params()))
+        } else {
+            StepResult::after_done()
+        }
+    }
+}
+
 /// Schedule the agent's `on_timer` event to be called.
 pub struct ScheduleTimerEvent {
     at: Option<Instant>,

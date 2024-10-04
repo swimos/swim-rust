@@ -14,6 +14,7 @@
 
 use std::marker::PhantomData;
 
+use swimos_agent_protocol::MapMessage;
 use swimos_api::address::Address;
 use swimos_form::read::RecognizerReadable;
 use swimos_model::Text;
@@ -42,6 +43,7 @@ pub struct StatelessEventDownlinkBuilder<
     address: Address<Text>,
     config: SimpleDownlinkConfig,
     inner: LC,
+    map_events: bool,
 }
 
 /// A builder for constructing an event downlink. The lifecycle event handlers share state and, by default,
@@ -56,6 +58,7 @@ pub struct StatefulEventDownlinkBuilder<
     address: Address<Text>,
     config: SimpleDownlinkConfig,
     inner: LC,
+    map_events: bool,
 }
 
 impl<Context, T> StatelessEventDownlinkBuilder<Context, T> {
@@ -65,6 +68,19 @@ impl<Context, T> StatelessEventDownlinkBuilder<Context, T> {
             address,
             config,
             inner: StatelessEventDownlinkLifecycle::default(),
+            map_events: false,
+        }
+    }
+}
+
+impl<Context, K, V> StatelessEventDownlinkBuilder<Context, MapMessage<K, V>> {
+    pub fn new_map(address: Address<Text>, config: SimpleDownlinkConfig) -> Self {
+        StatelessEventDownlinkBuilder {
+            _type: PhantomData,
+            address,
+            config,
+            inner: StatelessEventDownlinkLifecycle::default(),
+            map_events: true,
         }
     }
 }
@@ -76,6 +92,19 @@ impl<Context, T, State> StatefulEventDownlinkBuilder<Context, T, State> {
             address,
             config,
             inner: StatefulEventDownlinkLifecycle::new(state),
+            map_events: false,
+        }
+    }
+}
+
+impl<Context, K, V, State> StatefulEventDownlinkBuilder<Context, MapMessage<K, V>, State> {
+    pub fn new_map(address: Address<Text>, config: SimpleDownlinkConfig, state: State) -> Self {
+        StatefulEventDownlinkBuilder {
+            _type: PhantomData,
+            address,
+            config,
+            inner: StatefulEventDownlinkLifecycle::new(state),
+            map_events: false,
         }
     }
 }
@@ -99,6 +128,7 @@ where
             address,
             config,
             inner,
+            map_events,
             ..
         } = self;
         StatelessEventDownlinkBuilder {
@@ -106,6 +136,7 @@ where
             address,
             config,
             inner: inner.on_linked(handler),
+            map_events,
         }
     }
 
@@ -124,6 +155,7 @@ where
             address,
             config,
             inner,
+            map_events,
             ..
         } = self;
         StatelessEventDownlinkBuilder {
@@ -131,6 +163,7 @@ where
             address,
             config,
             inner: inner.on_synced(handler),
+            map_events,
         }
     }
 
@@ -149,6 +182,7 @@ where
             address,
             config,
             inner,
+            map_events,
             ..
         } = self;
         StatelessEventDownlinkBuilder {
@@ -156,6 +190,7 @@ where
             address,
             config,
             inner: inner.on_unlinked(handler),
+            map_events,
         }
     }
 
@@ -174,6 +209,7 @@ where
             address,
             config,
             inner,
+            map_events,
             ..
         } = self;
         StatelessEventDownlinkBuilder {
@@ -181,6 +217,7 @@ where
             address,
             config,
             inner: inner.on_failed(handler),
+            map_events,
         }
     }
 
@@ -199,6 +236,7 @@ where
             address,
             config,
             inner,
+            map_events,
             ..
         } = self;
         StatelessEventDownlinkBuilder {
@@ -206,6 +244,7 @@ where
             address,
             config,
             inner: inner.on_event(handler),
+            map_events,
         }
     }
 
@@ -221,6 +260,7 @@ where
             address,
             config,
             inner,
+            map_events,
             ..
         } = self;
         StatefulEventDownlinkBuilder {
@@ -228,6 +268,7 @@ where
             address,
             config,
             inner: inner.with_shared_state(shared),
+            map_events,
         }
     }
 }
@@ -248,9 +289,10 @@ where
             address,
             config,
             inner,
+            map_events,
             ..
         } = self;
-        OpenEventDownlinkAction::new(address, inner, config, false)
+        OpenEventDownlinkAction::new(address, inner, config, map_events)
     }
 }
 
@@ -273,6 +315,7 @@ where
             address,
             config,
             inner,
+            map_events,
             ..
         } = self;
         StatefulEventDownlinkBuilder {
@@ -280,6 +323,7 @@ where
             address,
             config,
             inner: inner.on_linked(handler),
+            map_events,
         }
     }
 
@@ -298,6 +342,7 @@ where
             address,
             config,
             inner,
+            map_events,
             ..
         } = self;
         StatefulEventDownlinkBuilder {
@@ -305,6 +350,7 @@ where
             address,
             config,
             inner: inner.on_synced(handler),
+            map_events,
         }
     }
 
@@ -323,6 +369,7 @@ where
             address,
             config,
             inner,
+            map_events,
             ..
         } = self;
         StatefulEventDownlinkBuilder {
@@ -330,6 +377,7 @@ where
             address,
             config,
             inner: inner.on_unlinked(handler),
+            map_events,
         }
     }
 
@@ -348,6 +396,7 @@ where
             address,
             config,
             inner,
+            map_events,
             ..
         } = self;
         StatefulEventDownlinkBuilder {
@@ -355,6 +404,7 @@ where
             address,
             config,
             inner: inner.on_failed(handler),
+            map_events,
         }
     }
 
@@ -373,6 +423,7 @@ where
             address,
             config,
             inner,
+            map_events,
             ..
         } = self;
         StatefulEventDownlinkBuilder {
@@ -380,6 +431,7 @@ where
             address,
             config,
             inner: inner.on_event(handler),
+            map_events,
         }
     }
 }
@@ -400,8 +452,9 @@ where
             address,
             config,
             inner,
+            map_events,
             ..
         } = self;
-        OpenEventDownlinkAction::new(address, inner, config, false)
+        OpenEventDownlinkAction::new(address, inner, config, map_events)
     }
 }

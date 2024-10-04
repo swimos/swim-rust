@@ -23,11 +23,16 @@ use super::utility::HandlerContext;
 mod command;
 mod demand;
 mod demand_map;
+mod dynamic;
 mod http;
 mod map;
 #[cfg(test)]
 mod tests;
 mod value;
+
+pub use dynamic::{
+    dynamic_handler, BorrowItem, DynamicAgent, DynamicHandler, DynamicItem, DynamicLifecycle,
+};
 
 pub use command::{
     CommandBranch, CommandLeaf, CommandLifecycleHandler, CommandLifecycleHandlerShared,
@@ -63,7 +68,7 @@ pub trait ItemEvent<Context> {
     fn item_event<'a>(
         &'a self,
         context: &Context,
-        item_name: &str,
+        item_name: &'a str,
     ) -> Option<Self::ItemEventHandler<'a>>;
 }
 

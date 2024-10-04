@@ -302,7 +302,7 @@ where
 
 impl<Context, K, V, State, LC> StatefulMapDownlinkBuilder<Context, K, V, State, LC>
 where
-    LC: StatefulMapLifecycle<Context, State, K, V>,
+    LC: StatefulMapLifecycle<Context, State, K, V> + 'static,
 {
     /// Specify a handler for the `on_linked` event.
     ///

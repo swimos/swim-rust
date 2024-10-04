@@ -537,9 +537,6 @@ pub enum AgentExecError {
     /// Initializing the agent failed.
     #[error("Failed to initialize agent: {0}")]
     FailedInit(#[from] AgentInitError),
-    /// Initialization completed but no lanes were registered.
-    #[error("The agent did not register any lanes.")]
-    NoInitialLanes,
     /// The runtime loop of the agent failed.
     #[error("The agent task failed: {0}")]
     FailedTask(#[from] AgentTaskError),
