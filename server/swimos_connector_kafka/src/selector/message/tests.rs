@@ -163,7 +163,6 @@ fn expected_extractors() -> MessageSelectors {
         map_lanes,
         value_downlinks,
         map_downlinks,
-        total_lanes: 2,
     }
 }
 

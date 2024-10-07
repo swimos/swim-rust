@@ -54,15 +54,15 @@ impl CarLifecycle {
                         // deregister this car with its current area
                         let deregister_handler = context.send_command(
                             None,
-                            format!("/area/{old_area}"),
-                            "registrations".to_string(),
+                            &format!("/area/{old_area}"),
+                            "registrations",
                             Action::Deregister(car_id),
                         );
                         // register this car with its new assigned area
                         let register_handler = context.send_command(
                             None,
-                            format!("/area/{new_area}"),
-                            "registrations".to_string(),
+                            &format!("/area/{new_area}"),
+                            "registrations",
                             Action::Register(car_id),
                         );
 

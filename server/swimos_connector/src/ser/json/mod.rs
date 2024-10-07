@@ -80,7 +80,7 @@ fn convert_recon_value(input: &Value) -> Result<JsonValue, SerializationError> {
         }
         Value::Text(string) => JsonValue::String(string.to_string()),
         Value::Record(attrs, items) => {
-            if attrs.is_empty() {
+            if can_omit_attrs(attrs) {
                 if is_array(items) {
                     to_json_array(items)?
                 } else if is_record(items) {
@@ -88,6 +88,8 @@ fn convert_recon_value(input: &Value) -> Result<JsonValue, SerializationError> {
                 } else {
                     items_arr(items)?
                 }
+            } else if is_record(items) {
+                flatten_attrs(attrs, items)?
             } else {
                 to_expanded_json_object(attrs, items)?
             }
@@ -95,6 +97,10 @@ fn convert_recon_value(input: &Value) -> Result<JsonValue, SerializationError> {
         Value::Data(_) => return Err(SerializationError::InvalidKind(ValueKind::Data)),
     };
     Ok(v)
+}
+
+fn can_omit_attrs(attrs: &[Attr]) -> bool {
+    attrs.iter().all(|attr| attr.value == Value::Extant)
 }
 
 fn to_json_array(items: &[Item]) -> Result<JsonValue, SerializationError> {
@@ -107,6 +113,20 @@ fn to_json_array(items: &[Item]) -> Result<JsonValue, SerializationError> {
         .map(convert_recon_value)
         .collect::<Result<Vec<_>, _>>()?;
     Ok(JsonValue::Array(items))
+}
+
+fn flatten_attrs(attrs: &[Attr], items: &[Item]) -> Result<JsonValue, SerializationError> {
+    let mut all_fields = attrs
+        .iter()
+        .map(|Attr { name, value }| {
+            let field_name = format!("@{}", name);
+            convert_recon_value(value).map(move |v| (field_name, v))
+        })
+        .collect::<Result<Map<_, _>, _>>()?;
+    let mut item_fields = to_json_fields(items)?;
+
+    all_fields.append(&mut item_fields);
+    Ok(JsonValue::Object(all_fields))
 }
 
 fn to_expanded_json_object(
@@ -155,14 +175,18 @@ fn attr_object(attrs: &[Attr]) -> Result<JsonValue, SerializationError> {
     Ok(JsonValue::Object(items))
 }
 
-fn to_json_object(items: &[Item]) -> Result<JsonValue, SerializationError> {
-    let items = items
+fn to_json_fields(items: &[Item]) -> Result<Map<String, JsonValue>, SerializationError> {
+    items
         .iter()
         .filter_map(|item| match item {
             Item::Slot(Value::Text(key), value) => Some((key.to_string(), value)),
             _ => None,
         })
         .map(|(k, v)| convert_recon_value(v).map(move |v| (k, v)))
-        .collect::<Result<Map<_, _>, _>>()?;
+        .collect::<Result<Map<_, _>, _>>()
+}
+
+fn to_json_object(items: &[Item]) -> Result<JsonValue, SerializationError> {
+    let items = to_json_fields(items)?;
     Ok(JsonValue::Object(items))
 }

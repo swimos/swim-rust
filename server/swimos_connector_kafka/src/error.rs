@@ -23,6 +23,9 @@ pub enum KafkaConnectorError {
     /// Failed to load the deserializers required to interpret the Kafka messages.
     #[error(transparent)]
     Configuration(#[from] LoadError),
+    /// The specification of at least one lane is invalid.
+    #[error(transparent)]
+    Lanes(#[from] InvalidLanes),
     /// The Kafka consumer failed.
     #[error(transparent)]
     Kafka(#[from] KafkaError),
@@ -50,9 +53,6 @@ pub enum InvalidExtractors {
     /// The specification of an extractor was not valid.
     #[error(transparent)]
     Spec(#[from] InvalidExtractor),
-    /// A connector has too many lanes.
-    #[error("The connector has {0} lanes which cannot fit in a u32.")]
-    TooManyLanes(usize),
     /// There are lane extractors with the same name.
     #[error("The lane name {0} occurs more than once.")]
     NameCollision(String),

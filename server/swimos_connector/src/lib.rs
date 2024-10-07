@@ -29,7 +29,8 @@ pub mod ser;
 
 pub use connector::{
     BaseConnector, ConnectorFuture, ConnectorHandler, ConnectorStream, EgressConnector,
-    EgressConnectorSender, EgressContext, IngressConnector, MessageSource, SendResult,
+    EgressConnectorSender, EgressContext, IngressConnector, IngressContext, MessageSource,
+    SendResult,
 };
 pub use error::{
     BadSelector, ConnectorInitError, DeserializationError, InvalidLaneSpec, InvalidLanes,

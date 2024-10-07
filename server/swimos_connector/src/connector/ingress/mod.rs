@@ -15,13 +15,12 @@
 #[cfg(test)]
 mod tests;
 
-use std::error::Error;
-
 use futures::{TryStream, TryStreamExt};
 use swimos_agent::{
     agent_lifecycle::HandlerContext,
     event_handler::{HandlerAction, HandlerActionExt, TryHandlerActionExt},
 };
+use swimos_api::agent::WarpLaneKind;
 
 use crate::generic::ConnectorAgent;
 
@@ -34,7 +33,7 @@ use super::{BaseConnector, ConnectorHandler};
 /// lanes, by default, but allows for them to be added dynamically by the lifecycle. The lanes that a connector
 /// registers can be derived from static configuration or inferred from the external data source itself. Currently,
 /// it is only possible to register dynamic lanes in the initialization phase of the agent (during the `on_start`
-/// event). This restriction should be relaxed in the future.
+/// event). This restriction may be relaxed in the future.
 ///
 /// The core of a connector is the [create_stream](IngressConnector::create_stream) method that creates a fallible
 /// stream that consumes events from the external data source and converts them into
@@ -42,12 +41,19 @@ use super::{BaseConnector, ConnectorHandler};
 /// into the agents task and will be polled repeatedly until it either terminates (or fails) that will cause the connector
 /// agent to stop.
 pub trait IngressConnector: BaseConnector {
-    /// The type of the errors produced by the connector stream.
-    type StreamError: Error + Send + 'static;
+    /// The type of the errors produced by the connector.
+    type Error: std::error::Error + Send + 'static;
 
     /// Create an asynchronous stream that consumes events from the external data source and produces
     /// [event handlers](swimos_agent::event_handler::EventHandler) from them which modify the state of the agent.
-    fn create_stream(&self) -> Result<impl ConnectorStream<Self::StreamError>, Self::StreamError>;
+    fn create_stream(&self) -> Result<impl ConnectorStream<Self::Error>, Self::Error>;
+
+    /// Open the lanes required by the connector. This is called during the agent's `on_start`
+    /// event.
+    ///
+    /// # Arguments
+    /// * `context` - The connector makes calls to the context to request the lanes.
+    fn initialize(&self, context: &mut dyn IngressContext) -> Result<(), Self::Error>;
 }
 
 /// A trait for fallible streams of event handlers that are returned by a [`IngressConnector`].
@@ -87,4 +93,10 @@ where
             .discard()
     };
     context.suspend(fut)
+}
+
+/// A reference to an ingress context is passed to an [ingress connector](`IngressConnector`) when it starts
+/// allowing it to request that lanes be opened.
+pub trait IngressContext {
+    fn open_lane(&mut self, name: &str, kind: WarpLaneKind);
 }

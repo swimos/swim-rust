@@ -95,6 +95,17 @@ impl From<&DownlinkAddress> for Address<String> {
     }
 }
 
+impl DownlinkAddress {
+    pub fn borrow_as_addr(&self) -> Address<&str> {
+        let DownlinkAddress { host, node, lane } = self;
+        Address {
+            host: host.as_ref().map(|s| s.as_str()),
+            node,
+            lane,
+        }
+    }
+}
+
 /// Specification of a downlink (to a remote lane) for the connector agent.
 #[derive(Clone, Debug, Form, PartialEq, Eq)]
 #[form(tag = "DownlinkSpec")]

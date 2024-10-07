@@ -22,7 +22,7 @@
             required: true
         }
     },
-    key_deserializer: @Int32(@LittleEndian),
+    key_deserializer: @Int32(@BigEndian),
     payload_deserializer: @Json,
     topics: {
         cellular-integer-json

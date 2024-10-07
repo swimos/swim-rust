@@ -60,8 +60,6 @@ fn lanes_from_spec() {
     let lanes =
         Lanes::try_from_lane_specs(&value_lanes, &map_lanes).expect("Invalid specification.");
 
-    assert_eq!(lanes.total_lanes(), 3);
-
     let value_lanes = lanes
         .value_lanes()
         .iter()
@@ -114,40 +112,6 @@ fn value_map_lane_collision() {
 }
 
 const TEST_TIMEOUT: Duration = Duration::from_secs(5);
-
-#[tokio::test]
-async fn open_lanes() {
-    let value_specs = vec![IngressValueLaneSpec::new(None, "$key", true)];
-    let map_specs = vec![IngressMapLaneSpec::new(
-        "map",
-        "$payload.key",
-        "$payload.value",
-        true,
-        true,
-    )];
-    let lanes =
-        Lanes::try_from_lane_specs(&value_specs, &map_specs).expect("Invalid specifications.");
-
-    let (tx, rx) = trigger::trigger();
-
-    let handler = lanes.open_lanes(tx);
-    let agent = ConnectorAgent::default();
-
-    let handler_task = run_handler_with_futures(&agent, handler);
-
-    let (modified, done_result) = timeout(TEST_TIMEOUT, join(handler_task, rx))
-        .await
-        .expect("Test timed out.");
-
-    assert!(modified.is_empty());
-    assert!(done_result.is_ok());
-
-    let expected_value_lanes = ["key".to_string()].into_iter().collect::<HashSet<_>>();
-    let expected_map_lanes = ["map".to_string()].into_iter().collect::<HashSet<_>>();
-
-    assert_eq!(agent.value_lanes(), expected_value_lanes);
-    assert_eq!(agent.map_lanes(), expected_map_lanes);
-}
 
 fn setup_agent() -> (ConnectorAgent, HashMap<String, u64>) {
     let agent = ConnectorAgent::default();

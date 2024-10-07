@@ -29,11 +29,13 @@ use thiserror::Error;
 use crate::{
     connector::BaseConnector, lifecycle::fixture::run_handle_with_futs, ConnectorAgent,
     ConnectorInitError, ConnectorStream, IngressConnector, IngressConnectorLifecycle,
+    IngressContext,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Event {
     Start,
+    Init,
     Stop,
     Item(usize),
 }
@@ -102,9 +104,9 @@ impl BaseConnector for TestConnector {
 }
 
 impl IngressConnector for TestConnector {
-    type StreamError = TestError;
+    type Error = TestError;
 
-    fn create_stream(&self) -> Result<impl ConnectorStream<Self::StreamError>, Self::StreamError> {
+    fn create_stream(&self) -> Result<impl ConnectorStream<Self::Error>, Self::Error> {
         if self.failure == Some(Failure::StreamInit) {
             Err(TestError)
         } else {
@@ -123,6 +125,11 @@ impl IngressConnector for TestConnector {
             )))
         }
     }
+
+    fn initialize(&self, _context: &mut dyn IngressContext) -> Result<(), Self::Error> {
+        self.inner.lock().push(Event::Init);
+        Ok(())
+    }
 }
 
 #[tokio::test]
@@ -137,6 +144,7 @@ async fn connector_lifecycle_start() {
     assert_eq!(
         events,
         vec![
+            Event::Init,
             Event::Start,
             Event::Item(0),
             Event::Item(1),

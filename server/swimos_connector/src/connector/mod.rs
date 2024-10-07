@@ -19,7 +19,7 @@ pub use egress::{
     EgressConnector, EgressConnectorSender, EgressContext, MessageSource, SendResult,
 };
 use futures::TryFuture;
-pub use ingress::{suspend_connector, ConnectorStream, IngressConnector};
+pub use ingress::{suspend_connector, ConnectorStream, IngressConnector, IngressContext};
 use swimos_agent::event_handler::EventHandler;
 use swimos_utilities::trigger;
 

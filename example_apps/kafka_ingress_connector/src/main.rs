@@ -12,16 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! An example demonstrating Value Lanes.
+//! An example demonstrating a Kafka ingress connector.
 //!
 //! Run the server using the following:
 //! ```text
-//! $ cargo run --bin value-lane
+//! $ cargo run --bin kafka-ingress-connector
 //! ```
 //!
 //! And run the client with the following:
 //! ```text
-//! $ cargo run --bin value_client
+//! $ cargo run --bin kafka_connector_client
 //! ```
 
 use std::{error::Error, str::FromStr, time::Duration};

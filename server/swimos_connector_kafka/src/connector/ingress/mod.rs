@@ -82,27 +82,9 @@ where
 {
     fn on_start(&self, init_complete: trigger::Sender) -> impl EventHandler<ConnectorAgent> + '_ {
         let handler_context = ConnHandlerContext::default();
-        let KafkaIngressConnector {
-            configuration,
-            lanes,
-            ..
-        } = self;
-        let result =
-            Lanes::try_from_lane_specs(&configuration.value_lanes, &configuration.map_lanes);
-        if let Err(err) = &result {
-            error!(error = %err, "Failed to create lanes for a Kafka connector.");
-        }
-        let handler = handler_context
-            .value(result)
-            .try_handler()
-            .and_then(|l: Lanes| {
-                let open_handler = l.open_lanes(init_complete);
-                debug!("Successfully created lanes for a Kafka connector.");
-                *lanes.borrow_mut() = l;
-                open_handler
-            });
-
-        handler
+        handler_context.effect(move || {
+            init_complete.trigger();
+        })
     }
 
     fn on_stop(&self) -> impl EventHandler<ConnectorAgent> + '_ {
@@ -114,11 +96,9 @@ impl<F> IngressConnector for KafkaIngressConnector<F>
 where
     F: ConsumerFactory + Send + 'static,
 {
-    type StreamError = KafkaConnectorError;
+    type Error = KafkaConnectorError;
 
-    fn create_stream(
-        &self,
-    ) -> Result<impl ConnectorStream<KafkaConnectorError>, Self::StreamError> {
+    fn create_stream(&self) -> Result<impl ConnectorStream<KafkaConnectorError>, Self::Error> {
         let KafkaIngressConnector {
             factory,
             configuration,
@@ -151,6 +131,31 @@ where
 
         let stream_src = MessageTasks::new(consumer_task, rx);
         Ok(stream_src.into_stream())
+    }
+
+    fn initialize(&self, context: &mut dyn IngressContext) -> Result<(), Self::Error> {
+        let KafkaIngressConnector {
+            configuration,
+            lanes,
+            ..
+        } = self;
+        let mut guard = lanes.borrow_mut();
+        match Lanes::try_from(configuration) {
+            Ok(lanes_from_conf) => {
+                for lane_spec in &lanes_from_conf.value_lanes {
+                    context.open_lane(lane_spec.name(), WarpLaneKind::Value);
+                }
+                for lane_spec in &lanes_from_conf.map_lanes {
+                    context.open_lane(lane_spec.name(), WarpLaneKind::Map);
+                }
+                *guard = lanes_from_conf;
+            }
+            Err(err) => {
+                error!(error = %err, "Failed to create lanes for a Kafka connector.");
+                return Err(err.into());
+            }
+        }
+        Ok(())
     }
 }
 
