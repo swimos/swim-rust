@@ -72,8 +72,8 @@ impl OnStart<EmptyAgent> for CommanderLifecycle {
             context.stop()
         });
 
-        let Address { host, node, lane } = &self.address;
-        let create = context.create_commander(host.as_ref(), node, lane);
+        let Address { host, node, lane } = self.address.borrow_parts();
+        let create = context.create_commander(host, node, lane);
 
         let commands = create.and_then(move |commander: Commander<EmptyAgent>| {
             commander

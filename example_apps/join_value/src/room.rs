@@ -45,8 +45,8 @@ impl RoomLifecycle {
 
                             context.send_command(
                                 None,
-                                format!("/buildings/{building_name}"),
-                                "register_room".to_string(),
+                                &format!("/buildings/{building_name}"),
+                                "register_room",
                                 room_id_str,
                             )
                         })
