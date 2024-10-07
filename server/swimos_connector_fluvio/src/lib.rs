@@ -44,4 +44,7 @@ pub enum FluvioConnectorError {
     /// String error message.
     #[error("{0}")]
     Message(String),
+    /// The specification of at least one lane is invalid.
+    #[error(transparent)]
+    Lanes(#[from] InvalidLanes),
 }
