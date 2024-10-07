@@ -18,11 +18,8 @@ use swimos_api::{address::Address, agent::WarpLaneKind};
 use swimos_connector::EgressContext;
 
 use super::open_downlinks;
-use crate::selector::message::MessageSelectors;
 use crate::{
     config::{EgressDownlinkSpec, KafkaEgressConfiguration, TopicSpecifier},
-    config::{EgressDownlinkSpec, EgressLaneSpec, KafkaEgressConfiguration, TopicSpecifier},
-    connector::test_util::run_handler_with_futures,
     DataFormat, DownlinkAddress, ExtractionSpec, KafkaLogLevel,
 };
 

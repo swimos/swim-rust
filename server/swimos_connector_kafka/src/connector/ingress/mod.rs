@@ -23,13 +23,12 @@ use crate::facade::{ConsumerFactory, KafkaConsumer, KafkaFactory, KafkaMessage};
 use crate::KafkaIngressConfiguration;
 use futures::{stream::unfold, Future};
 use swimos_agent::agent_lifecycle::HandlerContext;
-use swimos_agent::event_handler::{
-    EventHandler, HandlerActionExt, TryHandlerActionExt, UnitHandler,
-};
+use swimos_agent::event_handler::{EventHandler, HandlerActionExt, UnitHandler};
+use swimos_api::agent::WarpLaneKind;
 use swimos_connector::deser::MessageView;
 use swimos_connector::ingress::{Lanes, MessageSelector};
 use swimos_connector::{
-    BaseConnector, ConnectorAgent, ConnectorStream, IngressConnector, SelectorError,
+    BaseConnector, ConnectorAgent, ConnectorStream, IngressConnector, IngressContext, SelectorError,
 };
 use swimos_utilities::trigger;
 use tokio::sync::mpsc;
@@ -140,12 +139,12 @@ where
             ..
         } = self;
         let mut guard = lanes.borrow_mut();
-        match Lanes::try_from(configuration) {
+        match Lanes::try_from_lane_specs(&configuration.value_lanes, &configuration.map_lanes) {
             Ok(lanes_from_conf) => {
-                for lane_spec in &lanes_from_conf.value_lanes {
+                for lane_spec in lanes_from_conf.value_lanes() {
                     context.open_lane(lane_spec.name(), WarpLaneKind::Value);
                 }
-                for lane_spec in &lanes_from_conf.map_lanes {
+                for lane_spec in lanes_from_conf.map_lanes() {
                     context.open_lane(lane_spec.name(), WarpLaneKind::Map);
                 }
                 *guard = lanes_from_conf;

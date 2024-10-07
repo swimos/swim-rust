@@ -14,7 +14,7 @@
 
 use rdkafka::error::KafkaError;
 use swimos_api::address::Address;
-use swimos_connector::{BadSelector, LoadError, SelectorError, SerializationError};
+use swimos_connector::{BadSelector, InvalidLanes, LoadError, SelectorError, SerializationError};
 use thiserror::Error;
 
 /// Errors that can be produced by the Kafka connector.

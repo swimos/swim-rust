@@ -37,6 +37,7 @@ use swimos_model::{Item, Value};
 use swimos_recon::print_recon_compact;
 use swimos_utilities::trigger;
 
+use crate::selector::message::MessageSelector;
 use crate::{
     config::{EgressDownlinkSpec, EgressLaneSpec, KafkaEgressConfiguration, TopicSpecifier},
     connector::{
@@ -44,7 +45,6 @@ use crate::{
         test_util::{run_handler_with_futures, run_handler_with_futures_dl},
     },
     facade::{KafkaProducer, ProduceResult, ProducerFactory},
-    selector::MessageSelector,
     DataFormat, DownlinkAddress, ExtractionSpec, KafkaLogLevel,
 };
 
