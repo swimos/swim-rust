@@ -30,7 +30,7 @@ use super::{BaseConnector, ConnectorFuture};
 ///
 /// When the connector starts, it will open some number of value and map lanes. Additionally, a number of event and
 /// map-event downlinks may be opened to remote lanes on other agents. Each time a changes is made to one of the
-/// lanes or an update is received on a downlinks, a message will be sent on a sender, crated by the
+/// lanes or an update is received on a downlinks, a message will be sent on a sender, created by the
 /// [`EgressConnector::make_sender`] method.
 ///
 /// Note that the sender must implement [`Clone`] so that it can be shared between the agent's lanes and the
