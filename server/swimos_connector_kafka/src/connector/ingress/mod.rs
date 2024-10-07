@@ -99,11 +99,9 @@ impl<F> IngressConnector for KafkaIngressConnector<F>
 where
     F: ConsumerFactory + Send + 'static,
 {
-    type StreamError = KafkaConnectorError;
+    type Error = KafkaConnectorError;
 
-    fn create_stream(
-        &self,
-    ) -> Result<impl ConnectorStream<KafkaConnectorError>, Self::StreamError> {
+    fn create_stream(&self) -> Result<impl ConnectorStream<KafkaConnectorError>, Self::Error> {
         let KafkaIngressConnector {
             factory,
             configuration,
@@ -136,7 +134,7 @@ where
         Ok(stream_src.into_stream())
     }
 
-    fn initialize(&self, context: &mut dyn IngressContext) -> Result<(), Self::StreamError> {
+    fn initialize(&self, context: &mut dyn IngressContext) -> Result<(), Self::Error> {
         let KafkaIngressConnector {
             configuration,
             lanes,

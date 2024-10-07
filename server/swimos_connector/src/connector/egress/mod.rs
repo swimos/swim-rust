@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{collections::HashMap, error::Error, time::Duration};
+use std::{collections::HashMap, time::Duration};
 
 use swimos_api::{address::Address, agent::WarpLaneKind};
 use swimos_model::Value;
@@ -26,28 +26,28 @@ use super::{BaseConnector, ConnectorFuture};
 /// lanes, by default, but allows for them to be added dynamically by the lifecycle. The lanes that a connector
 /// registers can be derived from static configuration or inferred from the external data source itself. Currently,
 /// it is only possible to register dynamic lanes in the initialization phase of the agent (during the `on_start`
-/// event). This restriction should be relaxed in the future.
+/// event). This restriction may be relaxed in the future.
 ///
 /// When the connector starts, it will open some number of value and map lanes. Additionally, a number of event and
 /// map-event downlinks may be opened to remote lanes on other agents. Each time a changes is made to one of the
-/// lanes or an update is received on a downlinks, a message will be sent on a sender, crated by the
+/// lanes or an update is received on a downlinks, a message will be sent on a sender, created by the
 /// [`EgressConnector::make_sender`] method.
 ///
 /// Note that the sender must implement [`Clone`] so that it can be shared between the agent's lanes and the
 /// downlinks.
 pub trait EgressConnector: BaseConnector {
     /// The type of the errors produced by the connector.
-    type SendError: Error + Send + 'static;
+    type Error: std::error::Error + Send + 'static;
 
     /// The type of the sender created by this connector.
-    type Sender: EgressConnectorSender<Self::SendError> + 'static;
+    type Sender: EgressConnectorSender<Self::Error> + 'static;
 
     /// Open the lanes and downlinks required by the connector. This is called during the agent's `on_start`
     /// event.
     ///
     /// # Arguments
     /// * `context` - The connector makes calls to the context to request the lanes and downlinks.
-    fn initialize(&self, context: &mut dyn EgressContext) -> Result<(), Self::SendError>;
+    fn initialize(&self, context: &mut dyn EgressContext) -> Result<(), Self::Error>;
 
     /// Create sender for the connector which is used to send messages to the external data sink. This is called
     /// exactly ones during the agent's `on_start` event but must implement [`Clone`] so that copies can be passed
@@ -58,7 +58,7 @@ pub trait EgressConnector: BaseConnector {
     fn make_sender(
         &self,
         agent_params: &HashMap<String, String>,
-    ) -> Result<Self::Sender, Self::SendError>;
+    ) -> Result<Self::Sender, Self::Error>;
 }
 
 /// Possible results of sending a message to the external sink.

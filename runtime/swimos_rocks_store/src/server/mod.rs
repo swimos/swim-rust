@@ -279,7 +279,7 @@ impl ServerPersistence for RocksServerPersistence {
 }
 
 /// Open a RocksDB persistence store from a path in the local filesystem. If the specified database does
-/// not exist it will be crated.
+/// not exist it will be created.
 ///
 /// # Arguments
 /// * `path` - The filesystem path to the database. If none is specified, a new database will be created in a temporary directory.

@@ -176,11 +176,11 @@ fn map_lane_addr() -> Address<&'static str> {
 }
 
 impl EgressConnector for TestConnector {
-    type SendError = TestError;
+    type Error = TestError;
 
     type Sender = TestSender;
 
-    fn initialize(&self, context: &mut dyn EgressContext) -> Result<(), Self::SendError> {
+    fn initialize(&self, context: &mut dyn EgressContext) -> Result<(), Self::Error> {
         context.open_event_downlink(value_lane_addr());
         context.open_map_downlink(map_lane_addr());
         Ok(())
@@ -189,7 +189,7 @@ impl EgressConnector for TestConnector {
     fn make_sender(
         &self,
         _agent_params: &HashMap<String, String>,
-    ) -> Result<Self::Sender, Self::SendError> {
+    ) -> Result<Self::Sender, Self::Error> {
         self.push(Event::CreateSender);
         Ok(TestSender {
             state: self.state.clone(),
