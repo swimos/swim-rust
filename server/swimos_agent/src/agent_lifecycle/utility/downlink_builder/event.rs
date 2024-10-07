@@ -43,6 +43,7 @@ pub struct StatelessEventDownlinkBuilder<
     address: Address<Text>,
     config: SimpleDownlinkConfig,
     inner: LC,
+    // This determines whether then downlink reports a kind of Event or MapEvent and makes no functional difference.
     map_events: bool,
 }
 

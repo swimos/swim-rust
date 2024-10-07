@@ -83,6 +83,12 @@ impl<T, LC> OpenValueDownlinkAction<T, LC> {
 }
 
 impl<T, LC> OpenEventDownlinkAction<T, LC> {
+    /// # Arguments
+    /// * `address` - The address of the remote lane to link to.
+    /// * `lifecycle` - The lifecycle events associated with the downlink.
+    /// * `config` - Runtime configuration parameters for the downlink.
+    /// * `map_events` - Determines whether the downlink will report [`DownlinkKind::Event`] or
+    ///   [`DownlinkKind::MapEvent`] as its kind (and makes no functional difference).
     pub fn new(
         address: Address<Text>,
         lifecycle: LC,
