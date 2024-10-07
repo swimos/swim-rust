@@ -98,5 +98,10 @@ where
 /// A reference to an ingress context is passed to an [ingress connector](`IngressConnector`) when it starts
 /// allowing it to request that lanes be opened.
 pub trait IngressContext {
+    /// Request a new, dynamic WARP lane be opened on the agent.
+    ///
+    /// # Arguments
+    /// * `name` - The name of the lane.
+    /// * `kind` - The kind of the lane.
     fn open_lane(&mut self, name: &str, kind: WarpLaneKind);
 }

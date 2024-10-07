@@ -142,6 +142,11 @@ pub trait EgressConnectorSender<SendError>: Send + Clone {
 /// A reference to an egress context is passed to an [egress connector](`EgressConnector`) when it starts
 /// allowing it to request that lanes or downlinks to remote lanes be opened.
 pub trait EgressContext {
+    /// Request a new, dynamic WARP lane be opened on the agent.
+    ///
+    /// # Arguments
+    /// * `name` - The name of the lane.
+    /// * `kind` - The kind of the lane.
     fn open_lane(&mut self, name: &str, kind: WarpLaneKind);
 
     /// Request an event downlink to a remote lane.
