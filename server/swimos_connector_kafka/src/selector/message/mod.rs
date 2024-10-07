@@ -254,7 +254,6 @@ pub struct MessageSelectors {
     map_lanes: HashMap<String, MessageSelector>,
     value_downlinks: HashMap<Address<String>, MessageSelector>,
     map_downlinks: HashMap<Address<String>, MessageSelector>,
-    total_lanes: u32,
 }
 
 impl MessageSelectors {
@@ -348,21 +347,11 @@ impl TryFrom<&KafkaEgressConfiguration> for MessageSelectors {
                 }
             }
         }
-        let total = value_lanes.len() + map_lanes.len();
-        let total_lanes = if let Ok(n) = u32::try_from(total) {
-            if n == u32::MAX {
-                return Err(InvalidExtractors::TooManyLanes(total));
-            }
-            n
-        } else {
-            return Err(InvalidExtractors::TooManyLanes(total));
-        };
         Ok(MessageSelectors {
             value_lanes: value_lane_selectors,
             map_lanes: map_lane_selectors,
             value_downlinks: value_dl_selectors,
             map_downlinks: map_dl_selectors,
-            total_lanes,
         })
     }
 }

@@ -128,8 +128,8 @@ where
         let (lanes_tx, lanes_rx) = trigger::trigger();
         let context: HandlerContext<ConnectorAgent> = Default::default();
         let mut collector = RequestCollector::default();
+        let init_result = lifecycle.initialize(&mut collector);
         let on_start = lifecycle.on_start(on_start_tx);
-        lifecycle.initialize(&mut collector);
         let create_sender = context
             .with_parameters(|params| lifecycle.make_sender(params))
             .try_handler()
@@ -152,7 +152,9 @@ where
         } = collector;
         let open_lanes = open_lanes(lanes, lanes_tx);
         let open_downlinks = self.open_downlinks(value_downlinks, map_downlinks);
-        await_init
+        let check_init = context.value(init_result).try_handler();
+        check_init
+            .followed_by(await_init)
             .followed_by(on_start)
             .followed_by(open_lanes)
             .followed_by(create_sender)

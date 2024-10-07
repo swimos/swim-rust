@@ -25,9 +25,7 @@ use crate::facade::{ConsumerFactory, KafkaConsumer, KafkaFactory, KafkaMessage};
 use crate::selector::{Computed, MapLaneSelector, ValueLaneSelector};
 use crate::{IngressMapLaneSpec, IngressValueLaneSpec, InvalidLanes};
 use futures::{stream::unfold, Future};
-use swimos_agent::event_handler::{
-    EventHandler, HandlerActionExt, Sequentially, TryHandlerActionExt, UnitHandler,
-};
+use swimos_agent::event_handler::{EventHandler, HandlerActionExt, Sequentially, UnitHandler};
 use swimos_api::agent::WarpLaneKind;
 use swimos_model::Value;
 use swimos_utilities::trigger;
@@ -87,27 +85,9 @@ where
 {
     fn on_start(&self, init_complete: trigger::Sender) -> impl EventHandler<ConnectorAgent> + '_ {
         let handler_context = ConnHandlerContext::default();
-        let KafkaIngressConnector {
-            configuration,
-            lanes,
-            ..
-        } = self;
-        let result = Lanes::try_from(configuration);
-        if let Err(err) = &result {
-            error!(error = %err, "Failed to create lanes for a Kafka connector.");
-        }
-        let handler = handler_context
-            .value(result)
-            .try_handler()
-            .and_then(move |l: Lanes| {
-                handler_context.effect(move || {
-                    debug!("Successfully interpreted configuration for a Kafka ingress connector.");
-                    *lanes.borrow_mut() = l;
-                    init_complete.trigger();
-                })
-            });
-
-        handler
+        handler_context.effect(move || {
+            init_complete.trigger();
+        })
     }
 
     fn on_stop(&self) -> impl EventHandler<ConnectorAgent> + '_ {
@@ -156,15 +136,29 @@ where
         Ok(stream_src.into_stream())
     }
 
-    fn initialize(&self, context: &mut dyn IngressContext) {
-        let KafkaIngressConnector { lanes, .. } = self;
-        let guard = lanes.borrow();
-        for lane_spec in &guard.value_lanes {
-            context.open_lane(lane_spec.name(), WarpLaneKind::Value);
+    fn initialize(&self, context: &mut dyn IngressContext) -> Result<(), Self::StreamError> {
+        let KafkaIngressConnector {
+            configuration,
+            lanes,
+            ..
+        } = self;
+        let mut guard = lanes.borrow_mut();
+        match Lanes::try_from(configuration) {
+            Ok(lanes_from_conf) => {
+                for lane_spec in &lanes_from_conf.value_lanes {
+                    context.open_lane(lane_spec.name(), WarpLaneKind::Value);
+                }
+                for lane_spec in &lanes_from_conf.map_lanes {
+                    context.open_lane(lane_spec.name(), WarpLaneKind::Map);
+                }
+                *guard = lanes_from_conf;
+            }
+            Err(err) => {
+                error!(error = %err, "Failed to create lanes for a Kafka connector.");
+                return Err(err.into());
+            }
         }
-        for lane_spec in &guard.map_lanes {
-            context.open_lane(lane_spec.name(), WarpLaneKind::Map);
-        }
+        Ok(())
     }
 }
 

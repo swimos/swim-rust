@@ -180,9 +180,10 @@ impl EgressConnector for TestConnector {
 
     type Sender = TestSender;
 
-    fn initialize(&self, context: &mut dyn EgressContext) {
+    fn initialize(&self, context: &mut dyn EgressContext) -> Result<(), Self::SendError> {
         context.open_event_downlink(value_lane_addr());
         context.open_map_downlink(map_lane_addr());
+        Ok(())
     }
 
     fn make_sender(

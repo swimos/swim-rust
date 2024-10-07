@@ -22,7 +22,9 @@ use futures::{future::join, TryStreamExt};
 use parking_lot::Mutex;
 use rand::{rngs::ThreadRng, Rng};
 use rdkafka::error::KafkaError;
-use swimos_connector::{BaseConnector, ConnectorAgent, IngressConnector};
+use swimos_agent::agent_model::{AgentSpec, ItemDescriptor, ItemFlags};
+use swimos_api::agent::WarpLaneKind;
+use swimos_connector::{BaseConnector, ConnectorAgent, IngressConnector, IngressContext};
 use swimos_model::{Item, Value};
 use swimos_recon::print_recon_compact;
 use swimos_utilities::trigger;
@@ -374,6 +376,37 @@ async fn message_tasks_stream() {
     .expect("Test timed out.");
 }
 
+#[derive(Default)]
+struct TestIngressContext {
+    requests: Vec<(String, WarpLaneKind)>,
+}
+
+impl IngressContext for TestIngressContext {
+    fn open_lane(&mut self, name: &str, kind: WarpLaneKind) {
+        self.requests.push((name.to_string(), kind));
+    }
+}
+
+#[test]
+fn connector_initialize() {
+    let mut context = TestIngressContext::default();
+    let config = make_config();
+    let factory = MockConsumerFactory::new(Ok(vec![]), props(), KafkaLogLevel::Warning);
+    let connector = KafkaIngressConnector::new(factory, config);
+    assert!(connector.initialize(&mut context).is_ok());
+    let requests = context.requests;
+    assert_eq!(requests.len(), 2);
+
+    let lane_map = requests.into_iter().collect::<HashMap<_, _>>();
+    let lanes_expected = [
+        ("key".to_string(), WarpLaneKind::Value),
+        ("map".to_string(), WarpLaneKind::Map),
+    ]
+    .into_iter()
+    .collect::<HashMap<_, _>>();
+    assert_eq!(lane_map, lanes_expected);
+}
+
 #[tokio::test]
 async fn connector_on_start() {
     tokio::time::timeout(TEST_TIMEOUT, async {
@@ -392,15 +425,35 @@ async fn connector_on_start() {
         let (modified, result) = join(start_task, rx).await;
         assert!(result.is_ok());
         assert!(modified.is_empty());
-
-        let expected_value_lanes = ["key".to_string()].into_iter().collect::<HashSet<_>>();
-        let expected_map_lanes = ["map".to_string()].into_iter().collect::<HashSet<_>>();
-
-        assert_eq!(agent.value_lanes(), expected_value_lanes);
-        assert_eq!(agent.map_lanes(), expected_map_lanes);
     })
     .await
     .expect("Test timed out.");
+}
+
+async fn init_agent(
+    connector: &KafkaIngressConnector<MockConsumerFactory>,
+    agent: &ConnectorAgent,
+) {
+    let mut context = TestIngressContext::default();
+    assert!(connector.initialize(&mut context).is_ok());
+    for (name, kind) in context.requests {
+        assert!(agent
+            .register_dynamic_item(
+                &name,
+                ItemDescriptor::WarpLane {
+                    kind,
+                    flags: ItemFlags::TRANSIENT
+                }
+            )
+            .is_ok());
+    }
+    let (tx, rx) = trigger::trigger();
+    let handler = connector.on_start(tx);
+
+    let start_task = run_handler_with_futures(agent, handler);
+
+    let (_, result) = join(start_task, rx).await;
+    assert!(result.is_ok());
 }
 
 #[tokio::test]
@@ -413,14 +466,8 @@ async fn connector_stream() {
             MockConsumerFactory::new(Ok(messages.clone()), props(), KafkaLogLevel::Warning);
         let connector = KafkaIngressConnector::new(factory, config);
 
-        let (tx, rx) = trigger::trigger();
-        let handler = connector.on_start(tx);
-
         let mut agent = ConnectorAgent::default();
-        let start_task = run_handler_with_futures(&agent, handler);
-
-        let (_, result) = join(start_task, rx).await;
-        assert!(result.is_ok());
+        init_agent(&connector, &agent).await;
 
         let mut stream = connector.create_stream().expect("Connector failed.");
 
@@ -447,14 +494,8 @@ async fn failed_connector_stream_start() {
             MockConsumerFactory::new(Err(KafkaError::Canceled), props(), KafkaLogLevel::Warning);
         let connector = KafkaIngressConnector::new(factory, config);
 
-        let (tx, rx) = trigger::trigger();
-        let handler = connector.on_start(tx);
-
         let agent = ConnectorAgent::default();
-        let start_task = run_handler_with_futures(&agent, handler);
-
-        let (_, result) = join(start_task, rx).await;
-        assert!(result.is_ok());
+        init_agent(&connector, &agent).await;
 
         let result = connector.create_stream();
 

@@ -55,7 +55,7 @@ pub trait IngressConnector: BaseConnector {
     ///
     /// # Arguments
     /// * `context` - The connector makes calls to the context to request the lanes.
-    fn initialize(&self, context: &mut dyn IngressContext);
+    fn initialize(&self, context: &mut dyn IngressContext) -> Result<(), Self::StreamError>;
 }
 
 /// A trait for fallible streams of event handlers that are returned by a [`IngressConnector`].

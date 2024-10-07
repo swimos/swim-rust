@@ -81,7 +81,7 @@ where
         let (on_start_tx, on_start_rx) = trigger::trigger();
         let (lanes_tx, lanes_rx) = trigger::trigger();
         let mut collector = RequestCollector::default();
-        connector.initialize(&mut collector);
+        let init_result = connector.initialize(&mut collector);
         let open_lanes = open_lanes(collector.lanes, lanes_tx);
         let suspend = handler_context
             .effect(|| connector.create_stream())
@@ -95,8 +95,9 @@ where
                         .followed_by(suspend_connector(stream))
                 })
             });
-        connector
-            .on_start(on_start_tx)
+        let check_init = handler_context.value(init_result).try_handler();
+        check_init
+            .followed_by(connector.on_start(on_start_tx))
             .followed_by(open_lanes)
             .followed_by(suspend)
     }

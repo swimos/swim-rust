@@ -126,8 +126,9 @@ impl IngressConnector for TestConnector {
         }
     }
 
-    fn initialize(&self, _context: &mut dyn IngressContext) {
+    fn initialize(&self, _context: &mut dyn IngressContext) -> Result<(), Self::StreamError> {
         self.inner.lock().push(Event::Init);
+        Ok(())
     }
 }
 

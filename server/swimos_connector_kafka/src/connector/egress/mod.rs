@@ -106,19 +106,19 @@ enum Serializers {
 }
 
 impl Serializers {
-    fn get(&mut self) -> &LoadedSerializers {
+    fn get(&mut self) -> Option<&LoadedSerializers> {
         match self {
             Serializers::Pending(rx) => match rx.try_recv() {
                 Ok(Some(ser)) => {
                     *self = Serializers::Loaded(ser);
                     match self {
-                        Self::Loaded(loaded) => loaded,
-                        _ => unreachable!(),
+                        Self::Loaded(loaded) => Some(loaded),
+                        _ => None,
                     }
                 }
-                _ => panic!("Not provided."),
+                _ => None,
             },
-            Serializers::Loaded(loaded) => loaded,
+            Serializers::Loaded(loaded) => Some(loaded),
         }
     }
 }
@@ -211,7 +211,10 @@ where
         let LoadedSerializers {
             key_serializer,
             payload_serializer,
-        } = serializers.get();
+        } = match serializers.get() {
+            Some(ser) => ser,
+            None => return Err(KafkaSenderError::NotInitialized),
+        };
         let producer = factory.create(properties, *log_level)?;
         let ser_producer =
             SerializingProducer::new(producer, key_serializer.clone(), payload_serializer.clone());
@@ -223,9 +226,10 @@ where
         Ok(sender)
     }
 
-    fn initialize(&self, context: &mut dyn EgressContext) {
+    fn initialize(&self, context: &mut dyn EgressContext) -> Result<(), Self::SendError> {
         open_lanes(&self.configuration, context);
         open_downlinks(&self.configuration, context);
+        Ok(())
     }
 }
 

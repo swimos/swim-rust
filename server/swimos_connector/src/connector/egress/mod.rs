@@ -47,7 +47,7 @@ pub trait EgressConnector: BaseConnector {
     ///
     /// # Arguments
     /// * `context` - The connector makes calls to the context to request the lanes and downlinks.
-    fn initialize(&self, context: &mut dyn EgressContext);
+    fn initialize(&self, context: &mut dyn EgressContext) -> Result<(), Self::SendError>;
 
     /// Create sender for the connector which is used to send messages to the external data sink. This is called
     /// exactly ones during the agent's `on_start` event but must implement [`Clone`] so that copies can be passed
