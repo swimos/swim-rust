@@ -14,7 +14,7 @@
 
 use std::{collections::HashMap, time::Duration};
 
-use swimos_api::address::Address;
+use swimos_api::{address::Address, agent::WarpLaneKind};
 use swimos_model::Value;
 
 use super::{BaseConnector, ConnectorFuture};
@@ -42,12 +42,12 @@ pub trait EgressConnector: BaseConnector {
     /// The type of the sender created by this connector.
     type Sender: EgressConnectorSender<Self::Error> + 'static;
 
-    /// Open the downlinks required by the connector. This is called during the agent's `on_start`
+    /// Open the lanes and downlinks required by the connector. This is called during the agent's `on_start`
     /// event.
     ///
     /// # Arguments
-    /// * `context` - The connector makes calls to the context to request the downlinks.
-    fn open_downlinks(&self, context: &mut dyn EgressContext);
+    /// * `context` - The connector makes calls to the context to request the lanes and downlinks.
+    fn initialize(&self, context: &mut dyn EgressContext) -> Result<(), Self::Error>;
 
     /// Create sender for the connector which is used to send messages to the external data sink. This is called
     /// exactly ones during the agent's `on_start` event but must implement [`Clone`] so that copies can be passed
@@ -59,22 +59,6 @@ pub trait EgressConnector: BaseConnector {
         &self,
         agent_params: &HashMap<String, String>,
     ) -> Result<Self::Sender, Self::Error>;
-}
-
-/// A reference to an egress context is passed to an [`EgressConnector`] when it starts allowing it
-/// to request that downlinks be opened to remote lanes.
-pub trait EgressContext {
-    /// Request an event downlink to a remote lane.
-    ///
-    /// # Arguments
-    /// * `address` - The address of the remote lane.
-    fn open_event_downlink(&mut self, address: Address<String>);
-
-    /// Request a map-event downlink to a remote lane.
-    ///
-    /// # Arguments
-    /// * `address` - The address of the remote lane.
-    fn open_map_downlink(&mut self, address: Address<String>);
 }
 
 /// Possible results of sending a message to the external sink.
@@ -153,4 +137,27 @@ pub trait EgressConnectorSender<SendError>: Send + Clone {
         &self,
         timer_id: u64,
     ) -> Option<SendResult<impl ConnectorFuture<SendError>, SendError>>;
+}
+
+/// A reference to an egress context is passed to an [egress connector](`EgressConnector`) when it starts
+/// allowing it to request that lanes or downlinks to remote lanes be opened.
+pub trait EgressContext {
+    /// Request a new, dynamic WARP lane be opened on the agent.
+    ///
+    /// # Arguments
+    /// * `name` - The name of the lane.
+    /// * `kind` - The kind of the lane.
+    fn open_lane(&mut self, name: &str, kind: WarpLaneKind);
+
+    /// Request an event downlink to a remote lane.
+    ///
+    /// # Arguments
+    /// * `address` - The address of the remote lane.
+    fn open_event_downlink(&mut self, address: Address<&str>);
+
+    /// Request a map-event downlink to a remote lane.
+    ///
+    /// # Arguments
+    /// * `address` - The address of the remote lane.
+    fn open_map_downlink(&mut self, address: Address<&str>);
 }

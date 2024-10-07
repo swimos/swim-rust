@@ -261,6 +261,7 @@ pub fn run_handler<H: EventHandler<ConnectorAgent>>(
     }
 }
 
+#[cfg(feature = "json")]
 pub fn create_kafka_props() -> HashMap<String, String> {
     [
         ("bootstrap.servers", "datagen.nstream.cloud:9092"),

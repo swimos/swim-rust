@@ -20,6 +20,7 @@ use swimos_agent::{
     agent_lifecycle::HandlerContext,
     event_handler::{HandlerAction, HandlerActionExt, TryHandlerActionExt},
 };
+use swimos_api::agent::WarpLaneKind;
 
 use crate::generic::ConnectorAgent;
 
@@ -46,6 +47,13 @@ pub trait IngressConnector: BaseConnector {
     /// Create an asynchronous stream that consumes events from the external data source and produces
     /// [event handlers](swimos_agent::event_handler::EventHandler) from them which modify the state of the agent.
     fn create_stream(&self) -> Result<impl ConnectorStream<Self::Error>, Self::Error>;
+
+    /// Open the lanes required by the connector. This is called during the agent's `on_start`
+    /// event.
+    ///
+    /// # Arguments
+    /// * `context` - The connector makes calls to the context to request the lanes.
+    fn initialize(&self, context: &mut dyn IngressContext) -> Result<(), Self::Error>;
 }
 
 /// A trait for fallible streams of event handlers that are returned by a [`IngressConnector`].
@@ -85,4 +93,15 @@ where
             .discard()
     };
     context.suspend(fut)
+}
+
+/// A reference to an ingress context is passed to an [ingress connector](`IngressConnector`) when it starts
+/// allowing it to request that lanes be opened.
+pub trait IngressContext {
+    /// Request a new, dynamic WARP lane be opened on the agent.
+    ///
+    /// # Arguments
+    /// * `name` - The name of the lane.
+    /// * `kind` - The kind of the lane.
+    fn open_lane(&mut self, name: &str, kind: WarpLaneKind);
 }

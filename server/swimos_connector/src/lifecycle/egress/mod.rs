@@ -15,7 +15,7 @@
 use std::{cell::OnceCell, collections::HashMap};
 
 use bitflags::bitflags;
-use futures::{FutureExt, TryFutureExt};
+use futures::{future::join, FutureExt, TryFutureExt};
 use swimos_agent::{
     agent_lifecycle::{
         item_event::{dynamic_handler, DynamicHandler, DynamicLifecycle, ItemEvent},
@@ -34,15 +34,17 @@ use swimos_agent::{
     AgentMetadata,
 };
 use swimos_agent_protocol::MapMessage;
-use swimos_api::address::Address;
+use swimos_api::{address::Address, agent::WarpLaneKind};
 use swimos_model::Value;
 use swimos_utilities::trigger;
 
 use crate::{
-    connector::{EgressConnector, EgressConnectorSender},
+    connector::{EgressConnector, EgressConnectorSender, EgressContext},
     error::ConnectorInitError,
-    ConnectorAgent, EgressContext, MessageSource, SendResult,
+    ConnectorAgent, MessageSource, SendResult,
 };
+
+use super::open_lanes;
 
 #[cfg(test)]
 mod tests;
@@ -96,18 +98,23 @@ bitflags! {
 }
 
 #[derive(Default, Debug)]
-struct DownlinkCollector {
+struct RequestCollector {
+    lanes: Vec<(String, WarpLaneKind)>,
     value_downlinks: Vec<Address<String>>,
     map_downlinks: Vec<Address<String>>,
 }
 
-impl EgressContext for DownlinkCollector {
-    fn open_event_downlink(&mut self, address: Address<String>) {
-        self.value_downlinks.push(address);
+impl EgressContext for RequestCollector {
+    fn open_event_downlink(&mut self, address: Address<&str>) {
+        self.value_downlinks.push(address.owned());
     }
 
-    fn open_map_downlink(&mut self, address: Address<String>) {
-        self.map_downlinks.push(address);
+    fn open_map_downlink(&mut self, address: Address<&str>) {
+        self.map_downlinks.push(address.owned());
+    }
+
+    fn open_lane(&mut self, name: &str, kind: WarpLaneKind) {
+        self.lanes.push((name.to_string(), kind));
     }
 }
 
@@ -117,11 +124,12 @@ where
 {
     fn on_start(&self) -> impl EventHandler<ConnectorAgent> + '_ {
         let EgressConnectorLifecycle { lifecycle, sender } = self;
-        let (tx, rx) = trigger::trigger();
+        let (on_start_tx, on_start_rx) = trigger::trigger();
+        let (lanes_tx, lanes_rx) = trigger::trigger();
         let context: HandlerContext<ConnectorAgent> = Default::default();
-        let mut collector = DownlinkCollector::default();
-        let on_start = lifecycle.on_start(tx);
-        lifecycle.open_downlinks(&mut collector);
+        let mut collector = RequestCollector::default();
+        let init_result = lifecycle.initialize(&mut collector);
+        let on_start = lifecycle.on_start(on_start_tx);
         let create_sender = context
             .with_parameters(|params| lifecycle.make_sender(params))
             .try_handler()
@@ -131,14 +139,24 @@ where
                 })
             });
         let await_init = context.suspend(async move {
+            let (r1, r2) = join(on_start_rx, lanes_rx).await;
             context
-                .value(rx.await)
+                .value(r1.and(r2))
                 .try_handler()
                 .followed_by(ConnectorAgent::set_flags(EgressFlags::INITIALIZED.bits()))
         });
-        let open_downlinks = self.open_downlinks(collector);
-        await_init
+        let RequestCollector {
+            lanes,
+            value_downlinks,
+            map_downlinks,
+        } = collector;
+        let open_lanes = open_lanes(lanes, lanes_tx);
+        let open_downlinks = self.open_downlinks(value_downlinks, map_downlinks);
+        let check_init = context.value(init_result).try_handler();
+        check_init
+            .followed_by(await_init)
             .followed_by(on_start)
+            .followed_by(open_lanes)
             .followed_by(create_sender)
             .followed_by(open_downlinks)
     }
@@ -252,7 +270,8 @@ where
 {
     fn open_downlinks(
         &self,
-        collector: DownlinkCollector,
+        value_downlinks: Vec<Address<String>>,
+        map_downlinks: Vec<Address<String>>,
     ) -> impl EventHandler<ConnectorAgent> + '_ {
         let EgressConnectorLifecycle { sender, .. } = self;
         let context: HandlerContext<ConnectorAgent> = Default::default();
@@ -260,10 +279,6 @@ where
             .effect(|| sender.get().ok_or(ConnectorInitError))
             .try_handler()
             .and_then(move |sender: &C::Sender| {
-                let DownlinkCollector {
-                    value_downlinks,
-                    map_downlinks,
-                } = collector;
                 let mut open_value_dls = vec![];
                 let mut open_map_dls = vec![];
                 for address in value_downlinks {

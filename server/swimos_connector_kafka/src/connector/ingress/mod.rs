@@ -15,8 +15,8 @@
 #[cfg(test)]
 mod tests;
 
+use std::cell::RefCell;
 use std::collections::HashSet;
-use std::{cell::RefCell, sync::Arc};
 
 use crate::config::KafkaIngressConfiguration;
 use crate::deser::{BoxMessageDeserializer, MessagePart, MessageView};
@@ -25,15 +25,16 @@ use crate::facade::{ConsumerFactory, KafkaConsumer, KafkaFactory, KafkaMessage};
 use crate::selector::{Computed, MapLaneSelector, ValueLaneSelector};
 use crate::{IngressMapLaneSpec, IngressValueLaneSpec, InvalidLanes};
 use futures::{stream::unfold, Future};
-use swimos_agent::event_handler::{
-    EventHandler, HandlerActionExt, Sequentially, TryHandlerActionExt, UnitHandler,
-};
+use swimos_agent::event_handler::{EventHandler, HandlerActionExt, Sequentially, UnitHandler};
+use swimos_api::agent::WarpLaneKind;
 use swimos_model::Value;
 use swimos_utilities::trigger;
-use tokio::sync::{mpsc, Semaphore};
+use tokio::sync::mpsc;
 use tracing::{debug, error, info, trace};
 
-use swimos_connector::{BaseConnector, ConnectorAgent, ConnectorStream, IngressConnector};
+use swimos_connector::{
+    BaseConnector, ConnectorAgent, ConnectorStream, IngressConnector, IngressContext,
+};
 
 use super::ConnHandlerContext;
 
@@ -84,26 +85,9 @@ where
 {
     fn on_start(&self, init_complete: trigger::Sender) -> impl EventHandler<ConnectorAgent> + '_ {
         let handler_context = ConnHandlerContext::default();
-        let KafkaIngressConnector {
-            configuration,
-            lanes,
-            ..
-        } = self;
-        let result = Lanes::try_from(configuration);
-        if let Err(err) = &result {
-            error!(error = %err, "Failed to create lanes for a Kafka connector.");
-        }
-        let handler = handler_context
-            .value(result)
-            .try_handler()
-            .and_then(|l: Lanes| {
-                let open_handler = l.open_lanes(init_complete);
-                debug!("Successfully created lanes for a Kafka connector.");
-                *lanes.borrow_mut() = l;
-                open_handler
-            });
-
-        handler
+        handler_context.effect(move || {
+            init_complete.trigger();
+        })
     }
 
     fn on_stop(&self) -> impl EventHandler<ConnectorAgent> + '_ {
@@ -148,6 +132,31 @@ where
 
         let stream_src = MessageTasks::new(consumer_task, rx);
         Ok(stream_src.into_stream())
+    }
+
+    fn initialize(&self, context: &mut dyn IngressContext) -> Result<(), Self::Error> {
+        let KafkaIngressConnector {
+            configuration,
+            lanes,
+            ..
+        } = self;
+        let mut guard = lanes.borrow_mut();
+        match Lanes::try_from(configuration) {
+            Ok(lanes_from_conf) => {
+                for lane_spec in &lanes_from_conf.value_lanes {
+                    context.open_lane(lane_spec.name(), WarpLaneKind::Value);
+                }
+                for lane_spec in &lanes_from_conf.map_lanes {
+                    context.open_lane(lane_spec.name(), WarpLaneKind::Map);
+                }
+                *guard = lanes_from_conf;
+            }
+            Err(err) => {
+                error!(error = %err, "Failed to create lanes for a Kafka connector.");
+                return Err(err.into());
+            }
+        }
+        Ok(())
     }
 }
 
@@ -303,7 +312,6 @@ where
 // and stored in the lifecycle to be used to start the consumer stream.
 #[derive(Debug, Default, Clone)]
 struct Lanes {
-    total_lanes: u32,
     value_lanes: Vec<ValueLaneSelector>,
     map_lanes: Vec<MapLaneSelector>,
 }
@@ -334,68 +342,11 @@ impl Lanes {
             .iter()
             .map(MapLaneSelector::try_from)
             .collect::<Result<Vec<_>, _>>()?;
-        let total = value_selectors.len() + map_selectors.len();
-        let total_lanes = if let Ok(n) = u32::try_from(total) {
-            n
-        } else {
-            return Err(InvalidLanes::TooManyLanes(total));
-        };
         check_selectors(&value_selectors, &map_selectors)?;
         Ok(Lanes {
             value_lanes: value_selectors,
             map_lanes: map_selectors,
-            total_lanes,
         })
-    }
-
-    // Opens the lanes that are defined in the configuration.
-    fn open_lanes(
-        &self,
-        init_complete: trigger::Sender,
-    ) -> impl EventHandler<ConnectorAgent> + 'static {
-        let handler_context = ConnHandlerContext::default();
-        let Lanes {
-            value_lanes,
-            map_lanes,
-            total_lanes,
-        } = self;
-
-        let semaphore = Arc::new(Semaphore::new(0));
-
-        let wait_handle = semaphore.clone();
-        let total = *total_lanes;
-        let await_done = async move {
-            let result = wait_handle.acquire_many(total).await.map(|_| ());
-            handler_context
-                .value(result)
-                .try_handler()
-                .followed_by(handler_context.effect(|| {
-                    let _ = init_complete.trigger();
-                }))
-        };
-
-        let mut open_value_lanes = Vec::with_capacity(value_lanes.len());
-        let mut open_map_lanes = Vec::with_capacity(map_lanes.len());
-
-        for selector in value_lanes {
-            let sem_cpy = semaphore.clone();
-            open_value_lanes.push(handler_context.open_value_lane(selector.name(), move |_| {
-                handler_context.effect(move || sem_cpy.add_permits(1))
-            }));
-        }
-
-        for selector in map_lanes {
-            let sem_cpy = semaphore.clone();
-            open_map_lanes.push(handler_context.open_map_lane(selector.name(), move |_| {
-                handler_context.effect(move || sem_cpy.add_permits(1))
-            }));
-        }
-
-        handler_context
-            .suspend(await_done)
-            .followed_by(Sequentially::new(open_value_lanes))
-            .followed_by(Sequentially::new(open_map_lanes))
-            .discard()
     }
 }
 

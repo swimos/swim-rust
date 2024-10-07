@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -27,10 +27,11 @@ use futures::{
 };
 use parking_lot::Mutex;
 use rdkafka::error::KafkaError;
-use swimos_api::address::Address;
+use swimos_agent::agent_model::{AgentSpec, ItemDescriptor, ItemFlags};
+use swimos_api::{address::Address, agent::WarpLaneKind};
 use swimos_connector::{
-    BaseConnector, ConnectorAgent, EgressConnector, EgressConnectorSender, MessageSource,
-    SendResult,
+    BaseConnector, ConnectorAgent, EgressConnector, EgressConnectorSender, EgressContext,
+    MessageSource, SendResult,
 };
 use swimos_model::{Item, Value};
 use swimos_recon::print_recon_compact;
@@ -39,10 +40,11 @@ use swimos_utilities::trigger;
 use crate::{
     config::{EgressDownlinkSpec, EgressLaneSpec, KafkaEgressConfiguration, TopicSpecifier},
     connector::{
-        egress::KafkaEgressConnector,
+        egress::{ConnectorState, KafkaEgressConnector},
         test_util::{run_handler_with_futures, run_handler_with_futures_dl},
     },
     facade::{KafkaProducer, ProduceResult, ProducerFactory},
+    selector::MessageSelector,
     DataFormat, DownlinkAddress, ExtractionSpec, KafkaLogLevel,
 };
 
@@ -188,6 +190,23 @@ fn addr2() -> DownlinkAddress {
 }
 
 async fn init_agent(agent: &ConnectorAgent, connector: &KafkaEgressConnector<MockFactory>) {
+    let mut context = TestEgressContext::default();
+    connector
+        .initialize(&mut context)
+        .expect("Initialization failed.");
+    let TestEgressContext { lanes, .. } = context;
+    for (name, kind) in lanes {
+        agent
+            .register_dynamic_item(
+                &name,
+                ItemDescriptor::WarpLane {
+                    kind,
+                    flags: ItemFlags::TRANSIENT,
+                },
+            )
+            .expect("Registering lane failed.");
+    }
+
     let (tx, rx) = trigger::trigger();
     let handler = connector.on_start(tx);
     let ((modified, downlinks), result) =
@@ -195,6 +214,72 @@ async fn init_agent(agent: &ConnectorAgent, connector: &KafkaEgressConnector<Moc
     assert!(modified.is_empty());
     assert!(result.is_ok());
     assert!(downlinks.is_empty());
+}
+
+#[derive(Default)]
+struct TestEgressContext {
+    lanes: Vec<(String, WarpLaneKind)>,
+    value_downlinks: Vec<Address<String>>,
+    map_downlinks: Vec<Address<String>>,
+}
+
+impl EgressContext for TestEgressContext {
+    fn open_lane(&mut self, name: &str, kind: WarpLaneKind) {
+        self.lanes.push((name.to_string(), kind));
+    }
+
+    fn open_event_downlink(&mut self, address: Address<&str>) {
+        self.value_downlinks.push(address.owned());
+    }
+
+    fn open_map_downlink(&mut self, address: Address<&str>) {
+        self.map_downlinks.push(address.owned());
+    }
+}
+
+#[test]
+fn initialize_connector() {
+    let (_, connector) = make_connector(
+        Default::default(),
+        vec![EgressLaneSpec {
+            name: VALUE_LANE.to_string(),
+            extractor: ExtractionSpec::default(),
+        }],
+        vec![EgressLaneSpec {
+            name: MAP_LANE.to_string(),
+            extractor: ExtractionSpec::default(),
+        }],
+        vec![EgressDownlinkSpec {
+            address: addr1(),
+            extractor: ExtractionSpec::default(),
+        }],
+        vec![EgressDownlinkSpec {
+            address: addr2(),
+            extractor: ExtractionSpec::default(),
+        }],
+    );
+    let mut context = TestEgressContext::default();
+
+    assert!(connector.initialize(&mut context).is_ok());
+
+    let TestEgressContext {
+        lanes,
+        value_downlinks,
+        map_downlinks,
+    } = context;
+    assert_eq!(lanes.len(), 2);
+    let lanes_map = lanes.into_iter().collect::<HashMap<_, _>>();
+
+    let expected_lanes = [
+        (VALUE_LANE.to_string(), WarpLaneKind::Value),
+        (MAP_LANE.to_string(), WarpLaneKind::Map),
+    ]
+    .into_iter()
+    .collect::<HashMap<_, _>>();
+
+    assert_eq!(value_downlinks, vec![Address::<String>::from(&addr1())]);
+    assert_eq!(map_downlinks, vec![Address::<String>::from(&addr2())]);
+    assert_eq!(lanes_map, expected_lanes);
 }
 
 #[tokio::test]
@@ -221,13 +306,48 @@ async fn connector_on_start() {
 
     let agent = ConnectorAgent::default();
 
-    init_agent(&agent, &connector).await;
+    let (tx, rx) = trigger::trigger();
+    let handler = connector.on_start(tx);
+    let ((modified, downlinks), result) =
+        join(run_handler_with_futures_dl(&agent, handler), rx).await;
+    assert!(modified.is_empty());
+    assert!(result.is_ok());
+    assert!(downlinks.is_empty());
 
-    let expected_value_lanes = [VALUE_LANE.to_string()].into_iter().collect::<HashSet<_>>();
-    let expected_map_lanes = [MAP_LANE.to_string()].into_iter().collect::<HashSet<_>>();
-
-    assert_eq!(agent.value_lanes(), expected_value_lanes);
-    assert_eq!(agent.map_lanes(), expected_map_lanes);
+    let ConnectorState {
+        mut serializers,
+        extractors,
+    } = connector
+        .state
+        .borrow_mut()
+        .take()
+        .expect("State not defined.");
+    let loaded_ser = serializers.get();
+    assert!(loaded_ser.is_some());
+    let selector =
+        MessageSelector::try_from_ext_spec(&ExtractionSpec::default(), Some(FIXED)).unwrap();
+    assert_eq!(
+        extractors.value_lanes(),
+        &[(VALUE_LANE.to_string(), selector.clone())]
+            .into_iter()
+            .collect()
+    );
+    assert_eq!(
+        extractors.map_lanes(),
+        &[(MAP_LANE.to_string(), selector.clone())]
+            .into_iter()
+            .collect()
+    );
+    assert_eq!(
+        extractors.value_downlinks(),
+        &[(Address::from(&addr1()), selector.clone())]
+            .into_iter()
+            .collect()
+    );
+    assert_eq!(
+        extractors.map_downlinks(),
+        &[(Address::from(&addr2()), selector)].into_iter().collect()
+    );
 }
 
 #[tokio::test]

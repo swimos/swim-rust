@@ -95,6 +95,17 @@ impl From<&DownlinkAddress> for Address<String> {
     }
 }
 
+impl<'a> From<&'a DownlinkAddress> for Address<&'a str> {
+    fn from(value: &'a DownlinkAddress) -> Self {
+        let DownlinkAddress { host, node, lane } = value;
+        Address {
+            host: host.as_ref().map(|s| s.as_str()),
+            node,
+            lane,
+        }
+    }
+}
+
 /// Specification of a downlink (to a remote lane) for the connector agent.
 #[derive(Clone, Debug, Form, PartialEq, Eq)]
 #[form(tag = "DownlinkSpec")]
