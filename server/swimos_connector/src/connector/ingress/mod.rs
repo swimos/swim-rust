@@ -32,7 +32,7 @@ use super::{BaseConnector, ConnectorHandler};
 /// lanes, by default, but allows for them to be added dynamically by the lifecycle. The lanes that a connector
 /// registers can be derived from static configuration or inferred from the external data source itself. Currently,
 /// it is only possible to register dynamic lanes in the initialization phase of the agent (during the `on_start`
-/// event). This restriction should be relaxed in the future.
+/// event). This restriction may be relaxed in the future.
 ///
 /// The core of a connector is the [create_stream](IngressConnector::create_stream) method that creates a fallible
 /// stream that consumes events from the external data source and converts them into

@@ -26,7 +26,7 @@ use super::{BaseConnector, ConnectorFuture};
 /// lanes, by default, but allows for them to be added dynamically by the lifecycle. The lanes that a connector
 /// registers can be derived from static configuration or inferred from the external data source itself. Currently,
 /// it is only possible to register dynamic lanes in the initialization phase of the agent (during the `on_start`
-/// event). This restriction should be relaxed in the future.
+/// event). This restriction may be relaxed in the future.
 ///
 /// When the connector starts, it will open some number of value and map lanes. Additionally, a number of event and
 /// map-event downlinks may be opened to remote lanes on other agents. Each time a changes is made to one of the
