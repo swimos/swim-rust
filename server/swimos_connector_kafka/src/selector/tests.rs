@@ -19,7 +19,7 @@ use crate::error::DeserializationError;
 use crate::selector::{
     BadSelector, InvalidLaneSpec, MessageField, SelectorComponent, SelectorDescriptor,
 };
-use crate::{MapLaneSpec, ValueLaneSpec};
+use crate::{IngressMapLaneSpec, IngressValueLaneSpec};
 
 use super::{
     AttrSelector, BasicSelector, ChainSelector, Deferred, IdentitySelector, IndexSelector,
@@ -187,7 +187,7 @@ fn parse_topic() {
 
     assert_eq!(
         super::parse_selector("$topic[0]"),
-        Err(BadSelector::InvalidRoot)
+        Err(BadSelector::TopicWithComponent)
     );
     assert_eq!(
         super::parse_selector("$topic.slot"),
@@ -496,7 +496,7 @@ fn complex_selector_descriptor_unnamed() {
 
 #[test]
 fn value_lane_selector_from_spec_inferred_name() {
-    let spec = ValueLaneSpec::new(None, "$key", true);
+    let spec = IngressValueLaneSpec::new(None, "$key", true);
     let selector = ValueLaneSelector::try_from(&spec).expect("Bad specification.");
     assert_eq!(&selector.name, "key");
     assert!(&selector.required);
@@ -508,7 +508,7 @@ fn value_lane_selector_from_spec_inferred_name() {
 
 #[test]
 fn value_lane_selector_from_spec_named() {
-    let spec = ValueLaneSpec::new(Some("field"), "$key[0]", false);
+    let spec = IngressValueLaneSpec::new(Some("field"), "$key[0]", false);
     let selector = ValueLaneSelector::try_from(&spec).expect("Bad specification.");
     assert_eq!(&selector.name, "field");
     assert!(!&selector.required);
@@ -522,21 +522,21 @@ fn value_lane_selector_from_spec_named() {
 
 #[test]
 fn value_lane_selector_from_spec_inferred_unnamed() {
-    let spec = ValueLaneSpec::new(None, "$key[0]", true);
+    let spec = IngressValueLaneSpec::new(None, "$key[0]", true);
     let error = ValueLaneSelector::try_from(&spec).expect_err("Should fail.");
     assert_eq!(error, InvalidLaneSpec::NameCannotBeInferred);
 }
 
 #[test]
 fn value_lane_selector_from_spec_bad_selector() {
-    let spec = ValueLaneSpec::new(None, "$wrong", true);
+    let spec = IngressValueLaneSpec::new(None, "$wrong", true);
     let error = ValueLaneSelector::try_from(&spec).expect_err("Should fail.");
     assert_eq!(error, InvalidLaneSpec::Selector(BadSelector::InvalidRoot));
 }
 
 #[test]
 fn map_lane_selector_from_spec() {
-    let spec = MapLaneSpec::new("field", "$key", "$payload", true, false);
+    let spec = IngressMapLaneSpec::new("field", "$key", "$payload", true, false);
     let selector = MapLaneSelector::try_from(&spec).expect("Bad specification.");
     assert_eq!(&selector.name, "field");
     assert!(!selector.required);
@@ -553,14 +553,14 @@ fn map_lane_selector_from_spec() {
 
 #[test]
 fn map_lane_selector_from_spec_bad_key() {
-    let spec = MapLaneSpec::new("field", "$other", "$payload", true, false);
+    let spec = IngressMapLaneSpec::new("field", "$other", "$payload", true, false);
     let error = MapLaneSelector::try_from(&spec).expect_err("Should fail.");
     assert_eq!(error, InvalidLaneSpec::Selector(BadSelector::InvalidRoot));
 }
 
 #[test]
 fn map_lane_selector_from_spec_bad_value() {
-    let spec = MapLaneSpec::new("field", "$key", "$other", true, false);
+    let spec = IngressMapLaneSpec::new("field", "$key", "$other", true, false);
     let error = MapLaneSelector::try_from(&spec).expect_err("Should fail.");
     assert_eq!(error, InvalidLaneSpec::Selector(BadSelector::InvalidRoot));
 }

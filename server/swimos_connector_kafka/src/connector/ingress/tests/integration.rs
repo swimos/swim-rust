@@ -22,7 +22,7 @@ use futures::{future::join, TryStreamExt};
 use parking_lot::Mutex;
 use rand::{rngs::ThreadRng, Rng};
 use rdkafka::error::KafkaError;
-use swimos_connector::{Connector, ConnectorAgent};
+use swimos_connector::{BaseConnector, ConnectorAgent, IngressConnector};
 use swimos_model::{Item, Value};
 use swimos_recon::print_recon_compact;
 use swimos_utilities::trigger;
@@ -30,14 +30,16 @@ use tokio::sync::mpsc;
 
 use crate::{
     config::KafkaLogLevel,
-    connector::{message_to_handler, Lanes, MessageSelector, MessageState, MessageTasks},
+    connector::ingress::{message_to_handler, Lanes, MessageSelector, MessageState, MessageTasks},
     deser::{MessageDeserializer, MessageView, ReconDeserializer},
     error::KafkaConnectorError,
     facade::{ConsumerFactory, KafkaConsumer, KafkaMessage},
-    DeserializationFormat, KafkaConnector, KafkaConnectorConfiguration, MapLaneSpec, ValueLaneSpec,
+    DataFormat, IngressMapLaneSpec, IngressValueLaneSpec, KafkaIngressConfiguration,
+    KafkaIngressConnector,
 };
 
-use super::{run_handler_with_futures, setup_agent};
+use super::setup_agent;
+use crate::connector::test_util::run_handler_with_futures;
 
 fn props() -> HashMap<String, String> {
     [("key".to_string(), "value".to_string())]
@@ -45,20 +47,20 @@ fn props() -> HashMap<String, String> {
         .collect()
 }
 
-fn make_config() -> KafkaConnectorConfiguration {
-    KafkaConnectorConfiguration {
+fn make_config() -> KafkaIngressConfiguration {
+    KafkaIngressConfiguration {
         properties: props(),
         log_level: KafkaLogLevel::Warning,
-        value_lanes: vec![ValueLaneSpec::new(None, "$key", true)],
-        map_lanes: vec![MapLaneSpec::new(
+        value_lanes: vec![IngressValueLaneSpec::new(None, "$key", true)],
+        map_lanes: vec![IngressMapLaneSpec::new(
             "map",
             "$payload.key",
             "$payload.value",
             true,
             true,
         )],
-        key_deserializer: DeserializationFormat::Recon,
-        payload_deserializer: DeserializationFormat::Recon,
+        key_deserializer: DataFormat::Recon,
+        payload_deserializer: DataFormat::Recon,
         topics: vec!["topic".to_string()],
     }
 }
@@ -261,8 +263,8 @@ async fn message_state() {
 
     let (mut agent, ids) = setup_agent();
     let id_set = ids.values().copied().collect::<HashSet<_>>();
-    let value_specs = vec![ValueLaneSpec::new(None, "$key", true)];
-    let map_specs = vec![MapLaneSpec::new(
+    let value_specs = vec![IngressValueLaneSpec::new(None, "$key", true)];
+    let map_specs = vec![IngressMapLaneSpec::new(
         "map",
         "$payload.key",
         "$payload.value",
@@ -334,8 +336,8 @@ async fn message_tasks_stream() {
 
         let (mut agent, ids) = setup_agent();
         let id_set = ids.values().copied().collect::<HashSet<_>>();
-        let value_specs = vec![ValueLaneSpec::new(None, "$key", true)];
-        let map_specs = vec![MapLaneSpec::new(
+        let value_specs = vec![IngressValueLaneSpec::new(None, "$key", true)];
+        let map_specs = vec![IngressMapLaneSpec::new(
             "map",
             "$payload.key",
             "$payload.value",
@@ -379,7 +381,7 @@ async fn connector_on_start() {
         let messages = generate_messages(num_messages, "topic_name");
         let config = make_config();
         let factory = MockConsumerFactory::new(Ok(messages), props(), KafkaLogLevel::Warning);
-        let connector = KafkaConnector::new(factory, config);
+        let connector = KafkaIngressConnector::new(factory, config);
 
         let (tx, rx) = trigger::trigger();
         let handler = connector.on_start(tx);
@@ -409,7 +411,7 @@ async fn connector_stream() {
         let config = make_config();
         let factory =
             MockConsumerFactory::new(Ok(messages.clone()), props(), KafkaLogLevel::Warning);
-        let connector = KafkaConnector::new(factory, config);
+        let connector = KafkaIngressConnector::new(factory, config);
 
         let (tx, rx) = trigger::trigger();
         let handler = connector.on_start(tx);
@@ -443,7 +445,7 @@ async fn failed_connector_stream_start() {
         let config = make_config();
         let factory =
             MockConsumerFactory::new(Err(KafkaError::Canceled), props(), KafkaLogLevel::Warning);
-        let connector = KafkaConnector::new(factory, config);
+        let connector = KafkaIngressConnector::new(factory, config);
 
         let (tx, rx) = trigger::trigger();
         let handler = connector.on_start(tx);

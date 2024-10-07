@@ -15,6 +15,8 @@
 use std::num::ParseIntError;
 
 use rdkafka::error::KafkaError;
+use swimos_api::address::Address;
+use swimos_model::{Value, ValueKind};
 use thiserror::Error;
 
 /// An error type that boxes any type of error that could be returned by a message deserializer.
@@ -31,15 +33,19 @@ impl DeserializationError {
     }
 }
 
-/// An error type that can be produced when attempting to load a deserializer.
+/// An error type that can be produced when attempting to load a serializer or deserializer.
 #[derive(Debug, Error)]
-pub enum DeserializerLoadError {
+pub enum LoadError {
     /// Attempting to read a required resource (for example, a file) failed.
     #[error(transparent)]
     Io(#[from] std::io::Error),
     /// A required resource was invalid.
     #[error(transparent)]
     InvalidDescriptor(#[from] Box<dyn std::error::Error + Send + 'static>),
+    #[error("The configuration provided for the serializer or deserializer is invalid: {0}")]
+    InvalidConfiguration(String),
+    #[error("Loading of the configuration was cancelled.")]
+    Cancelled,
 }
 
 /// Errors that can be produced by the Kafka connector.
@@ -47,7 +53,7 @@ pub enum DeserializerLoadError {
 pub enum KafkaConnectorError {
     /// Failed to load the deserializers required to interpret the Kafka messages.
     #[error(transparent)]
-    Configuration(#[from] DeserializerLoadError),
+    Configuration(#[from] LoadError),
     /// The Kafka consumer failed.
     #[error(transparent)]
     Kafka(#[from] KafkaError),
@@ -123,4 +129,63 @@ impl From<ParseIntError> for BadSelector {
     fn from(_value: ParseIntError) -> Self {
         BadSelector::IndexOutOfRange
     }
+}
+
+/// Error type for an invalid egress extractor specification.
+#[derive(Clone, Copy, Debug, Error, PartialEq, Eq)]
+pub enum InvalidExtractor {
+    /// A string describing a selector was invalid.
+    #[error(transparent)]
+    Selector(#[from] BadSelector),
+    /// No topic specified for an extractor.
+    #[error("An extractor did not provide a topic and no global topic was specified.")]
+    NoTopic,
+}
+
+/// Error type produced for invalid egress extractors.
+#[derive(Clone, Debug, Error, PartialEq, Eq)]
+pub enum InvalidExtractors {
+    /// The specification of an extractor was not valid.
+    #[error(transparent)]
+    Spec(#[from] InvalidExtractor),
+    /// A connector has too many lanes.
+    #[error("The connector has {0} lanes which cannot fit in a u32.")]
+    TooManyLanes(usize),
+    /// There are lane extractors with the same name.
+    #[error("The lane name {0} occurs more than once.")]
+    NameCollision(String),
+    /// There are downlink extractors with the same address.
+    #[error("The downlink address {0} occurs more than once.")]
+    AddressCollision(Address<String>),
+}
+
+#[derive(Clone, Copy, Default, Debug, PartialEq, Eq, Error)]
+#[error("Connector agent initialized twice.")]
+pub struct DoubleInitialization;
+
+/// An error type that boxes any type of error that could be returned by a message serializer.
+#[derive(Debug, Error)]
+pub enum SerializationError {
+    /// The value is not supported by the serialization format.
+    #[error("The serializations scheme does not support values of kind: {0}")]
+    InvalidKind(ValueKind),
+    /// An integer in a value was out of range for the serialization format.
+    #[error("Integer value {0} out of range for the serialization scheme.")]
+    IntegerOutOfRange(Value),
+    /// An floating point number in a value was out of range for the serialization format.
+    #[error("Float value {0} out of range for the serialization scheme.")]
+    FloatOutOfRange(f64),
+    /// The serializer failed with an error.
+    #[error("A value serializer failed: {0}")]
+    SerializerFailed(Box<dyn std::error::Error + Send>),
+}
+
+#[derive(Debug, Error)]
+pub enum KafkaSenderError {
+    #[error(transparent)]
+    Kafka(#[from] KafkaError),
+    #[error(transparent)]
+    Serialization(#[from] SerializationError),
+    #[error("The connector was not initialized.")]
+    NotInitialized,
 }

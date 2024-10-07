@@ -12,14 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    pin::Pin,
+    task::{Context, Poll},
+};
 
-use futures::Future;
+use futures::{Future, FutureExt};
 use rdkafka::{
     config::RDKafkaLogLevel,
     consumer::{CommitMode, Consumer, ConsumerContext, Rebalance, StreamConsumer},
     error::{KafkaError, KafkaResult},
     message::BorrowedMessage,
+    producer::{DeliveryFuture, FutureProducer, FutureRecord},
+    types::RDKafkaErrorCode,
     ClientConfig, ClientContext, Message, Statistics, TopicPartitionList,
 };
 use tracing::{debug, error, info, warn};
@@ -81,9 +87,9 @@ pub trait ConsumerFactory {
 }
 
 #[derive(Clone, Copy, Debug, Default)]
-pub struct KafkaConsumerFactory;
+pub struct KafkaFactory;
 
-impl ConsumerFactory for KafkaConsumerFactory {
+impl ConsumerFactory for KafkaFactory {
     type Consumer = LoggingConsumer;
 
     fn create(
@@ -154,3 +160,95 @@ impl ConsumerContext for KafkaClientContext {
 }
 
 pub type LoggingConsumer = StreamConsumer<KafkaClientContext>;
+
+pub enum ProduceResult<F> {
+    ResultFuture(F),
+    QueueFull,
+}
+
+pub trait KafkaProducer {
+    type Fut: Future<Output = Result<(), KafkaError>> + Send + 'static;
+
+    fn send<'a>(
+        &'a self,
+        topic: &'a str,
+        key: Option<&'a [u8]>,
+        payload: &'a [u8],
+    ) -> ProduceResult<Self::Fut>;
+}
+
+#[doc(hidden)]
+pub struct Simplified(Option<Result<DeliveryFuture, KafkaError>>);
+
+impl Future for Simplified {
+    type Output = Result<(), KafkaError>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        match self.as_mut().get_mut().0.take().expect("Polled twice.") {
+            Ok(mut fut) => match fut.poll_unpin(cx) {
+                Poll::Ready(Ok(Ok(_))) => Poll::Ready(Ok(())),
+                Poll::Ready(Ok(Err((err, _)))) => Poll::Ready(Err(err)),
+                Poll::Ready(Err(_)) => Poll::Ready(Err(KafkaError::Canceled)),
+                Poll::Pending => {
+                    self.get_mut().0 = Some(Ok(fut));
+                    Poll::Pending
+                }
+            },
+            Err(err) => Poll::Ready(Err(err)),
+        }
+    }
+}
+
+impl KafkaProducer for FutureProducer<KafkaClientContext> {
+    type Fut = Simplified;
+
+    fn send<'a>(
+        &'a self,
+        topic: &'a str,
+        key: Option<&'a [u8]>,
+        payload: &'a [u8],
+    ) -> ProduceResult<Self::Fut> {
+        let mut record: FutureRecord<[u8], [u8]> = FutureRecord::to(topic);
+        if let Some(key) = key {
+            record = record.key(key);
+        }
+        record = record.payload(payload);
+        let fut = match self.send_result(record) {
+            Ok(fut) => Simplified(Some(Ok(fut))),
+            Err((KafkaError::MessageProduction(RDKafkaErrorCode::QueueFull), _)) => {
+                return ProduceResult::QueueFull;
+            }
+            Err((err, _)) => Simplified(Some(Err(err))),
+        };
+        ProduceResult::ResultFuture(fut)
+    }
+}
+
+pub trait ProducerFactory {
+    type Producer: KafkaProducer + Clone + Send + Sync + 'static;
+
+    fn create(
+        &self,
+        properties: &HashMap<String, String>,
+        log_level: KafkaLogLevel,
+    ) -> Result<Self::Producer, KafkaError>;
+}
+
+impl ProducerFactory for KafkaFactory {
+    type Producer = FutureProducer<KafkaClientContext>;
+
+    fn create(
+        &self,
+        properties: &HashMap<String, String>,
+        log_level: KafkaLogLevel,
+    ) -> Result<Self::Producer, KafkaError> {
+        let mut client_builder = ClientConfig::new();
+        properties.iter().for_each(|(k, v)| {
+            client_builder.set(k, v);
+        });
+        let producer = client_builder
+            .set_log_level(log_level.into())
+            .create_with_context::<_, FutureProducer<KafkaClientContext>>(KafkaClientContext)?;
+        Ok(producer)
+    }
+}

@@ -71,7 +71,7 @@ pub enum MessagePart {
     Payload,
 }
 
-/// A deserializer that will attempt to produce a [value](Value) from a component of a Kafka messsage.
+/// A deserializer that will attempt to produce a [value](Value) from a component of a Kafka message.
 pub trait MessageDeserializer {
     type Error: std::error::Error;
 
@@ -157,8 +157,8 @@ impl MessageDeserializer for ReconDeserializer {
 /// Endianness for numeric deserializers.
 #[derive(Clone, Copy, Default, Debug, Form, PartialEq, Eq)]
 pub enum Endianness {
-    #[default]
     LittleEndian,
+    #[default]
     BigEndian,
 }
 

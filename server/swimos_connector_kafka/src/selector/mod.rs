@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+mod message;
 #[cfg(test)]
 mod tests;
 
@@ -25,12 +26,14 @@ use swimos_model::{Attr, Item, Text, Value};
 use tracing::{error, trace};
 
 use crate::{
-    config::{MapLaneSpec, ValueLaneSpec},
+    config::{IngressMapLaneSpec, IngressValueLaneSpec},
     deser::MessagePart,
     error::{DeserializationError, LaneSelectorError},
     BadSelector, InvalidLaneSpec,
 };
 use swimos_agent::lanes::{MapLaneSelectRemove, MapLaneSelectUpdate, ValueLaneSelectSet};
+
+pub use message::{MessageSelector, MessageSelectors};
 
 /// Enumeration of the components of a Kafka message.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -316,7 +319,7 @@ fn field_regex() -> &'static Regex {
 }
 
 fn create_init_regex() -> Result<Regex, regex::Error> {
-    Regex::new("\\A(\\$(?:key|payload|topic))(?:\\[(\\d+)])?\\z")
+    Regex::new("\\A(\\$(?:[a-z]+))(?:\\[(\\d+)])?\\z")
 }
 
 fn create_field_regex() -> Result<Regex, regex::Error> {
@@ -341,6 +344,13 @@ impl<'a> SelectorComponent<'a> {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+struct RawSelectorDescriptor<'a> {
+    part: &'a str,
+    index: Option<usize>,
+    components: Vec<SelectorComponent<'a>>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 enum SelectorDescriptor<'a> {
     Part {
         part: MessagePart,
@@ -348,6 +358,64 @@ enum SelectorDescriptor<'a> {
         components: Vec<SelectorComponent<'a>>,
     },
     Topic,
+}
+
+impl<'a> TryFrom<RawSelectorDescriptor<'a>> for SelectorDescriptor<'a> {
+    type Error = BadSelector;
+
+    fn try_from(value: RawSelectorDescriptor<'a>) -> Result<Self, Self::Error> {
+        let RawSelectorDescriptor {
+            part,
+            index,
+            components,
+        } = value;
+        match part {
+            "$topic" => {
+                if index.is_none() && components.is_empty() {
+                    Ok(SelectorDescriptor::Topic)
+                } else {
+                    Err(BadSelector::TopicWithComponent)
+                }
+            }
+            "$key" => Ok(SelectorDescriptor::Part {
+                part: MessagePart::Key,
+                index,
+                components,
+            }),
+            "$payload" => Ok(SelectorDescriptor::Part {
+                part: MessagePart::Payload,
+                index,
+                components,
+            }),
+            _ => Err(BadSelector::InvalidRoot),
+        }
+    }
+}
+
+fn make_chain_selector(
+    index: Option<usize>,
+    components: &[SelectorComponent<'_>],
+) -> ChainSelector {
+    let mut links = vec![];
+    if let Some(n) = index {
+        links.push(BasicSelector::Index(IndexSelector::new(n)));
+    }
+    for SelectorComponent {
+        is_attr,
+        name,
+        index,
+    } in components
+    {
+        links.push(if *is_attr {
+            BasicSelector::Attr(AttrSelector::new(name.to_string()))
+        } else {
+            BasicSelector::Slot(SlotSelector::for_field(*name))
+        });
+        if let Some(n) = index {
+            links.push(BasicSelector::Index(IndexSelector::new(*n)));
+        }
+    }
+    ChainSelector::new(links)
 }
 
 impl<'a> SelectorDescriptor<'a> {
@@ -388,28 +456,7 @@ impl<'a> SelectorDescriptor<'a> {
         match self {
             SelectorDescriptor::Part {
                 index, components, ..
-            } => {
-                let mut links = vec![];
-                if let Some(n) = index {
-                    links.push(BasicSelector::Index(IndexSelector::new(*n)));
-                }
-                for SelectorComponent {
-                    is_attr,
-                    name,
-                    index,
-                } in components
-                {
-                    links.push(if *is_attr {
-                        BasicSelector::Attr(AttrSelector::new(name.to_string()))
-                    } else {
-                        BasicSelector::Slot(SlotSelector::for_field(*name))
-                    });
-                    if let Some(n) = index {
-                        links.push(BasicSelector::Index(IndexSelector::new(*n)));
-                    }
-                }
-                Some(ChainSelector::new(links))
-            }
+            } => Some(make_chain_selector(*index, components)),
             SelectorDescriptor::Topic => None,
         }
     }
@@ -417,6 +464,11 @@ impl<'a> SelectorDescriptor<'a> {
 
 /// Attempt to parse a descriptor for a selector from a string.
 fn parse_selector(descriptor: &str) -> Result<SelectorDescriptor<'_>, BadSelector> {
+    parse_raw_selector(descriptor)?.try_into()
+}
+
+/// Attempt to parse a descriptor for a selector from a string.
+fn parse_raw_selector(descriptor: &str) -> Result<RawSelectorDescriptor<'_>, BadSelector> {
     if descriptor.is_empty() {
         return Err(BadSelector::EmptySelector);
     }
@@ -425,17 +477,11 @@ fn parse_selector(descriptor: &str) -> Result<SelectorDescriptor<'_>, BadSelecto
         Some(root) if !root.is_empty() => {
             if let Some(captures) = init_regex().captures(root) {
                 let field = match captures.get(1) {
-                    Some(kind) if kind.as_str() == "$key" => MessageField::Key,
-                    Some(kind) if kind.as_str() == "$payload" => MessageField::Payload,
-                    Some(kind) if kind.as_str() == "$topic" => MessageField::Topic,
+                    Some(kind) => kind.as_str(),
                     _ => return Err(BadSelector::InvalidRoot),
                 };
                 let index = if let Some(index_match) = captures.get(2) {
-                    if field != MessageField::Topic {
-                        Some(index_match.as_str().parse::<usize>()?)
-                    } else {
-                        return Err(BadSelector::InvalidRoot);
-                    }
+                    Some(index_match.as_str().parse::<usize>()?)
                 } else {
                     None
                 };
@@ -469,20 +515,8 @@ fn parse_selector(descriptor: &str) -> Result<SelectorDescriptor<'_>, BadSelecto
         }
     }
 
-    let part = match field {
-        MessageField::Key => MessagePart::Key,
-        MessageField::Payload => MessagePart::Payload,
-        MessageField::Topic => {
-            if components.is_empty() {
-                return Ok(SelectorDescriptor::Topic);
-            } else {
-                return Err(BadSelector::TopicWithComponent);
-            }
-        }
-    };
-
-    Ok(SelectorDescriptor::Part {
-        part,
+    Ok(RawSelectorDescriptor {
+        part: field,
         index,
         components,
     })
@@ -545,11 +579,11 @@ impl MapLaneSelector {
     }
 }
 
-impl TryFrom<&ValueLaneSpec> for ValueLaneSelector {
+impl TryFrom<&IngressValueLaneSpec> for ValueLaneSelector {
     type Error = InvalidLaneSpec;
 
-    fn try_from(value: &ValueLaneSpec) -> Result<Self, Self::Error> {
-        let ValueLaneSpec {
+    fn try_from(value: &IngressValueLaneSpec) -> Result<Self, Self::Error> {
+        let IngressValueLaneSpec {
             name,
             selector,
             required,
@@ -567,11 +601,11 @@ impl TryFrom<&ValueLaneSpec> for ValueLaneSelector {
     }
 }
 
-impl TryFrom<&MapLaneSpec> for MapLaneSelector {
+impl TryFrom<&IngressMapLaneSpec> for MapLaneSelector {
     type Error = InvalidLaneSpec;
 
-    fn try_from(value: &MapLaneSpec) -> Result<Self, Self::Error> {
-        let MapLaneSpec {
+    fn try_from(value: &IngressMapLaneSpec) -> Result<Self, Self::Error> {
+        let IngressMapLaneSpec {
             name,
             key_selector,
             value_selector,

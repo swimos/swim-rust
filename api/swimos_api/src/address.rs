@@ -171,3 +171,26 @@ impl PartialEq<RelativeAddress<&str>> for RelativeAddress<BytesStr> {
         self.node.as_str() == other.node && self.lane.as_str() == other.lane
     }
 }
+
+impl PartialEq<Address<String>> for Address<Text> {
+    fn eq(&self, other: &Address<String>) -> bool {
+        self.borrow_parts::<str>() == other.borrow_parts()
+    }
+}
+
+impl PartialEq<Address<Text>> for Address<String> {
+    fn eq(&self, other: &Address<Text>) -> bool {
+        self.borrow_parts::<str>() == other.borrow_parts()
+    }
+}
+
+impl From<Address<Text>> for Address<String> {
+    fn from(value: Address<Text>) -> Self {
+        let Address { host, node, lane } = value;
+        Address {
+            host: host.map(Into::into),
+            node: node.into(),
+            lane: lane.into(),
+        }
+    }
+}

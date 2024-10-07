@@ -12,134 +12,24 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
-use bytes::BytesMut;
-use futures::{
-    stream::{unfold, FuturesUnordered},
-    StreamExt,
-};
+use futures::stream::unfold;
 use parking_lot::Mutex;
 use swimos_agent::{
     agent_lifecycle::{on_start::OnStart, on_stop::OnStop},
-    agent_model::downlink::BoxDownlinkChannelFactory,
     event_handler::{
-        ActionContext, DownlinkSpawnOnDone, EventHandler, EventHandlerError, HandlerAction,
-        HandlerActionExt, HandlerFuture, LaneSpawnOnDone, LaneSpawner, LinkSpawner, SideEffect,
-        Spawner, StepResult,
+        ActionContext, EventHandler, HandlerAction, HandlerActionExt, SideEffect, StepResult,
     },
     AgentMetadata,
 };
-use swimos_api::{
-    address::Address,
-    agent::WarpLaneKind,
-    error::{CommanderRegistrationError, DynamicRegistrationError},
-};
-use swimos_model::Text;
 use swimos_utilities::trigger;
 use thiserror::Error;
 
 use crate::{
-    test_support::{make_meta, make_uri},
-    Connector, ConnectorAgent, ConnectorInitError, ConnectorLifecycle, ConnectorStream,
+    connector::BaseConnector, lifecycle::fixture::run_handle_with_futs, ConnectorAgent,
+    ConnectorInitError, ConnectorStream, IngressConnector, IngressConnectorLifecycle,
 };
-
-#[derive(Default)]
-struct TestSpawner {
-    futures: FuturesUnordered<HandlerFuture<ConnectorAgent>>,
-}
-
-impl Spawner<ConnectorAgent> for TestSpawner {
-    fn spawn_suspend(&self, fut: HandlerFuture<ConnectorAgent>) {
-        self.futures.push(fut);
-    }
-
-    fn schedule_timer(&self, _at: tokio::time::Instant, _id: u64) {
-        panic!("Unexpected timer.");
-    }
-}
-
-impl LinkSpawner<ConnectorAgent> for TestSpawner {
-    fn spawn_downlink(
-        &self,
-        _path: Address<Text>,
-        _make_channel: BoxDownlinkChannelFactory<ConnectorAgent>,
-        _on_done: DownlinkSpawnOnDone<ConnectorAgent>,
-    ) {
-        panic!("Spawning downlinks not supported.");
-    }
-
-    fn register_commander(&self, _path: Address<Text>) -> Result<u16, CommanderRegistrationError> {
-        panic!("Registering commanders not supported.");
-    }
-}
-
-impl LaneSpawner<ConnectorAgent> for TestSpawner {
-    fn spawn_warp_lane(
-        &self,
-        _name: &str,
-        _kind: WarpLaneKind,
-        _on_done: LaneSpawnOnDone<ConnectorAgent>,
-    ) -> Result<(), DynamicRegistrationError> {
-        panic!("Spawning lanes not supported.");
-    }
-}
-
-async fn run_handle_with_futs<H>(
-    agent: &ConnectorAgent,
-    handler: H,
-) -> Result<(), Box<dyn std::error::Error + Send>>
-where
-    H: EventHandler<ConnectorAgent>,
-{
-    let mut spawner = TestSpawner::default();
-    run_handler(&spawner, agent, handler)?;
-    while !spawner.futures.is_empty() {
-        match spawner.futures.next().await {
-            Some(h) => {
-                run_handler(&spawner, agent, h)?;
-            }
-            None => break,
-        }
-    }
-    Ok(())
-}
-
-fn run_handler<H>(
-    spawner: &TestSpawner,
-    agent: &ConnectorAgent,
-    mut handler: H,
-) -> Result<(), Box<dyn std::error::Error + Send>>
-where
-    H: EventHandler<ConnectorAgent>,
-{
-    let uri = make_uri();
-    let route_params = HashMap::new();
-    let meta = make_meta(&uri, &route_params);
-
-    let mut join_lane_init = HashMap::new();
-    let mut command_buffer = BytesMut::new();
-
-    let mut action_context = ActionContext::new(
-        spawner,
-        spawner,
-        spawner,
-        &mut join_lane_init,
-        &mut command_buffer,
-    );
-
-    loop {
-        match handler.step(&mut action_context, meta, agent) {
-            StepResult::Continue { .. } => {}
-            StepResult::Fail(EventHandlerError::EffectError(err)) => return Err(err),
-            StepResult::Fail(err) => panic!("{:?}", err),
-            StepResult::Complete { .. } => {
-                break;
-            }
-        }
-    }
-    Ok(())
-}
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Event {
@@ -193,10 +83,28 @@ impl HandlerAction<ConnectorAgent> for TestHandler {
     }
 }
 
-impl Connector for TestConnector {
-    type StreamError = TestError;
+impl BaseConnector for TestConnector {
+    fn on_start(&self, init_complete: trigger::Sender) -> impl EventHandler<ConnectorAgent> + '_ {
+        let drop_trigger = self.failure == Some(Failure::DropTrigger);
+        self.make_handler(Event::Start)
+            .followed_by(SideEffect::from(move || {
+                if drop_trigger {
+                    drop(init_complete);
+                } else {
+                    let _ = init_complete.trigger();
+                }
+            }))
+    }
 
-    fn create_stream(&self) -> Result<impl ConnectorStream<Self::StreamError>, Self::StreamError> {
+    fn on_stop(&self) -> impl EventHandler<ConnectorAgent> + '_ {
+        self.make_handler(Event::Stop)
+    }
+}
+
+impl IngressConnector for TestConnector {
+    type Error = TestError;
+
+    fn create_stream(&self) -> Result<impl ConnectorStream<Self::Error>, Self::Error> {
         if self.failure == Some(Failure::StreamInit) {
             Err(TestError)
         } else {
@@ -215,28 +123,12 @@ impl Connector for TestConnector {
             )))
         }
     }
-
-    fn on_start(&self, init_complete: trigger::Sender) -> impl EventHandler<ConnectorAgent> + '_ {
-        let drop_trigger = self.failure == Some(Failure::DropTrigger);
-        self.make_handler(Event::Start)
-            .followed_by(SideEffect::from(move || {
-                if drop_trigger {
-                    drop(init_complete);
-                } else {
-                    let _ = init_complete.trigger();
-                }
-            }))
-    }
-
-    fn on_stop(&self) -> impl EventHandler<ConnectorAgent> + '_ {
-        self.make_handler(Event::Stop)
-    }
 }
 
 #[tokio::test]
 async fn connector_lifecycle_start() {
     let connector = TestConnector::default();
-    let lifecycle = ConnectorLifecycle::new(connector.clone());
+    let lifecycle = IngressConnectorLifecycle::new(connector.clone());
     let handler = lifecycle.on_start();
     let agent = ConnectorAgent::default();
     assert!(run_handle_with_futs(&agent, handler).await.is_ok());
@@ -257,7 +149,7 @@ async fn connector_lifecycle_start() {
 #[tokio::test]
 async fn connector_lifecycle_stop() {
     let connector = TestConnector::default();
-    let lifecycle = ConnectorLifecycle::new(connector.clone());
+    let lifecycle = IngressConnectorLifecycle::new(connector.clone());
     let handler = lifecycle.on_stop();
     let agent = ConnectorAgent::default();
     assert!(run_handle_with_futs(&agent, handler).await.is_ok());
@@ -273,7 +165,7 @@ async fn connector_lifecycle_drop_trigger() {
         ..Default::default()
     };
 
-    let lifecycle = ConnectorLifecycle::new(connector.clone());
+    let lifecycle = IngressConnectorLifecycle::new(connector.clone());
     let handler = lifecycle.on_start();
     let agent = ConnectorAgent::default();
     let result = run_handle_with_futs(&agent, handler).await;
@@ -290,7 +182,7 @@ async fn connector_lifecycle_fail_init() {
         ..Default::default()
     };
 
-    let lifecycle = ConnectorLifecycle::new(connector.clone());
+    let lifecycle = IngressConnectorLifecycle::new(connector.clone());
     let handler = lifecycle.on_start();
     let agent = ConnectorAgent::default();
     let result = run_handle_with_futs(&agent, handler).await;
@@ -306,7 +198,7 @@ async fn connector_lifecycle_fail_stream() {
         ..Default::default()
     };
 
-    let lifecycle = ConnectorLifecycle::new(connector.clone());
+    let lifecycle = IngressConnectorLifecycle::new(connector.clone());
     let handler = lifecycle.on_start();
     let agent = ConnectorAgent::default();
     let result = run_handle_with_futs(&agent, handler).await;

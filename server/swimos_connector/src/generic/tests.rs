@@ -16,6 +16,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 
 use bytes::BytesMut;
+use swimos_agent::agent_lifecycle::item_event::{BorrowItem, DynamicAgent, DynamicItem};
 use swimos_agent::agent_model::downlink::BoxDownlinkChannelFactory;
 use swimos_agent::event_handler::{
     ActionContext, HandlerFuture, LaneSpawnOnDone, LaneSpawner, LinkSpawner, Spawner, StepResult,
@@ -379,6 +380,30 @@ fn map_lane_sync() {
         let response = from_buffer_map(&mut buffer);
         assert_eq!(response, LaneResponse::synced(sync_id));
     });
+}
+
+#[test]
+fn dynamic_agent_impl() {
+    let agent = ConnectorAgent::default();
+    let (value_id, map_id) = init(&agent);
+
+    let guard = agent.item("value_lane").expect("Lane missing.");
+    match guard.borrow_item() {
+        DynamicItem::ValueLane(l) => {
+            assert_eq!(l.id(), value_id);
+        }
+        _ => panic!("Expected value lane."),
+    }
+
+    let guard = agent.item("map_lane").expect("Lane missing.");
+    match guard.borrow_item() {
+        DynamicItem::MapLane(l) => {
+            assert_eq!(l.id(), map_id);
+        }
+        _ => panic!("Expected map lane."),
+    }
+
+    assert!(agent.item("other").is_none());
 }
 
 struct NoSpawn;

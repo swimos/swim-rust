@@ -13,37 +13,29 @@
 // limitations under the License.
 
 use crate::{
-    DeserializationFormat, Endianness, KafkaConnector, KafkaConnectorConfiguration, KafkaLogLevel,
-    MapLaneSpec, ValueLaneSpec,
+    connector::test_util::create_kafka_props, DataFormat, Endianness, IngressMapLaneSpec,
+    IngressValueLaneSpec, KafkaIngressConfiguration, KafkaIngressConnector, KafkaLogLevel,
 };
 use futures::{future::join, TryStreamExt};
-use swimos_connector::{Connector, ConnectorAgent};
+use swimos_connector::{BaseConnector, ConnectorAgent, IngressConnector};
 use swimos_utilities::trigger;
 
-use crate::connector::tests::{run_handler, run_handler_with_futures, TestSpawner};
+use crate::connector::test_util::{run_handler, run_handler_with_futures, TestSpawner};
 
-fn make_config() -> KafkaConnectorConfiguration {
-    KafkaConnectorConfiguration {
-        properties: [
-            ("bootstrap.servers", "datagen.nstream.cloud:9092"),
-            ("message.timeout.ms", "5000"),
-            ("group.id", "rust-consumer-test"),
-            ("auto.offset.reset", "smallest"),
-        ]
-        .into_iter()
-        .map(|(k, v)| (k.to_string(), v.to_string()))
-        .collect(),
+fn make_config() -> KafkaIngressConfiguration {
+    KafkaIngressConfiguration {
+        properties: create_kafka_props(),
         log_level: KafkaLogLevel::Debug,
-        value_lanes: vec![ValueLaneSpec::new(Some("latest_key"), "$key", true)],
-        map_lanes: vec![MapLaneSpec::new(
+        value_lanes: vec![IngressValueLaneSpec::new(Some("latest_key"), "$key", true)],
+        map_lanes: vec![IngressMapLaneSpec::new(
             "times",
             "$payload.ranLatest.mean_ul_sinr",
             "$payload.ranLatest.recorded_time",
             false,
             true,
         )],
-        key_deserializer: DeserializationFormat::Int32(Endianness::LittleEndian),
-        payload_deserializer: DeserializationFormat::Json,
+        key_deserializer: DataFormat::Int32(Endianness::BigEndian),
+        payload_deserializer: DataFormat::Json,
         topics: vec!["cellular-integer-json".to_string()],
     }
 }
@@ -52,7 +44,7 @@ fn make_config() -> KafkaConnectorConfiguration {
 #[ignore] // Ignored by default as this relies on an external service being present.
 async fn drive_connector() {
     let config = make_config();
-    let connector = KafkaConnector::for_config(config);
+    let connector = KafkaIngressConnector::for_config(config);
     let agent = ConnectorAgent::default();
 
     let (tx, rx) = trigger::trigger();
