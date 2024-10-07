@@ -87,32 +87,6 @@ fn downlinks_config() -> KafkaEgressConfiguration {
     }
 }
 
-/* #[tokio::test]
-async fn open_lanes() {
-    let config = lanes_config();
-    let agent = ConnectorAgent::default();
-    let selectors = MessageSelectors::try_from(&config).expect("Bad configuration.");
-
-    let semaphore = Arc::new(Semaphore::new(0));
-    let (done_tx, done_rx) = trigger::trigger();
-    let handler = selectors.open_lanes(done_tx, semaphore, 0);
-
-    let handler_task = run_handler_with_futures(&agent, handler);
-
-    let (modified, done_result) = timeout(TEST_TIMEOUT, join(handler_task, done_rx))
-        .await
-        .expect("Test timed out.");
-
-    assert!(modified.is_empty());
-    assert!(done_result.is_ok());
-
-    let expected_value_lanes = [VALUE_LANE.to_string()].into_iter().collect::<HashSet<_>>();
-    let expected_map_lanes = [MAP_LANE.to_string()].into_iter().collect::<HashSet<_>>();
-
-    assert_eq!(agent.value_lanes(), expected_value_lanes);
-    assert_eq!(agent.map_lanes(), expected_map_lanes);
-} */
-
 #[derive(Default, Debug, PartialEq, Eq)]
 struct TestEgressContext {
     lanes: Vec<(String, WarpLaneKind)>,

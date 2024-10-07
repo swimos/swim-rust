@@ -95,9 +95,9 @@ impl From<&DownlinkAddress> for Address<String> {
     }
 }
 
-impl DownlinkAddress {
-    pub fn borrow_as_addr(&self) -> Address<&str> {
-        let DownlinkAddress { host, node, lane } = self;
+impl<'a> From<&'a DownlinkAddress> for Address<&'a str> {
+    fn from(value: &'a DownlinkAddress) -> Self {
+        let DownlinkAddress { host, node, lane } = value;
         Address {
             host: host.as_ref().map(|s| s.as_str()),
             node,

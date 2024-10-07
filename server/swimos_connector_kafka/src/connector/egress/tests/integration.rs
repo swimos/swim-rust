@@ -277,8 +277,8 @@ fn initialize_connector() {
     .into_iter()
     .collect::<HashMap<_, _>>();
 
-    assert_eq!(value_downlinks, vec![Address::from(&addr1())]);
-    assert_eq!(map_downlinks, vec![Address::from(&addr2())]);
+    assert_eq!(value_downlinks, vec![Address::<String>::from(&addr1())]);
+    assert_eq!(map_downlinks, vec![Address::<String>::from(&addr2())]);
     assert_eq!(lanes_map, expected_lanes);
 }
 
