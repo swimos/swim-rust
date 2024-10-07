@@ -89,8 +89,7 @@ impl StateLifecycle {
             &agency_uri,
             "speed",
         );
-        let add_to_country =
-            context.send_command(None, country_uri, "addAgency".to_string(), agency.clone());
+        let add_to_country = context.send_command(None, &country_uri, "addAgency", agency.clone());
         log_uri
             .followed_by(link_count)
             .followed_by(link_speed)

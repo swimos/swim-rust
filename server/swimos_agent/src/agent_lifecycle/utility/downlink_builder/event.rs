@@ -43,6 +43,7 @@ pub struct StatelessEventDownlinkBuilder<
     address: Address<Text>,
     config: SimpleDownlinkConfig,
     inner: LC,
+    // This determines whether then downlink reports a kind of Event or MapEvent and makes no functional difference.
     map_events: bool,
 }
 
@@ -74,7 +75,9 @@ impl<Context, T> StatelessEventDownlinkBuilder<Context, T> {
 }
 
 impl<Context, K, V> StatelessEventDownlinkBuilder<Context, MapMessage<K, V>> {
-    pub fn new_map(address: Address<Text>, config: SimpleDownlinkConfig) -> Self {
+    // Creates a lifecycle for an event downlink that consumes events from a remote map lane. This alters
+    // the type reported by the downlink from Event to MapEvent and makes not function difference.
+    pub(crate) fn new_map(address: Address<Text>, config: SimpleDownlinkConfig) -> Self {
         StatelessEventDownlinkBuilder {
             _type: PhantomData,
             address,
@@ -87,18 +90,6 @@ impl<Context, K, V> StatelessEventDownlinkBuilder<Context, MapMessage<K, V>> {
 
 impl<Context, T, State> StatefulEventDownlinkBuilder<Context, T, State> {
     pub fn new(address: Address<Text>, config: SimpleDownlinkConfig, state: State) -> Self {
-        StatefulEventDownlinkBuilder {
-            _type: PhantomData,
-            address,
-            config,
-            inner: StatefulEventDownlinkLifecycle::new(state),
-            map_events: false,
-        }
-    }
-}
-
-impl<Context, K, V, State> StatefulEventDownlinkBuilder<Context, MapMessage<K, V>, State> {
-    pub fn new_map(address: Address<Text>, config: SimpleDownlinkConfig, state: State) -> Self {
         StatefulEventDownlinkBuilder {
             _type: PhantomData,
             address,

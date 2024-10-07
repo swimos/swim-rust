@@ -80,12 +80,7 @@ impl AgencyLifecycle {
         let state_uri = self.agency.state_uri();
 
         //Associate this agency with the state that contains it.
-        let add_to_state = context.send_command(
-            None,
-            state_uri,
-            "addAgency".to_string(),
-            self.agency.clone(),
-        );
+        let add_to_state = context.send_command(None, &state_uri, "addAgency", self.agency.clone());
         context
             .get_agent_uri()
             .and_then(move |uri| {
@@ -254,8 +249,7 @@ fn process_new_vehicles(
     let additions = new_vehicles
         .into_iter()
         .map(move |(k, v)| {
-            let to_vehicle_agent =
-                context.send_command(None, v.uri.clone(), "addVehicle".to_string(), v.clone());
+            let to_vehicle_agent = context.send_command(None, &v.uri, "addVehicle", v.clone());
             let add_vehicle = context.update(AgencyAgent::VEHICLES, k, v);
             to_vehicle_agent.followed_by(add_vehicle)
         })

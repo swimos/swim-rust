@@ -176,7 +176,7 @@ fn map_lane_addr() -> Address<String> {
 }
 
 impl EgressConnector for TestConnector {
-    type SendError = TestError;
+    type Error = TestError;
 
     type Sender = TestSender;
 
@@ -188,7 +188,7 @@ impl EgressConnector for TestConnector {
     fn make_sender(
         &self,
         _agent_params: &HashMap<String, String>,
-    ) -> Result<Self::Sender, Self::SendError> {
+    ) -> Result<Self::Sender, Self::Error> {
         self.push(Event::CreateSender);
         Ok(TestSender {
             state: self.state.clone(),

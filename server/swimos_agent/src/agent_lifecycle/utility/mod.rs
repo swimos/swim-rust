@@ -24,7 +24,6 @@ use futures::{Future, FutureExt, Stream, StreamExt};
 use swimos_agent_protocol::MapMessage;
 use swimos_api::agent::WarpLaneKind;
 use swimos_api::error::LaneSpawnError;
-use swimos_model::Text;
 use tokio::time::Instant;
 
 use swimos_api::address::Address;
@@ -130,18 +129,17 @@ impl<Agent: 'static> HandlerContext<Agent> {
     /// * `node` - The target node hosting the lane.
     /// * `lane` - The name of the target lane.
     /// * `command` - The value to send.
-    pub fn send_command<'a, S, T>(
+    pub fn send_command<'a, T>(
         &self,
-        host: Option<S>,
-        node: S,
-        lane: S,
+        host: Option<&str>,
+        node: &str,
+        lane: &str,
         command: T,
     ) -> impl EventHandler<Agent> + 'a
     where
-        S: AsRef<str> + 'a,
         T: StructuralWritable + 'a,
     {
-        let addr = Address::new(host, node, lane);
+        let addr = Address::text(host, node, lane);
         SendCommand::new(addr, command, true)
     }
 
@@ -962,11 +960,11 @@ impl<Agent: 'static> HandlerContext<Agent> {
     /// * `lane` - The name of the target lane.
     pub fn create_commander(
         &self,
-        host: Option<impl Into<Text>>,
-        node: impl Into<Text>,
-        lane: impl Into<Text>,
+        host: Option<&str>,
+        node: &str,
+        lane: &str,
     ) -> impl HandlerAction<Agent, Completion = Commander<Agent>> + 'static {
-        let address = Address::new(host.map(Into::into), node.into(), lane.into());
+        let address = Address::text(host, node, lane);
         RegisterCommander::new(address)
     }
 
