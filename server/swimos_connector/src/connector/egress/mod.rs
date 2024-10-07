@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{collections::HashMap, error::Error, time::Duration};
+use std::{collections::HashMap, time::Duration};
 
 use swimos_api::address::Address;
 use swimos_model::Value;
@@ -37,10 +37,10 @@ use super::{BaseConnector, ConnectorFuture};
 /// downlinks.
 pub trait EgressConnector: BaseConnector {
     /// The type of the errors produced by the connector.
-    type SendError: Error + Send + 'static;
+    type Error: std::error::Error + Send + 'static;
 
     /// The type of the sender created by this connector.
-    type Sender: EgressConnectorSender<Self::SendError> + 'static;
+    type Sender: EgressConnectorSender<Self::Error> + 'static;
 
     /// Open the downlinks required by the connector. This is called during the agent's `on_start`
     /// event.
@@ -58,7 +58,7 @@ pub trait EgressConnector: BaseConnector {
     fn make_sender(
         &self,
         agent_params: &HashMap<String, String>,
-    ) -> Result<Self::Sender, Self::SendError>;
+    ) -> Result<Self::Sender, Self::Error>;
 }
 
 /// A reference to an egress context is passed to an [`EgressConnector`] when it starts allowing it

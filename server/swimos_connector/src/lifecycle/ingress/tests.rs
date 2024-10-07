@@ -102,9 +102,9 @@ impl BaseConnector for TestConnector {
 }
 
 impl IngressConnector for TestConnector {
-    type StreamError = TestError;
+    type Error = TestError;
 
-    fn create_stream(&self) -> Result<impl ConnectorStream<Self::StreamError>, Self::StreamError> {
+    fn create_stream(&self) -> Result<impl ConnectorStream<Self::Error>, Self::Error> {
         if self.failure == Some(Failure::StreamInit) {
             Err(TestError)
         } else {

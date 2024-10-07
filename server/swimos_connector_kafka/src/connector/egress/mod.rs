@@ -190,14 +190,14 @@ impl<F> EgressConnector for KafkaEgressConnector<F>
 where
     F: ProducerFactory + Send + 'static,
 {
-    type SendError = KafkaSenderError;
+    type Error = KafkaSenderError;
 
     type Sender = KafkaSender<F::Producer>;
 
     fn make_sender(
         &self,
         _agent_params: &HashMap<String, String>,
-    ) -> Result<Self::Sender, Self::SendError> {
+    ) -> Result<Self::Sender, Self::Error> {
         let KafkaEgressConnector {
             factory,
             configuration,
