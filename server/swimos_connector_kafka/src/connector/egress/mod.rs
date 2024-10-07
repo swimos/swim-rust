@@ -26,8 +26,8 @@ use futures::{channel::oneshot, FutureExt};
 use swimos_agent::event_handler::{
     EventHandler, HandlerActionExt, TryHandlerActionExt, UnitHandler,
 };
-use swimos_connector::ser::SharedMessageSerializer;
 use swimos_api::{address::Address, agent::WarpLaneKind};
+use swimos_connector::ser::SharedMessageSerializer;
 use swimos_connector::{
     BaseConnector, ConnectorAgent, ConnectorFuture, EgressConnector, EgressConnectorSender,
     EgressContext, LoadError, MessageSource, SendResult, SerializationError,
