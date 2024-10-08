@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ mod pending;
 mod tests;
 
 pub use connector::{downlink_task_connector, DlTaskRequest, DownlinksConnector, ServerConnector};
+use swimos_messages::remote_protocol::{AttachClient, LinkError};
 use tracing::{debug, error, info, trace, warn};
 
 use std::{
@@ -29,24 +30,24 @@ use std::{
 
 use futures::{stream::FuturesUnordered, Future, FutureExt, StreamExt};
 pub use pending::{DlKey, PendingDownlinks};
-use swimos_api::net::{Scheme, SchemeHostPort};
 use swimos_api::{
-    downlink::DownlinkKind,
+    address::RelativeAddress,
+    agent::DownlinkKind,
     error::{AgentRuntimeError, DownlinkFailureReason, DownlinkRuntimeError},
 };
-use swimos_model::{address::RelativeAddress, Text};
-use swimos_remote::net::dns::DnsResolver;
-use swimos_remote::{AttachClient, LinkError};
+use swimos_model::Text;
+use swimos_remote::dns::DnsResolver;
+use swimos_remote::{Scheme, SchemeHostPort};
 use swimos_runtime::downlink::{IdentifiedAddress, NoInterpretation};
 use swimos_runtime::{
     agent::{CommanderKey, CommanderRequest, DownlinkRequest, LinkRequest},
     downlink::{
         failure::{AlwaysAbortStrategy, AlwaysIgnoreStrategy, ReportStrategy},
-        AttachAction, DownlinkRuntimeConfig, Io, MapDownlinkRuntime, ValueDownlinkRuntime,
+        AttachAction, DownlinkRuntimeConfig, MapDownlinkRuntime, ValueDownlinkRuntime,
     },
 };
 use swimos_utilities::{
-    io::byte_channel::{byte_channel, BudgetedFutureExt, ByteReader, ByteWriter},
+    byte_channel::{byte_channel, BudgetedFutureExt, ByteReader, ByteWriter},
     trigger,
 };
 use tokio::{
@@ -55,7 +56,7 @@ use tokio::{
 };
 use uuid::Uuid;
 
-use crate::server::runtime::downlinks::pending::Waiting;
+use crate::{server::runtime::downlinks::pending::Waiting, Io};
 
 use super::{
     ids::{IdIssuer, IdKind},
@@ -79,7 +80,7 @@ pub struct DownlinkConnectionTask<Dns> {
 }
 
 impl<Dns> DownlinkConnectionTask<Dns> {
-    /// #Arguments
+    /// # Arguments
     /// * `coop_budget` - Co-op budget for byte channel futures.
     /// * `connector` - Communication channels between this task and the main server task.
     /// * `config` - Configuration for downlink runtime tasks.
@@ -712,7 +713,7 @@ async fn attach_to_runtime(
     let (out_tx, out_rx) = byte_channel(buffer_size);
     debug!(downlink_id = %downlink_id, "Sending attachment request to downlink runtime.");
     let result = attach_tx
-        .send(AttachAction::new(out_rx, in_tx, options))
+        .send(AttachAction::new((in_tx, out_rx), options))
         .await
         .map(move |_| (out_tx, in_rx))
         .map_err(|_| {

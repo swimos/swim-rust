@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
 
 use bytes::Bytes;
 use std::hash::{Hash, Hasher};
-use swimos_recon::{comparator, hasher};
+use swimos_recon::{compare_recon_values, recon_hash};
 
 /// Wraps an array of UTF-8 bytes and compares and hases them by their interpretation as
 /// recon documents.
@@ -64,13 +64,13 @@ impl AsRef<str> for ReconKey {
 
 impl PartialEq for ReconKey {
     fn eq(&self, other: &Self) -> bool {
-        comparator::compare_values(self.as_ref(), other.as_ref())
+        compare_recon_values(self.as_ref(), other.as_ref())
     }
 }
 
 impl Hash for ReconKey {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        hasher::calculate_hash(self.as_ref(), state)
+        recon_hash(self.as_ref(), state)
     }
 }
 

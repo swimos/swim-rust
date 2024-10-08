@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,8 +15,8 @@
 use std::collections::{HashMap, VecDeque};
 use std::hash::Hash;
 
-use swimos_api::protocol::agent::StoreResponse;
-use swimos_api::protocol::map::MapOperation;
+use swimos_agent_protocol::MapOperation;
+use swimos_agent_protocol::StoreResponse;
 
 use crate::map_storage::MapEventQueue;
 
@@ -114,10 +114,6 @@ where
 {
     fn push(&mut self, action: MapOperation<K, ()>) {
         EventQueue::push(self, action)
-    }
-
-    fn is_empty(&self) -> bool {
-        EventQueue::is_empty(self)
     }
 
     type Output<'a> = StoreResponse<MapOperation<K, &'a V>>

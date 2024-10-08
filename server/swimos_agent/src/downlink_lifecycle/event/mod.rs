@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,14 +14,12 @@
 
 use std::marker::PhantomData;
 
-use swimos_api::handlers::{FnHandler, NoHandler};
+use swimos_utilities::handlers::{FnHandler, NoHandler};
 
 use crate::{
-    agent_lifecycle::utility::HandlerContext,
+    agent_lifecycle::HandlerContext,
     lifecycle_fn::{LiftShared, WithHandlerContext},
 };
-
-use self::on_event::{OnConsumeEvent, OnConsumeEventShared};
 
 use super::{
     on_failed::{OnFailed, OnFailedShared},
@@ -30,11 +28,13 @@ use super::{
     on_unlinked::{OnUnlinked, OnUnlinkedShared},
 };
 
-pub mod on_event;
+mod on_event;
+
+pub use on_event::{OnConsumeEvent, OnConsumeEventShared};
 
 /// Trait for the lifecycle of an event downlink.
 ///
-/// #Type Parameters
+/// # Type Parameters
 /// * `T` - The type of the events.
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
 pub trait EventDownlinkLifecycle<T, Context>:
@@ -57,7 +57,7 @@ impl<LC, T, Context> EventDownlinkLifecycle<T, Context> for LC where
 
 /// A lifecycle for an event downlink where the individual event handlers can share state.
 ///
-/// #Type Parameters
+/// # Type Parameters
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
 /// * `State` - The type of the shared state.
 /// * `T` - The type of the downlink.
@@ -410,7 +410,7 @@ where
 
 /// A lifecycle for an event downlink where the individual event handlers do not share state.
 ///
-/// #Type Parameters
+/// # Type Parameters
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
 /// * `T` - The type of the downlink.
 pub trait StatelessEventLifecycle<Context, T>: EventDownlinkLifecycle<T, Context> {
@@ -463,7 +463,7 @@ pub trait StatelessEventLifecycle<Context, T>: EventDownlinkLifecycle<T, Context
 
 /// A lifecycle for an event downlink where the individual event handlers have shared state.
 ///
-/// #Type Parameters
+/// # Type Parameters
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
 /// * `Shared` - The type of the shared state.
 /// * `T` - The type of the downlink.
@@ -511,7 +511,7 @@ pub trait StatefulEventLifecycle<Context, Shared, T>: EventDownlinkLifecycle<T, 
 
 /// A lifecycle for an event downlink where the individual event handlers dno not share state.
 ///
-/// #Type Parameters
+/// # Type Parameters
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
 /// * `T` - The type of the downlink.
 /// * `FLinked` - The type of the 'on_linked' handler.
@@ -667,6 +667,7 @@ where
     }
 }
 
+#[doc(hidden)]
 pub type LiftedEventLifecycle<Context, T, State, FLinked, FSynced, FUnlinked, FFailed, FEv> =
     StatefulEventDownlinkLifecycle<
         Context,

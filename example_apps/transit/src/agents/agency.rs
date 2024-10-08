@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,7 +15,7 @@
 use std::{collections::HashMap, time::Duration};
 
 use swimos::agent::{
-    agent_lifecycle::utility::HandlerContext,
+    agent_lifecycle::HandlerContext,
     event_handler::{join, Either, EventHandler, HandlerAction, HandlerActionExt, Sequentially},
     lanes::{CommandLane, DemandLane, MapLane, ValueLane},
     lifecycle, projections, AgentLaneModel,
@@ -38,8 +38,8 @@ use self::statistics::Statistics;
 mod statistics;
 
 /// Agency representing a transit agency (and its current state).
-#[derive(AgentLaneModel)]
 #[projections]
+#[derive(AgentLaneModel)]
 #[agent(transient, convention = "camel")]
 pub struct AgencyAgent {
     // Vehicles currently associated with the agency (keys are the IDs used by the service.).
@@ -80,12 +80,7 @@ impl AgencyLifecycle {
         let state_uri = self.agency.state_uri();
 
         //Associate this agency with the state that contains it.
-        let add_to_state = context.send_command(
-            None,
-            state_uri,
-            "addAgency".to_string(),
-            self.agency.clone(),
-        );
+        let add_to_state = context.send_command(None, &state_uri, "addAgency", self.agency.clone());
         context
             .get_agent_uri()
             .and_then(move |uri| {
@@ -254,8 +249,7 @@ fn process_new_vehicles(
     let additions = new_vehicles
         .into_iter()
         .map(move |(k, v)| {
-            let to_vehicle_agent =
-                context.send_command(None, v.uri.clone(), "addVehicle".to_string(), v.clone());
+            let to_vehicle_agent = context.send_command(None, &v.uri, "addVehicle", v.clone());
             let add_vehicle = context.update(AgencyAgent::VEHICLES, k, v);
             to_vehicle_agent.followed_by(add_vehicle)
         })

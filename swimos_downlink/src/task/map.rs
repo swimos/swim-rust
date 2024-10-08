@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,28 +19,26 @@ use futures::{FutureExt, Sink, SinkExt, StreamExt};
 use std::collections::BTreeMap;
 use std::fmt::{Debug, Display};
 use std::mem;
-use swimos_api::downlink::DownlinkConfig;
-use swimos_api::error::DownlinkTaskError;
-use swimos_api::protocol::downlink::{
-    DownlinkNotification, DownlinkOperation, DownlinkOperationEncoder, MapNotificationDecoder,
-    ValueNotificationDecoder,
-};
-use swimos_api::protocol::map::MapMessage;
-use swimos_form::structural::write::StructuralWritable;
-use swimos_model::address::Address;
+use swimos_agent_protocol::encoding::downlink::MapNotificationDecoder;
+use swimos_agent_protocol::encoding::map::MapOperationEncoder;
+use swimos_agent_protocol::DownlinkNotification;
+use swimos_agent_protocol::{MapMessage, MapOperation};
+use swimos_api::{address::Address, error::DownlinkTaskError};
+use swimos_client_api::DownlinkConfig;
+use swimos_form::write::StructuralWritable;
 use swimos_model::Text;
-use swimos_recon::printer::print_recon;
+use swimos_recon::print_recon;
+use swimos_utilities::byte_channel::{ByteReader, ByteWriter};
 use swimos_utilities::future::immediate_or_join;
-use swimos_utilities::io::byte_channel::{ByteReader, ByteWriter};
 use tokio::select;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::codec::{Decoder, FramedRead, FramedWrite};
-use tracing::{info_span, trace, Instrument};
+use tracing::{error, info_span, trace, Instrument};
 
 /// Task to drive a map downlink, calling lifecycle events at appropriate points.
 ///
-/// #Arguments
+/// # Arguments
 ///
 /// * `model` - The downlink model, providing the lifecycle and a stream of actions.
 /// * `path` - The path of the lane to which the downlink is attached.
@@ -60,35 +58,18 @@ where
     V::Rec: Send,
     LC: MapDownlinkLifecycle<K, V>,
 {
-    let MapDownlinkModel {
-        actions,
-        lifecycle,
-        remote,
-    } = model;
+    let MapDownlinkModel { actions, lifecycle } = model;
 
-    if remote {
-        run_io(
-            config,
-            input,
-            lifecycle,
-            FramedWrite::new(output, DownlinkOperationEncoder),
-            actions,
-            ValueNotificationDecoder::default(),
-        )
-        .instrument(info_span!("Downlink IO task.", %path))
-        .await
-    } else {
-        run_io(
-            config,
-            input,
-            lifecycle,
-            FramedWrite::new(output, DownlinkOperationEncoder),
-            actions,
-            MapNotificationDecoder::default(),
-        )
-        .instrument(info_span!("Downlink IO task.", %path))
-        .await
-    }
+    run_io(
+        config,
+        input,
+        lifecycle,
+        FramedWrite::new(output, MapOperationEncoder),
+        actions,
+        MapNotificationDecoder::default(),
+    )
+    .instrument(info_span!("Downlink IO task.", %path))
+    .await
 }
 
 /// The current state of the downlink.
@@ -117,7 +98,7 @@ where
 
 enum IoEvent<K, V> {
     Read(DownlinkNotification<MapMessage<K, V>>),
-    Write(Option<MapMessage<K, V>>),
+    Write(Option<MapOperation<K, V>>),
 }
 
 /// The current IO mode. Defaults to read/write and once the writer channel is dropped, the IO loop
@@ -132,7 +113,7 @@ async fn run_io<K, V, LC, Snk, D, E>(
     input: ByteReader,
     mut lifecycle: LC,
     mut framed: Snk,
-    actions: mpsc::Receiver<MapMessage<K, V>>,
+    actions: mpsc::Receiver<MapOperation<K, V>>,
     decoder: D,
 ) -> Result<(), DownlinkTaskError>
 where
@@ -140,7 +121,8 @@ where
     V: MapValue,
     V::Rec: Send,
     LC: MapDownlinkLifecycle<K, V>,
-    Snk: Sink<DownlinkOperation<MapMessage<K, V>>> + Unpin,
+    Snk: Sink<MapOperation<K, V>> + Unpin,
+    Snk::Error: Debug,
     D: Decoder<Item = DownlinkNotification<MapMessage<K, V>>, Error = E>,
     DownlinkTaskError: From<E>,
     E: Debug,
@@ -159,9 +141,7 @@ where
                     write = (&mut write_fut) => IoEvent::Write(write),
                     read_event = framed_read.next() => match read_event {
                         Some(Ok(notification)) => IoEvent::Read(notification),
-                        Some(Err(e)) => {
-                            break Err(e.into())
-                        } ,
+                        Some(Err(e)) => break Err(e.into()),
                         None => break Ok(()),
                     }
                 };
@@ -172,32 +152,19 @@ where
 
                         match &mut state {
                             State::Synced(map) | State::Linked(map) => match &message {
-                                MapMessage::Update { key, value } => {
+                                MapOperation::Update { key, value } => {
                                     map.insert(K::clone(key), V::clone(value));
                                 }
-                                MapMessage::Remove { key } => {
+                                MapOperation::Remove { key } => {
                                     map.remove(key);
                                 }
-                                MapMessage::Clear => map.clear(),
-                                MapMessage::Take(cnt) => {
-                                    let mut it = mem::take(map).into_iter();
-                                    for (key, value) in (&mut it).take(*cnt as usize) {
-                                        map.insert(key, value);
-                                    }
-                                }
-                                MapMessage::Drop(cnt) => {
-                                    let it = mem::take(map).into_iter().skip(*cnt as usize);
-                                    for (key, value) in it {
-                                        map.insert(key, value);
-                                    }
-                                }
+                                MapOperation::Clear => map.clear(),
                             },
                             State::Unlinked => {}
                         }
 
-                        let op = DownlinkOperation::new(message);
-                        if framed.feed(op).await.is_err() {
-                            mode = Mode::Read;
+                        if let Err(e) = framed.feed(message).await {
+                            error!(error = ?e, "Failed to feed downlink frame. Transitioning to read-only mode");
                         }
                     }
                     IoEvent::Write(None) => mode = Mode::Read,

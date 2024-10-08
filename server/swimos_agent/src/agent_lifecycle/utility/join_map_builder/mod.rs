@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
 
 use std::marker::PhantomData;
 
-use swimos_api::handlers::FnHandler;
+use swimos_utilities::handlers::FnHandler;
 
 use crate::{
     lanes::join_map::lifecycle::{
@@ -28,8 +28,10 @@ use crate::{
     lifecycle_fn::WithHandlerContext,
 };
 
+/// Builder type for constructing join map lane lifecycles where the event handlers do not
+/// share state.
 #[derive(Debug)]
-pub struct StatelessJoinMapLaneBuilder<
+pub struct StatelessJoinMapLifecycleBuilder<
     Context,
     L,
     K,
@@ -40,7 +42,9 @@ pub struct StatelessJoinMapLaneBuilder<
     inner: LC,
 }
 
-impl<Context, L, K, V, LC: Default> Default for StatelessJoinMapLaneBuilder<Context, L, K, V, LC> {
+impl<Context, L, K, V, LC: Default> Default
+    for StatelessJoinMapLifecycleBuilder<Context, L, K, V, LC>
+{
     fn default() -> Self {
         Self {
             _type: Default::default(),
@@ -51,8 +55,9 @@ impl<Context, L, K, V, LC: Default> Default for StatelessJoinMapLaneBuilder<Cont
 
 type JoinMapType<Context, State, L, K, V> = for<'a> fn(&'a Context, &'a State, L, K, V);
 
+/// Builder type for constructing join map lane lifecycles where the event handlers have shared state.
 #[derive(Debug)]
-pub struct StatefulJoinMapLaneBuilder<
+pub struct StatefulJoinMapLifecycleBuilder<
     Context,
     State,
     L,
@@ -64,159 +69,197 @@ pub struct StatefulJoinMapLaneBuilder<
     inner: LC,
 }
 
-impl<Context, L, K, V, LC> StatelessJoinMapLaneBuilder<Context, L, K, V, LC>
+impl<Context, L, K, V, LC> StatelessJoinMapLifecycleBuilder<Context, L, K, V, LC>
 where
     LC: StatelessJoinMapLifecycle<Context, L, K> + 'static,
 {
+    /// Specify a handler for the `on_linked` event.
+    ///
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_linked<F>(
         self,
         handler: F,
-    ) -> StatelessJoinMapLaneBuilder<Context, L, K, V, LC::WithOnLinked<WithHandlerContext<F>>>
+    ) -> StatelessJoinMapLifecycleBuilder<Context, L, K, V, LC::WithOnLinked<WithHandlerContext<F>>>
     where
         F: Clone,
         WithHandlerContext<F>: OnJoinMapLinked<L, Context>,
     {
-        let StatelessJoinMapLaneBuilder { inner, .. } = self;
-        StatelessJoinMapLaneBuilder {
+        let StatelessJoinMapLifecycleBuilder { inner, .. } = self;
+        StatelessJoinMapLifecycleBuilder {
             _type: PhantomData,
             inner: inner.on_linked(handler),
         }
     }
 
+    /// Specify a handler for the `on_synced` event.
+    ///
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_synced<F>(
         self,
         handler: F,
-    ) -> StatelessJoinMapLaneBuilder<Context, L, K, V, LC::WithOnSynced<WithHandlerContext<F>>>
+    ) -> StatelessJoinMapLifecycleBuilder<Context, L, K, V, LC::WithOnSynced<WithHandlerContext<F>>>
     where
         F: Clone,
         WithHandlerContext<F>: OnJoinMapSynced<L, K, Context>,
     {
-        let StatelessJoinMapLaneBuilder { inner, .. } = self;
-        StatelessJoinMapLaneBuilder {
+        let StatelessJoinMapLifecycleBuilder { inner, .. } = self;
+        StatelessJoinMapLifecycleBuilder {
             _type: PhantomData,
             inner: inner.on_synced(handler),
         }
     }
 
+    /// Specify a handler for the `on_unlinked` event.
+    ///
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_unlinked<F>(
         self,
         handler: F,
-    ) -> StatelessJoinMapLaneBuilder<Context, L, K, V, LC::WithOnUnlinked<WithHandlerContext<F>>>
+    ) -> StatelessJoinMapLifecycleBuilder<Context, L, K, V, LC::WithOnUnlinked<WithHandlerContext<F>>>
     where
         F: Clone,
         WithHandlerContext<F>: OnJoinMapUnlinked<L, K, Context>,
     {
-        let StatelessJoinMapLaneBuilder { inner, .. } = self;
-        StatelessJoinMapLaneBuilder {
+        let StatelessJoinMapLifecycleBuilder { inner, .. } = self;
+        StatelessJoinMapLifecycleBuilder {
             _type: PhantomData,
             inner: inner.on_unlinked(handler),
         }
     }
 
+    /// Specify a handler for the `on_failed` event (called if the downlink terminates with an error).
+    ///
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_failed<F>(
         self,
         handler: F,
-    ) -> StatelessJoinMapLaneBuilder<Context, L, K, V, LC::WithOnFailed<WithHandlerContext<F>>>
+    ) -> StatelessJoinMapLifecycleBuilder<Context, L, K, V, LC::WithOnFailed<WithHandlerContext<F>>>
     where
         F: Clone,
         WithHandlerContext<F>: OnJoinMapFailed<L, K, Context>,
     {
-        let StatelessJoinMapLaneBuilder { inner, .. } = self;
-        StatelessJoinMapLaneBuilder {
+        let StatelessJoinMapLifecycleBuilder { inner, .. } = self;
+        StatelessJoinMapLifecycleBuilder {
             _type: PhantomData,
             inner: inner.on_failed(handler),
         }
     }
 
+    /// Augment the lifecycle with some state that is shared between the event handlers.
+    ///
+    /// # Arguments
+    /// * `state` - The shared state.
     pub fn with_shared_state<State: Send + Clone>(
         self,
         state: State,
-    ) -> StatefulJoinMapLaneBuilder<Context, State, L, K, V, LC::WithShared<State>> {
-        StatefulJoinMapLaneBuilder {
+    ) -> StatefulJoinMapLifecycleBuilder<Context, State, L, K, V, LC::WithShared<State>> {
+        StatefulJoinMapLifecycleBuilder {
             _type: PhantomData,
             inner: self.inner.with_shared_state(state),
         }
     }
 
+    /// Complete the lifecycle.
     pub fn done(self) -> impl JoinMapLaneLifecycle<L, K, Context> + Send + 'static {
         self.inner
     }
 }
 
-impl<Context, State, L, K, V> StatefulJoinMapLaneBuilder<Context, State, L, K, V> {
+impl<Context, State, L, K, V> StatefulJoinMapLifecycleBuilder<Context, State, L, K, V> {
     pub fn new(state: State) -> Self {
-        StatefulJoinMapLaneBuilder {
+        StatefulJoinMapLifecycleBuilder {
             _type: PhantomData,
             inner: StatefulJoinMapLaneLifecycle::new(state),
         }
     }
 }
 
-impl<Context, State, L, K, V, LC> StatefulJoinMapLaneBuilder<Context, State, L, K, V, LC>
+impl<Context, State, L, K, V, LC> StatefulJoinMapLifecycleBuilder<Context, State, L, K, V, LC>
 where
     LC: StatefulJoinMapLifecycle<Context, State, L, K> + 'static,
     State: Send + 'static,
 {
+    /// Specify a handler for the `on_linked` event.
+    ///
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_linked<F>(
         self,
         handler: F,
-    ) -> StatefulJoinMapLaneBuilder<Context, State, L, K, V, LC::WithOnLinked<FnHandler<F>>>
+    ) -> StatefulJoinMapLifecycleBuilder<Context, State, L, K, V, LC::WithOnLinked<FnHandler<F>>>
     where
         F: Clone,
         FnHandler<F>: OnJoinMapLinkedShared<L, Context, State>,
     {
-        let StatefulJoinMapLaneBuilder { inner, .. } = self;
-        StatefulJoinMapLaneBuilder {
+        let StatefulJoinMapLifecycleBuilder { inner, .. } = self;
+        StatefulJoinMapLifecycleBuilder {
             _type: PhantomData,
             inner: inner.on_linked(handler),
         }
     }
 
+    /// Specify a handler for the `on_synced` event.
+    ///
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_synced<F>(
         self,
         handler: F,
-    ) -> StatefulJoinMapLaneBuilder<Context, State, L, K, V, LC::WithOnSynced<FnHandler<F>>>
+    ) -> StatefulJoinMapLifecycleBuilder<Context, State, L, K, V, LC::WithOnSynced<FnHandler<F>>>
     where
         F: Clone,
         FnHandler<F>: OnJoinMapSyncedShared<L, K, Context, State>,
     {
-        let StatefulJoinMapLaneBuilder { inner, .. } = self;
-        StatefulJoinMapLaneBuilder {
+        let StatefulJoinMapLifecycleBuilder { inner, .. } = self;
+        StatefulJoinMapLifecycleBuilder {
             _type: PhantomData,
             inner: inner.on_synced(handler),
         }
     }
 
+    /// Specify a handler for the `on_unlinked` event.
+    ///
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_unlinked<F>(
         self,
         handler: F,
-    ) -> StatefulJoinMapLaneBuilder<Context, State, L, K, V, LC::WithOnUnlinked<FnHandler<F>>>
+    ) -> StatefulJoinMapLifecycleBuilder<Context, State, L, K, V, LC::WithOnUnlinked<FnHandler<F>>>
     where
         F: Clone,
         FnHandler<F>: OnJoinMapUnlinkedShared<L, K, Context, State>,
     {
-        let StatefulJoinMapLaneBuilder { inner, .. } = self;
-        StatefulJoinMapLaneBuilder {
+        let StatefulJoinMapLifecycleBuilder { inner, .. } = self;
+        StatefulJoinMapLifecycleBuilder {
             _type: PhantomData,
             inner: inner.on_unlinked(handler),
         }
     }
 
+    /// Specify a handler for the `on_failed` event (called if the downlink terminates with an error).
+    ///
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_failed<F>(
         self,
         handler: F,
-    ) -> StatefulJoinMapLaneBuilder<Context, State, L, K, V, LC::WithOnFailed<FnHandler<F>>>
+    ) -> StatefulJoinMapLifecycleBuilder<Context, State, L, K, V, LC::WithOnFailed<FnHandler<F>>>
     where
         F: Clone,
         FnHandler<F>: OnJoinMapFailedShared<L, K, Context, State>,
     {
-        let StatefulJoinMapLaneBuilder { inner, .. } = self;
-        StatefulJoinMapLaneBuilder {
+        let StatefulJoinMapLifecycleBuilder { inner, .. } = self;
+        StatefulJoinMapLifecycleBuilder {
             _type: PhantomData,
             inner: inner.on_failed(handler),
         }
     }
 
+    /// Complete the lifecycle.
     pub fn done(self) -> impl JoinMapLaneLifecycle<L, K, Context> + Send + 'static {
         self.inner
     }

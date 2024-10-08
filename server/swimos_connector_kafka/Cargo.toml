@@ -1,0 +1,42 @@
+[package]
+name = "swimos_connector_kafka"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+description = "SwimOS Connector for Apache Kafka"
+license.workspace = true
+repository = "https://github.com/swimos/swim-rust/tree/main/server/swimos_connector_kafka"
+homepage.workspace = true
+
+[features]
+default = []
+json = ["dep:serde_json"]
+avro = ["dep:apache-avro", "dep:chrono"]
+
+[dependencies]
+futures = { workspace = true }
+swimos_api = { workspace = true }
+swimos_utilities = { workspace = true }
+swimos_model = { workspace = true }
+swimos_form = { workspace = true }
+swimos_recon = { workspace = true }
+tokio = { workspace = true, features = ["sync", "macros", "fs"] }
+swimos_agent = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+rdkafka = { workspace = true, features = ["cmake-build", "tokio"] }
+serde_json = { workspace = true, optional = true }
+apache-avro = { workspace = true, optional = true}
+chrono = { workspace = true, optional = true }
+thiserror = { workspace = true }
+swimos_connector = { workspace = true }
+regex = { workspace = true }
+frunk = { workspace = true }
+bytes = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt"] }
+uuid = { workspace = true, features = ["v4"] }
+bytes = { workspace = true }
+parking_lot = { workspace = true }
+rand = { workspace = true }

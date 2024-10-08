@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,7 +15,7 @@
 use std::net::SocketAddr;
 
 use futures::future::BoxFuture;
-use swimos_utilities::{routing::route_uri::RouteUri, trigger};
+use swimos_utilities::{routing::RouteUri, trigger};
 
 mod builder;
 mod error;
@@ -24,13 +24,15 @@ mod runtime;
 mod store;
 
 pub use builder::ServerBuilder;
-
+pub use error::UnresolvableRoute;
 use tokio::sync::{mpsc, oneshot};
 
 use crate::error::ServerError;
 
-use self::{error::UnresolvableRoute, runtime::StartAgentRequest};
+use self::runtime::StartAgentRequest;
 
+/// A handle used to interact with a running Swim server instance. This can be used to find the interface
+/// on which the server is listening, instruct the server to stop and explicitly start agents.
 pub struct ServerHandle {
     stop_trigger: Option<trigger::Sender>,
     addr: Option<SocketAddr>,
@@ -73,7 +75,7 @@ impl ServerHandle {
 
     /// Attempt to start an agent instance in the server.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `route` - The node URI of the agent.
     pub async fn start_agent(&self, route: RouteUri) -> Result<(), UnresolvableRoute> {
         let (response_tx, response_rx) = oneshot::channel();
@@ -122,5 +124,58 @@ impl Server for BoxServer {
 
     fn run_box(self: Box<Self>) -> (BoxFuture<'static, Result<(), ServerError>>, ServerHandle) {
         self.0.run_box()
+    }
+}
+
+#[cfg(feature = "signal")]
+pub mod wait {
+    use std::net::SocketAddr;
+
+    use tracing::debug;
+
+    use crate::ServerHandle;
+
+    use thiserror::Error;
+
+    /// Errors that can occur waiting for tha server to stop.
+    #[derive(Debug, Error, Clone, Copy)]
+    #[error("The Ctrl-C handler could not be installed.")]
+    pub struct RegistrationFailed;
+
+    /// Register a Ctrl-C handler that will stop a server instance.
+    ///
+    /// # Arguments
+    /// * `server` - The server to run.
+    /// * `bound` - If specified this will be called when the server has bound to a socket, with the address.
+    pub async fn until_termination(
+        mut handle: ServerHandle,
+        bound: Option<Box<dyn FnOnce(SocketAddr) + Send>>,
+    ) -> Result<(), RegistrationFailed> {
+        let wait_for_ctrl_c = async move {
+            let mut result = Ok(());
+            let mut shutdown_hook = Box::pin(async { tokio::signal::ctrl_c().await });
+
+            let print_addr = handle.bound_addr();
+
+            let maybe_addr = tokio::select! {
+                r = &mut shutdown_hook => {
+                    result = r;
+                    None
+                },
+                maybe_addr = print_addr => maybe_addr,
+            };
+
+            if let Some(addr) = maybe_addr {
+                if let Some(f) = bound {
+                    f(addr);
+                }
+                result = shutdown_hook.await;
+            }
+
+            debug!("Stopping server.");
+            handle.stop();
+            result
+        };
+        wait_for_ctrl_c.await.map_err(|_| RegistrationFailed)
     }
 }

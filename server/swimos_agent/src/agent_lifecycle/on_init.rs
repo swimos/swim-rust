@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,8 +14,8 @@
 
 use std::{hash::Hash, marker::PhantomData};
 
-use swimos_api::handlers::{FnHandler, NoHandler};
 use swimos_form::Form;
+use swimos_utilities::handlers::{FnHandler, NoHandler};
 
 use crate::{
     event_handler::{ActionContext, BoxJoinLaneInit},
@@ -43,6 +43,8 @@ pub trait OnInit<Context>: Send {
     );
 }
 
+/// Pre-initialization function for a agent which has access to shared state with the event handlers for the
+/// agent. Allows for the initialization of the agent context before any event handlers run.
 pub trait OnInitShared<Context, Shared>: Send {
     fn initialize(
         &self,
@@ -105,6 +107,7 @@ where
     }
 }
 
+/// An initializer that does nothing.
 pub type InitNil = NoHandler;
 
 /// A heterogeneous list of initializers. This should be terminated with [`InitNil`]. Each
@@ -178,10 +181,10 @@ where
 }
 
 impl<Context, Shared, K, V, F> RegisterJoinValue<Context, Shared, K, V, F> {
-    /// #Arguments
+    /// # Arguments
     /// * `projection` - Projection from the agent type to the lane.
     /// * `lifecycle_fac` - A factory that will create lifecycle instances for each key of the
-    /// join value lane.
+    ///   join value lane.
     pub fn new(projection: fn(&Context) -> &JoinValueLane<K, V>, lifecycle_fac: F) -> Self {
         RegisterJoinValue {
             _type: PhantomData,
@@ -243,10 +246,10 @@ where
 }
 
 impl<Context, Shared, L, K, V, F> RegisterJoinMap<Context, Shared, L, K, V, F> {
-    /// #Arguments
+    /// # Arguments
     /// * `projection` - Projection from the agent type to the lane.
     /// * `lifecycle_fac` - A factory that will create lifecycle instances for each key of the
-    /// join map lane.
+    ///   join map lane.
     pub fn new(projection: fn(&Context) -> &JoinMapLane<L, K, V>, lifecycle_fac: F) -> Self {
         RegisterJoinMap {
             _type: PhantomData,

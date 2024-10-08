@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,10 +13,7 @@
 // limitations under the License.
 
 use proc_macro2::{Span, TokenStream};
-use swimos_utilities::errors::{
-    validation::{Validation, ValidationItExt},
-    Errors,
-};
+use swimos_utilities::errors::{Errors, Validation, ValidationItExt};
 use syn::{Generics, Ident, Item, ItemStruct, Type};
 
 /// Model of a the components of a struct type required to generate projection functions
@@ -29,7 +26,7 @@ pub struct AgentFields<'a> {
 }
 
 impl<'a> AgentFields<'a> {
-    /// #Arguments
+    /// # Arguments
     /// * `agent_name` - The name of the struct type.
     /// * `generics` - The generic parameters of the struct (for application to the new impl block).
     /// * `fields` - Required information about each field (name and type).

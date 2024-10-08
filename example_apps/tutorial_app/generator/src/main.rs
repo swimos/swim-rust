@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@
 use std::{env::args, pin::pin, time::Duration};
 
 use rand::Rng;
+use swimos_client::Commander;
 use tutorial_app_model::Message;
 
 const NODE: &str = "/unit/master";
@@ -30,7 +31,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .expect("No port provided.")
         .parse::<u16>()
         .expect("Invalid port.");
-    let mut commander = swimos_client::Commander::default();
+    let mut commander = Commander::default();
 
     let host = format!("ws://localhost:{}", port);
     let mut rng = rand::thread_rng();

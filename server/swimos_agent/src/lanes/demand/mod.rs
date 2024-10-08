@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,8 +19,8 @@ use std::{
 
 use bytes::BytesMut;
 use static_assertions::assert_impl_all;
-use swimos_api::protocol::agent::{LaneResponse, ValueLaneResponseEncoder};
-use swimos_form::structural::write::StructuralWritable;
+use swimos_agent_protocol::{encoding::lane::ValueLaneResponseEncoder, LaneResponse};
+use swimos_form::write::StructuralWritable;
 use tokio_util::codec::Encoder;
 use uuid::Uuid;
 
@@ -52,12 +52,12 @@ impl<T> Default for DemandLaneInner<T> {
     }
 }
 
-/// A lane that is a stateless analogue of [`super::value::ValueLane`]. Rather than maintaining
+/// A lane that is a stateless analogue of [a value lane](`super::value::ValueLane`). Rather than maintaining
 /// a persistent state that can be queried, a demand lane computes a value, on demand, that is
 /// sent on all uplinks attached to it.
 ///
 /// A demand lane can be cued to produce a value by executing an instance of [`Cue`] (which can be
-/// constructed using the [`crate::agent_lifecycle::utility::HandlerContext`]).
+/// constructed using the [handler context](`crate::agent_lifecycle::HandlerContext`)).
 #[derive(Debug)]
 pub struct DemandLane<T> {
     id: u64,

@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swimos_api::meta::lane::LaneKind;
+use swimos_api::agent::LaneKind;
 use swimos_model::Text;
 use swimos_runtime::agent::reporting::{UplinkReporter, UplinkSnapshot};
 

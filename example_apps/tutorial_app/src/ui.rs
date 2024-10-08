@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,15 +15,16 @@
 use std::fmt::Display;
 use std::future::Future;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
-use std::pin::pin;
 use std::time::Duration;
 
-use futures::future::Either;
-use hyper::service::{make_service_fn, service_fn};
-use hyper::Server;
-use std::convert::Infallible;
-use std::path::Path;
+use futures::pin_mut;
+use hyper::server::conn::http1::Builder;
+use hyper::service::service_fn;
+use hyper_util::rt::TokioIo;
+use hyper_util::server::graceful::GracefulShutdown;
+
 use tokio::net::TcpListener;
+use tokio::select;
 use tokio::sync::oneshot;
 
 #[derive(Clone, Copy, Debug)]
@@ -47,14 +48,15 @@ where
     addr.await?;
     let bind_to = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), 0));
     let listener = TcpListener::bind(bind_to).await?;
-    let root = Path::new("static-files/");
-
+    let resolver = hyper_staticfile::Resolver::new("static-files/");
     let addr = listener.local_addr()?;
     println!("Web server bound to: {}", addr);
 
-    let make_svc = make_service_fn(move |_conn| async move {
-        Ok::<_, Infallible>(service_fn(move |request| async move {
-            let result = hyper_staticfile::resolve(&root, &request)
+    let make_svc = service_fn(move |request| {
+        let resolver = resolver.clone();
+        async move {
+            let result = resolver
+                .resolve_request(&request)
                 .await
                 .expect("Failed to access files.");
             let response = hyper_staticfile::ResponseBuilder::new()
@@ -62,27 +64,26 @@ where
                 .build(result)?;
 
             Ok::<_, http::Error>(response)
-        }))
+        }
     });
 
-    let (stop_tx, stop_rx) = oneshot::channel();
-    let server = Server::from_tcp(listener.into_std()?)?
-        .serve(make_svc)
-        .with_graceful_shutdown(async move {
-            let _ = stop_rx.await;
-        });
+    let shutdown_handle = GracefulShutdown::new();
 
-    let shutdown = pin!(shutdown);
-    let server = pin!(server);
+    pin_mut!(shutdown, listener);
 
-    match futures::future::select(shutdown, server).await {
-        Either::Left((_, server)) => {
-            let _ = stop_tx.send(());
-            tokio::time::timeout(Duration::from_secs(2), server)
-                .await
-                .map_err(|_| TimeoutError)??;
-        }
-        Either::Right((result, _)) => result?,
+    loop {
+        let (stream, _) = select! {
+            biased;
+            _ = &mut shutdown => {
+                tokio::time::timeout(Duration::from_secs(2), shutdown_handle.shutdown())
+                   .await
+                   .map_err(|_| TimeoutError)?;
+               return Ok(());
+            }
+            result = listener.accept() => result?,
+        };
+
+        let conn = Builder::new().serve_connection(TokioIo::new(stream), make_svc.clone());
+        tokio::spawn(shutdown_handle.watch(conn));
     }
-    Ok(())
 }

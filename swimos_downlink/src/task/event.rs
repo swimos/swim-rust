@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,14 +16,13 @@ use std::fmt::Display;
 
 use crate::model::lifecycle::EventDownlinkLifecycle;
 use futures::StreamExt;
-use swimos_api::downlink::DownlinkConfig;
-use swimos_api::error::DownlinkTaskError;
-use swimos_api::protocol::downlink::{DownlinkNotification, ValueNotificationDecoder};
+use swimos_agent_protocol::{encoding::downlink::ValueNotificationDecoder, DownlinkNotification};
+use swimos_api::{address::Address, error::DownlinkTaskError};
+use swimos_client_api::DownlinkConfig;
 use swimos_form::Form;
-use swimos_model::address::Address;
 use swimos_model::Text;
-use swimos_recon::printer::print_recon;
-use swimos_utilities::io::byte_channel::{ByteReader, ByteWriter};
+use swimos_recon::print_recon;
+use swimos_utilities::byte_channel::{ByteReader, ByteWriter};
 use tokio_util::codec::FramedRead;
 use tracing::{info_span, trace, Instrument};
 
@@ -31,7 +30,7 @@ use crate::EventDownlinkModel;
 
 /// Task to drive an event downlink, calling lifecyle events at appropriate points.
 ///
-/// #Arguments
+/// # Arguments
 ///
 /// * `model` - The downlink model, providing the lifecycle and a stream of values to set.
 /// * `path` - The path of the lane to which the downlink is attached.

@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use swimos::agent::{
-    agent_lifecycle::utility::HandlerContext,
+    agent_lifecycle::HandlerContext,
     event_handler::{EventHandler, HandlerActionExt},
     lanes::{CommandLane, ValueLane},
     lifecycle, projections, AgentLaneModel,
@@ -21,8 +21,8 @@ use swimos::agent::{
 
 use crate::model::Instruction;
 
-#[derive(AgentLaneModel)]
 #[projections]
+#[derive(AgentLaneModel)]
 pub struct ExampleAgent {
     lane: ValueLane<i32>,
     command: CommandLane<Instruction>,
@@ -76,12 +76,12 @@ impl ExampleLifecycle {
         cmd: &Instruction,
     ) -> impl EventHandler<ExampleAgent> {
         match *cmd {
-            Instruction::Zero => context.set_value(ExampleAgent::LANE, 0).boxed(),
+            Instruction::Zero => context.set_value(ExampleAgent::LANE, 0).boxed_local(),
             Instruction::Add(n) => context
                 .get_value(ExampleAgent::LANE)
                 .and_then(move |v| context.set_value(ExampleAgent::LANE, v + n))
-                .boxed(),
-            Instruction::Stop => context.stop().boxed(),
+                .boxed_local(),
+            Instruction::Stop => context.stop().boxed_local(),
         }
     }
 }

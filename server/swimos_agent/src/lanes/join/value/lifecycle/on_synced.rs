@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,11 +14,11 @@
 
 use std::borrow::Borrow;
 
-use swimos_api::handlers::{BorrowHandler, NoHandler};
-use swimos_model::address::Address;
+use swimos_api::address::Address;
+use swimos_utilities::handlers::{BorrowHandler, NoHandler};
 
 use crate::{
-    agent_lifecycle::utility::HandlerContext,
+    agent_lifecycle::HandlerContext,
     event_handler::{EventHandler, UnitHandler},
     lifecycle_fn::{LiftShared, WithHandlerContextBorrow},
 };

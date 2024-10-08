@@ -1,0 +1,16 @@
+[package]
+name = "swimos_encoding"
+version.workspace = true
+edition.workspace = true
+description = "SwimOS Encoding Utlities"
+license.workspace = true
+repository = "https://github.com/swimos/swim-rust/tree/main/swimos_utilities/swimos_encoding"
+homepage.workspace = true
+
+[features]
+default = ["coop"]
+coop = []
+
+[dependencies]
+bytes = { workspace = true }
+tokio-util = { workspace = true, features = ["codec"] }

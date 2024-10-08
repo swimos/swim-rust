@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,18 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod event;
-pub mod from_model;
-pub mod recognizer;
+//! Contains the [`StructuralReadable`] trait that defines the functionality to deserialize into
+//! the SwimOS model.
+
+mod event;
+mod from_model;
+mod recognizer;
 
 use std::borrow::Cow;
-use swimos_model::bigint::{BigInt, BigUint};
+use swimos_model::{BigInt, BigUint};
 
-pub mod error;
+mod error;
 
-use crate::structural::read::event::ReadEvent;
-use crate::structural::read::recognizer::{Recognizer, RecognizerReadable};
-pub use error::ReadError;
+pub use error::{ExpectedEvent, ReadError};
+pub use event::{NumericValue, ReadEvent};
+pub use recognizer::*;
 
 #[doc(hidden)]
 pub use swimos_form_derive::StructuralReadable;

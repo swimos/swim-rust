@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,11 +18,13 @@ use std::{cell::RefCell, collections::HashMap};
 use bytes::BytesMut;
 use swimos_api::agent::AgentConfig;
 use swimos_recon::parser::AsyncParseError;
-use swimos_utilities::routing::route_uri::RouteUri;
+use swimos_utilities::routing::RouteUri;
+use tokio::time::Instant;
 
 use crate::event_handler::check_step::{check_is_complete, check_is_continue};
-use crate::event_handler::{GetParameter, ModificationFlags};
+use crate::event_handler::{GetParameter, ModificationFlags, WithParameters};
 
+use crate::test_context::{NO_DOWNLINKS, NO_DYN_LANES};
 use crate::{
     event_handler::{
         ConstHandler, EventHandlerError, GetAgentUri, HandlerActionExt, Sequentially, SideEffects,
@@ -33,8 +35,8 @@ use crate::{
 };
 
 use super::{
-    join, ActionContext, Decode, HandlerAction, HandlerFuture, Modification, SideEffect, Spawner,
-    StepResult,
+    join, ActionContext, Decode, HandlerAction, HandlerFuture, Modification, ScheduleTimerEvent,
+    SideEffect, Spawner, StepResult,
 };
 
 const CONFIG: AgentConfig = AgentConfig::DEFAULT;
@@ -49,14 +51,6 @@ fn make_meta<'a>(
     route_params: &'a HashMap<String, String>,
 ) -> AgentMetadata<'a> {
     AgentMetadata::new(uri, route_params, &CONFIG)
-}
-
-struct NoSpawn;
-
-impl<Context> Spawner<Context> for NoSpawn {
-    fn spawn_suspend(&self, _: HandlerFuture<Context>) {
-        panic!("No suspended futures expected.");
-    }
 }
 
 struct DummyAgent;
@@ -274,6 +268,41 @@ fn get_parameter() {
     }
 
     let result = present.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &DUMMY,
+    );
+    assert!(matches!(
+        result,
+        StepResult::Fail(EventHandlerError::SteppedAfterComplete)
+    ));
+}
+
+#[test]
+fn with_parameters() {
+    let uri = make_uri();
+    let mut route_params = HashMap::new();
+    route_params.insert("key".to_string(), "value".to_string());
+    let meta = make_meta(&uri, &route_params);
+
+    let mut handler = WithParameters::new(|params: &HashMap<String, String>| params.clone());
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &DUMMY,
+    );
+    if let StepResult::Complete {
+        modified_item: None,
+        result,
+    } = result
+    {
+        assert_eq!(result, route_params);
+    } else {
+        panic!("Expected completion.");
+    }
+
+    let result = handler.step(
         &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
         meta,
         &DUMMY,
@@ -694,7 +723,11 @@ fn sequentially_handler() {
     let effect1 = SideEffect::from(|| values.borrow_mut().push(1));
     let effect2 = SideEffect::from(|| values.borrow_mut().push(2));
 
-    let handlers = vec![effect1.boxed(), set.boxed(), effect2.boxed()];
+    let handlers = vec![
+        effect1.boxed_local(),
+        set.boxed_local(),
+        effect2.boxed_local(),
+    ];
 
     let mut handler = Sequentially::new(handlers);
 
@@ -971,4 +1004,67 @@ fn join3_handler_modify() {
     agent.lane1.read(|v| assert_eq!(*v, 2));
     agent.lane2.read(|v| assert_eq!(*v, 3));
     agent.lane3.read(|v| assert_eq!(*v, 4));
+}
+
+#[derive(Default)]
+struct TimeoutSpawner {
+    timers: RefCell<Vec<(Instant, u64)>>,
+}
+
+struct TimeoutAgent;
+
+impl Spawner<TimeoutAgent> for TimeoutSpawner {
+    fn spawn_suspend(&self, _fut: HandlerFuture<TimeoutAgent>) {
+        panic!("Unexpected future.");
+    }
+
+    fn schedule_timer(&self, at: Instant, id: u64) {
+        self.timers.borrow_mut().push((at, id));
+    }
+}
+
+impl TimeoutSpawner {
+    fn take(&self) -> Vec<(Instant, u64)> {
+        let mut guard = self.timers.borrow_mut();
+        std::mem::take(&mut *guard)
+    }
+}
+
+#[test]
+fn schedule_timeout() {
+    let mut join_lane_init = HashMap::new();
+    let mut ad_hoc_buffer = BytesMut::new();
+    let uri = make_uri();
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+
+    let agent = TimeoutAgent;
+    let spawner = TimeoutSpawner::default();
+
+    let mut action_context = ActionContext::new(
+        &spawner,
+        &NO_DOWNLINKS,
+        &NO_DYN_LANES,
+        &mut join_lane_init,
+        &mut ad_hoc_buffer,
+    );
+
+    let t = Instant::now();
+    let mut handler = ScheduleTimerEvent::new(t, 3);
+
+    assert!(matches!(
+        handler.step(&mut action_context, meta, &agent),
+        StepResult::Complete {
+            modified_item: None,
+            result: _
+        }
+    ));
+
+    let requests = spawner.take();
+    assert_eq!(requests, vec![(t, 3)]);
+
+    assert!(matches!(
+        handler.step(&mut action_context, meta, &agent),
+        StepResult::Fail(EventHandlerError::SteppedAfterComplete)
+    ));
 }

@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -261,25 +261,25 @@ impl<'a> ToTokens for ImplAgentLifecycle<'a> {
             LifecycleTree::new(root, agent_type, lifecycle_type, lane_lifecycles);
 
         let mut lifecycle_builder: syn::Expr = parse_quote! {
-            #root::agent_lifecycle::stateful::StatefulAgentLifecycle::<#agent_type, _>::new(self)
+            #root::agent_lifecycle::StatefulAgentLifecycle::<#agent_type, _>::new(self)
         };
 
         if !init_blocks.is_empty() {
             let init_handler = construct_join_init(init_blocks, root, agent_type, lifecycle_type);
             lifecycle_builder = parse_quote! {
-                #root::agent_lifecycle::stateful::StatefulAgentLifecycle::on_init(#lifecycle_builder, #init_handler)
+                #root::agent_lifecycle::StatefulAgentLifecycle::on_init(#lifecycle_builder, #init_handler)
             };
         }
 
         if let Some(on_start) = on_start {
             lifecycle_builder = parse_quote! {
-                #root::agent_lifecycle::stateful::StatefulAgentLifecycle::on_start(#lifecycle_builder, #lifecycle_type::#on_start)
+                #root::agent_lifecycle::StatefulAgentLifecycle::on_start(#lifecycle_builder, #lifecycle_type::#on_start)
             };
         }
 
         if let Some(on_stop) = on_stop {
             lifecycle_builder = parse_quote! {
-                #root::agent_lifecycle::stateful::StatefulAgentLifecycle::on_stop(#lifecycle_builder, #lifecycle_type::#on_stop)
+                #root::agent_lifecycle::StatefulAgentLifecycle::on_stop(#lifecycle_builder, #lifecycle_type::#on_stop)
             };
         }
 
@@ -289,7 +289,7 @@ impl<'a> ToTokens for ImplAgentLifecycle<'a> {
                 impl #lifecycle_type {
                     pub fn into_lifecycle(self) -> impl #root::agent_lifecycle::AgentLifecycle<#agent_type> + ::core::marker::Send + 'static {
                         let lane_lifecycle = #lane_lifecycle_tree;
-                        #root::agent_lifecycle::stateful::StatefulAgentLifecycle::on_lane_event(
+                        #root::agent_lifecycle::StatefulAgentLifecycle::on_lane_event(
                             #lifecycle_builder,
                             lane_lifecycle
                         )
@@ -302,7 +302,7 @@ impl<'a> ToTokens for ImplAgentLifecycle<'a> {
                 impl #lifecycle_type {
                     pub fn into_lifecycle(self) -> impl #root::agent_lifecycle::AgentLifecycle<#agent_type> + ::core::clone::Clone + ::core::marker::Send + 'static {
                         let lane_lifecycle = #lane_lifecycle_tree;
-                        #root::agent_lifecycle::stateful::StatefulAgentLifecycle::on_lane_event(
+                        #root::agent_lifecycle::StatefulAgentLifecycle::on_lane_event(
                             #lifecycle_builder,
                             lane_lifecycle
                         )

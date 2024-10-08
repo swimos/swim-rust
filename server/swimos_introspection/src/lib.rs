@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,14 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//! # Introspection Support
+//!
+//! Adds support for introspection to a Swim server.
+//!
+//! - The [`register_introspection`] will add special meta-agents to export information about running agents.
+//! - The [`IntrospectionResolver`] type is used by the server to register normal agents for introspection.
+
 mod config;
+mod forest;
 mod meta_agent;
 mod meta_mesh;
 mod model;
-pub mod route;
+mod route;
 mod task;
 
 pub use config::IntrospectionConfig;
-pub use meta_agent::{lane::LaneMetaAgent, node::NodeMetaAgent};
-pub use meta_mesh::MetaMeshAgent;
-pub use task::{init_introspection, IntrospectionResolver};
+pub use route::{lane_pattern, mesh_pattern, node_pattern};
+pub use task::{register_introspection, AgentRegistration, IntrospectionResolver};

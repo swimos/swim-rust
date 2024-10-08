@@ -1,10 +1,11 @@
 [package]
 name = "value-store"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
+publish = false
 
 [dependencies]
-swimos = { path = "../../swimos", features = ["server", "agent"] }
-swimos_form = { path = "../../api/swimos_form" }
+swimos = { workspace = true, features = ["server", "agent"] }
+swimos_form = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 example-util = { path = "../example_util" }

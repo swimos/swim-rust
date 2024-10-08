@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,26 +14,26 @@
 
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::{
+    fmt::{Display, Formatter},
+    str::FromStr,
+};
 
-use futures::future::BoxFuture;
-use futures::stream::BoxStream;
-use futures::Stream;
-use std::io;
-use swimos_api::net::Scheme;
-use tokio::io::{AsyncRead, AsyncWrite};
-
+use http::{uri::InvalidUri, Uri};
 use thiserror::Error;
 
-use self::dns::BoxDnsResolver;
+use futures::future::BoxFuture;
+use futures::Stream;
+use std::io;
+use tokio::io::{AsyncRead, AsyncWrite};
 
-pub mod dns;
-pub mod plain;
+use crate::dns::BoxDnsResolver;
 
 #[cfg(test)]
 mod tests;
 
-pub type IoResult<T> = io::Result<T>;
-pub type ConnResult<T> = Result<T, ConnectionError>;
+#[doc(hidden)]
+pub type ConnectionResult<T> = Result<T, ConnectionError>;
 
 /// Error to indicate why attempting to open a new connection failed.
 #[derive(Debug, Error)]
@@ -50,7 +50,7 @@ pub enum ConnectionError {
     NegotiationFailed(#[source] Box<dyn std::error::Error + Send + Sync>),
     /// A connection parameter was invalid (for example, requesting a secure connection when TLS is not enabled).
     #[error("Negotiating a new connection failed: {0}")]
-    BadParameter(#[source] Box<dyn std::error::Error + Send + Sync>),
+    BadParameter(String),
 }
 
 /// Errors that can be generated when listening for incoming connections. Particularly, this
@@ -86,6 +86,7 @@ impl From<std::io::Error> for ListenerError {
     }
 }
 
+#[doc(hidden)]
 pub type ListenerResult<T> = Result<T, ListenerError>;
 
 /// Trait for servers that listen for incoming remote connections. This is primarily used to
@@ -99,21 +100,24 @@ where
     fn into_stream(self) -> Self::AcceptStream;
 }
 
-pub type BoxListenerStream<Socket> =
-    BoxStream<'static, ListenerResult<(Socket, Scheme, SocketAddr)>>;
-
 /// Provides all networking functionality required for a Warp client (DNS resolution and opening sockets).
 pub trait ClientConnections: Clone + Send + Sync + 'static {
     type ClientSocket: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static;
+
     fn try_open(
         &self,
         scheme: Scheme,
         host: Option<&str>,
         addr: SocketAddr,
-    ) -> BoxFuture<'_, ConnResult<Self::ClientSocket>>;
+    ) -> BoxFuture<'_, ConnectionResult<Self::ClientSocket>>;
 
     fn dns_resolver(&self) -> BoxDnsResolver;
-    fn lookup(&self, host: String, port: u16) -> BoxFuture<'static, IoResult<Vec<SocketAddr>>>;
+
+    fn lookup(
+        &self,
+        host: String,
+        port: u16,
+    ) -> BoxFuture<'static, std::io::Result<Vec<SocketAddr>>>;
 }
 
 impl<C> ClientConnections for Arc<C>
@@ -127,7 +131,7 @@ where
         scheme: Scheme,
         host: Option<&str>,
         addr: SocketAddr,
-    ) -> BoxFuture<'_, ConnResult<Self::ClientSocket>> {
+    ) -> BoxFuture<'_, ConnectionResult<Self::ClientSocket>> {
         (**self).try_open(scheme, host, addr)
     }
 
@@ -135,7 +139,11 @@ where
         (**self).dns_resolver()
     }
 
-    fn lookup(&self, host: String, port: u16) -> BoxFuture<'static, IoResult<Vec<SocketAddr>>> {
+    fn lookup(
+        &self,
+        host: String,
+        port: u16,
+    ) -> BoxFuture<'static, std::io::Result<Vec<SocketAddr>>> {
         (**self).lookup(host, port)
     }
 }
@@ -148,7 +156,7 @@ pub trait ServerConnections: Clone + Send + Sync + 'static {
     fn bind(
         &self,
         addr: SocketAddr,
-    ) -> BoxFuture<'static, ConnResult<(SocketAddr, Self::ListenerType)>>;
+    ) -> BoxFuture<'static, ConnectionResult<(SocketAddr, Self::ListenerType)>>;
 }
 
 impl<C> ServerConnections for Arc<C>
@@ -162,7 +170,7 @@ where
     fn bind(
         &self,
         addr: SocketAddr,
-    ) -> BoxFuture<'static, ConnResult<(SocketAddr, Self::ListenerType)>> {
+    ) -> BoxFuture<'static, ConnectionResult<(SocketAddr, Self::ListenerType)>> {
         (**self).bind(addr)
     }
 }
@@ -176,16 +184,20 @@ pub trait ExternalConnections: Clone + Send + Sync + 'static {
     fn bind(
         &self,
         addr: SocketAddr,
-    ) -> BoxFuture<'static, ConnResult<(SocketAddr, Self::ListenerType)>>;
+    ) -> BoxFuture<'static, ConnectionResult<(SocketAddr, Self::ListenerType)>>;
     fn try_open(
         &self,
         scheme: Scheme,
         host: Option<&str>,
         addr: SocketAddr,
-    ) -> BoxFuture<'_, ConnResult<Self::Socket>>;
+    ) -> BoxFuture<'_, ConnectionResult<Self::Socket>>;
 
     fn dns_resolver(&self) -> BoxDnsResolver;
-    fn lookup(&self, host: String, port: u16) -> BoxFuture<'static, IoResult<Vec<SocketAddr>>>;
+    fn lookup(
+        &self,
+        host: String,
+        port: u16,
+    ) -> BoxFuture<'static, std::io::Result<Vec<SocketAddr>>>;
 }
 
 impl<C> ExternalConnections for C
@@ -199,7 +211,7 @@ where
     fn bind(
         &self,
         addr: SocketAddr,
-    ) -> BoxFuture<'static, ConnResult<(SocketAddr, Self::ListenerType)>> {
+    ) -> BoxFuture<'static, ConnectionResult<(SocketAddr, Self::ListenerType)>> {
         <Self as ServerConnections>::bind(self, addr)
     }
 
@@ -208,7 +220,7 @@ where
         scheme: Scheme,
         host: Option<&str>,
         addr: SocketAddr,
-    ) -> BoxFuture<'_, ConnResult<Self::Socket>> {
+    ) -> BoxFuture<'_, ConnectionResult<Self::Socket>> {
         <Self as ClientConnections>::try_open(self, scheme, host, addr)
     }
 
@@ -216,7 +228,139 @@ where
         <Self as ClientConnections>::dns_resolver(self)
     }
 
-    fn lookup(&self, host: String, port: u16) -> BoxFuture<'static, IoResult<Vec<SocketAddr>>> {
+    fn lookup(
+        &self,
+        host: String,
+        port: u16,
+    ) -> BoxFuture<'static, std::io::Result<Vec<SocketAddr>>> {
         <Self as ClientConnections>::lookup(self, host, port)
+    }
+}
+
+/// Error type indicating that host URL is not valid for the Warp protocol.
+#[derive(Debug, PartialEq, Eq, Error)]
+pub enum BadWarpUrl {
+    #[error("Malformed URL: {0}")]
+    MalformedUrl(String),
+    #[error("A WARP URL must have a scheme.")]
+    MissingScheme,
+    #[error("{0} is not a valid WARP scheme.")]
+    BadScheme(String),
+    #[error("The URL did not contain a valid host.")]
+    NoHost,
+}
+
+impl From<InvalidUri> for BadWarpUrl {
+    fn from(value: InvalidUri) -> Self {
+        BadWarpUrl::MalformedUrl(value.to_string())
+    }
+}
+
+/// Supported websocket schemes
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Scheme {
+    Ws,
+    Wss,
+}
+
+impl TryFrom<&str> for Scheme {
+    type Error = BadWarpUrl;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value {
+            "ws" | "swimos" | "warp" => Ok(Scheme::Ws),
+            "wss" | "swims" | "warps" => Ok(Scheme::Wss),
+            _ => Err(BadWarpUrl::BadScheme(value.to_owned())),
+        }
+    }
+}
+
+impl Scheme {
+    /// Get the default port for the schemes.
+    pub const fn get_default_port(&self) -> u16 {
+        match self {
+            Scheme::Ws => 80,
+            Scheme::Wss => 443,
+        }
+    }
+
+    /// Return if the scheme is secure.
+    pub const fn is_secure(&self) -> bool {
+        match self {
+            Scheme::Ws => false,
+            Scheme::Wss => true,
+        }
+    }
+}
+
+impl Display for Scheme {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Scheme::Ws => {
+                write!(f, "ws")
+            }
+            Scheme::Wss => {
+                write!(f, "wss")
+            }
+        }
+    }
+}
+
+/// A combination of host name and port to be used as a key into the routing table.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct SchemeHostPort(pub Scheme, pub String, pub u16);
+
+impl SchemeHostPort {
+    pub fn new(scheme: Scheme, host: String, port: u16) -> Self {
+        SchemeHostPort(scheme, host, port)
+    }
+
+    pub fn scheme(&self) -> &Scheme {
+        &self.0
+    }
+
+    pub fn host(&self) -> &String {
+        &self.1
+    }
+
+    pub fn port(&self) -> u16 {
+        self.2
+    }
+}
+
+impl Display for SchemeHostPort {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let SchemeHostPort(scheme, host, port) = self;
+        write!(f, "{}://{}:{}", scheme, host, port)
+    }
+}
+
+impl FromStr for SchemeHostPort {
+    type Err = BadWarpUrl;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let uri = s.parse::<Uri>()?;
+
+        let scheme = if let Some(scheme_part) = uri.scheme_str() {
+            Scheme::try_from(scheme_part)
+                .map_err(|_| BadWarpUrl::BadScheme(scheme_part.to_string()))?
+        } else {
+            return Err(BadWarpUrl::MissingScheme);
+        };
+
+        match (uri.host(), uri.port_u16()) {
+            (Some(host_str), Some(port)) => {
+                Ok(SchemeHostPort::new(scheme, host_str.to_owned(), port))
+            }
+            (Some(host_str), _) => {
+                let default_port = scheme.get_default_port();
+                Ok(SchemeHostPort::new(
+                    scheme,
+                    host_str.to_owned(),
+                    default_port,
+                ))
+            }
+            _ => Err(BadWarpUrl::NoHost),
+        }
     }
 }

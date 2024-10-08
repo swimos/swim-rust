@@ -10,3 +10,6 @@
 
 **/.DS_Store
 *.iml
+
+# Code coverage files
+*.profraw

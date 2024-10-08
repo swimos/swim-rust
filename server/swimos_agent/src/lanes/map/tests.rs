@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,35 +16,32 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 
 use bytes::BytesMut;
-use swimos_api::{
-    agent::AgentConfig,
-    protocol::{
-        agent::{MapLaneResponse, MapLaneResponseDecoder},
-        map::MapOperation,
-    },
+use swimos_agent_protocol::{
+    encoding::lane::RawMapLaneResponseDecoder, MapLaneResponse, MapOperation,
 };
-use swimos_model::Text;
-use swimos_recon::parser::{parse_recognize, Span};
-use swimos_utilities::routing::route_uri::RouteUri;
+use swimos_api::agent::AgentConfig;
+use swimos_recon::parser::parse_recognize;
+use swimos_utilities::routing::RouteUri;
 use tokio_util::codec::Decoder;
 use uuid::Uuid;
 
 use crate::{
     agent_model::WriteResult,
-    event_handler::{
-        EventHandlerError, HandlerAction, HandlerFuture, Modification, Spawner, StepResult,
-    },
+    event_handler::{EventHandlerError, HandlerAction, Modification, StepResult},
     item::MapItem,
     lanes::{
         map::{
             MapLane, MapLaneClear, MapLaneEvent, MapLaneGet, MapLaneGetMap, MapLaneRemove,
-            MapLaneSync, MapLaneUpdate, MapLaneWithEntry,
+            MapLaneSelectSync, MapLaneSync, MapLaneTransformEntry, MapLaneUpdate,
         },
-        LaneItem,
+        LaneItem, MapLaneSelectClear, MapLaneSelectRemove, MapLaneSelectUpdate, Selector,
+        SelectorFn,
     },
     meta::AgentMetadata,
     test_context::dummy_context,
 };
+
+use super::MapLaneWithEntry;
 
 const ID: u64 = 74;
 
@@ -58,19 +55,11 @@ const V1: &str = "first";
 const V2: &str = "second";
 const V3: &str = "third";
 
-fn init() -> HashMap<i32, Text> {
+fn init() -> HashMap<i32, String> {
     [(K1, V1), (K2, V2), (K3, V3)]
         .into_iter()
-        .map(|(k, v)| (k, Text::new(v)))
+        .map(|(k, v)| (k, v.to_owned()))
         .collect()
-}
-
-struct NoSpawn;
-
-impl<Context> Spawner<Context> for NoSpawn {
-    fn spawn_suspend(&self, _: HandlerFuture<Context>) {
-        panic!("No suspended futures expected.");
-    }
 }
 
 #[test]
@@ -78,7 +67,7 @@ fn get_from_map_lane() {
     let lane = MapLane::new(ID, init());
 
     let value = lane.get(&K1, |v| v.cloned());
-    assert_eq!(value, Some(Text::new(V1)));
+    assert_eq!(value.as_deref(), Some(V1));
 
     let value = lane.get(&ABSENT, |v| v.cloned());
     assert!(value.is_none());
@@ -96,23 +85,23 @@ fn get_map_lane() {
 fn update_map_lane() {
     let lane = MapLane::new(ID, init());
 
-    lane.update(K2, Text::new("altered"));
+    lane.update(K2, "altered".to_owned());
 
     lane.get_map(|m| {
         assert_eq!(m.len(), 3);
-        assert_eq!(m.get(&K1), Some(&Text::new(V1)));
-        assert_eq!(m.get(&K2), Some(&Text::new("altered")));
-        assert_eq!(m.get(&K3), Some(&Text::new(V3)));
+        assert_eq!(m.get(&K1).map(String::as_str), Some(V1));
+        assert_eq!(m.get(&K2).map(String::as_str), Some("altered"));
+        assert_eq!(m.get(&K3).map(String::as_str), Some(V3));
     });
 
-    lane.update(ABSENT, Text::new("added"));
+    lane.update(ABSENT, "added".to_owned());
 
     lane.get_map(|m| {
         assert_eq!(m.len(), 4);
-        assert_eq!(m.get(&K1), Some(&Text::new(V1)));
-        assert_eq!(m.get(&K2), Some(&Text::new("altered")));
-        assert_eq!(m.get(&K3), Some(&Text::new(V3)));
-        assert_eq!(m.get(&ABSENT), Some(&Text::new("added")));
+        assert_eq!(m.get(&K1).map(String::as_str), Some(V1));
+        assert_eq!(m.get(&K2).map(String::as_str), Some("altered"));
+        assert_eq!(m.get(&K3).map(String::as_str), Some(V3));
+        assert_eq!(m.get(&ABSENT).map(String::as_str), Some("added"));
     });
 }
 
@@ -124,8 +113,8 @@ fn remove_from_map_lane() {
 
     lane.get_map(|m| {
         assert_eq!(m.len(), 2);
-        assert_eq!(m.get(&K1), Some(&Text::new(V1)));
-        assert_eq!(m.get(&K3), Some(&Text::new(V3)));
+        assert_eq!(m.get(&K1).map(String::as_str), Some(V1));
+        assert_eq!(m.get(&K3).map(String::as_str), Some(V3));
     });
 }
 
@@ -154,14 +143,14 @@ fn write_to_buffer_no_data() {
 fn write_to_buffer_one_update() {
     let lane = MapLane::new(ID, init());
 
-    lane.update(K2, Text::new("altered"));
+    lane.update(K2, "altered".to_owned());
 
     let mut buffer = BytesMut::new();
 
     let result = lane.write_to_buffer(&mut buffer);
     assert_eq!(result, WriteResult::Done);
 
-    let mut decoder = MapLaneResponseDecoder::default();
+    let mut decoder = RawMapLaneResponseDecoder::default();
     let content = decoder
         .decode(&mut buffer)
         .expect("Invalid frame.")
@@ -192,7 +181,7 @@ fn write_to_buffer_one_remove() {
     let result = lane.write_to_buffer(&mut buffer);
     assert_eq!(result, WriteResult::Done);
 
-    let mut decoder = MapLaneResponseDecoder::default();
+    let mut decoder = RawMapLaneResponseDecoder::default();
     let content = decoder
         .decode(&mut buffer)
         .expect("Invalid frame.")
@@ -222,7 +211,7 @@ fn write_to_buffer_clear() {
     let result = lane.write_to_buffer(&mut buffer);
     assert_eq!(result, WriteResult::Done);
 
-    let mut decoder = MapLaneResponseDecoder::default();
+    let mut decoder = RawMapLaneResponseDecoder::default();
     let content = decoder
         .decode(&mut buffer)
         .expect("Invalid frame.")
@@ -238,16 +227,16 @@ fn write_to_buffer_clear() {
 
 #[derive(Debug)]
 struct Operations {
-    events: Vec<MapOperation<i32, Text>>,
-    sync: HashMap<Uuid, Vec<MapOperation<i32, Text>>>,
+    events: Vec<MapOperation<i32, String>>,
+    sync: HashMap<Uuid, Vec<MapOperation<i32, String>>>,
 }
 
-fn consume_events(lane: &MapLane<i32, Text>) -> Operations {
+fn consume_events(lane: &MapLane<i32, String>) -> Operations {
     let mut events = vec![];
     let mut sync_pending = HashMap::new();
     let mut sync = HashMap::new();
 
-    let mut decoder = MapLaneResponseDecoder::default();
+    let mut decoder = RawMapLaneResponseDecoder::default();
     let mut buffer = BytesMut::new();
 
     loop {
@@ -289,19 +278,18 @@ fn consume_events(lane: &MapLane<i32, Text>) -> Operations {
     Operations { events, sync }
 }
 
-fn interpret(op: MapOperation<BytesMut, BytesMut>) -> MapOperation<i32, Text> {
+fn interpret(op: MapOperation<BytesMut, BytesMut>) -> MapOperation<i32, String> {
     match op {
         MapOperation::Update { key, value } => {
             let key_str = std::str::from_utf8(key.as_ref()).expect("Bad key bytes.");
             let val_str = std::str::from_utf8(value.as_ref()).expect("Bad value bytes.");
-            let key = parse_recognize::<i32>(Span::new(key_str), false).expect("Bad key recon.");
-            let value =
-                parse_recognize::<Text>(Span::new(val_str), false).expect("Bad value recon.");
+            let key = parse_recognize::<i32>(key_str, false).expect("Bad key recon.");
+            let value = parse_recognize::<String>(val_str, false).expect("Bad value recon.");
             MapOperation::Update { key, value }
         }
         MapOperation::Remove { key } => {
             let key_str = std::str::from_utf8(key.as_ref()).expect("Bad key bytes.");
-            let key = parse_recognize::<i32>(Span::new(key_str), false).expect("Bad key recon.");
+            let key = parse_recognize::<i32>(key_str, false).expect("Bad key recon.");
             MapOperation::Remove { key }
         }
         MapOperation::Clear => MapOperation::Clear,
@@ -312,9 +300,9 @@ fn interpret(op: MapOperation<BytesMut, BytesMut>) -> MapOperation<i32, Text> {
 fn write_multiple_events_to_buffer() {
     let lane = MapLane::new(ID, init());
 
-    lane.update(ABSENT, Text::new("added"));
+    lane.update(ABSENT, "added".to_owned());
     lane.remove(&K1);
-    lane.update(K3, Text::new("altered"));
+    lane.update(K3, "altered".to_owned());
 
     let Operations { events, sync } = consume_events(&lane);
 
@@ -323,12 +311,12 @@ fn write_multiple_events_to_buffer() {
     let expected = vec![
         MapOperation::Update {
             key: ABSENT,
-            value: Text::new("added"),
+            value: "added".to_owned(),
         },
         MapOperation::Remove { key: K1 },
         MapOperation::Update {
             key: K3,
-            value: Text::new("altered"),
+            value: "altered".to_owned(),
         },
     ];
     assert_eq!(events, expected);
@@ -338,9 +326,9 @@ fn write_multiple_events_to_buffer() {
 fn updates_to_one_key_overwrite() {
     let lane = MapLane::new(ID, init());
 
-    lane.update(ABSENT, Text::new("added"));
-    lane.update(K3, Text::new("altered"));
-    lane.update(ABSENT, Text::new("changed"));
+    lane.update(ABSENT, "added".to_owned());
+    lane.update(K3, "altered".to_string());
+    lane.update(ABSENT, "changed".to_owned());
 
     let Operations { events, sync } = consume_events(&lane);
 
@@ -349,11 +337,11 @@ fn updates_to_one_key_overwrite() {
     let expected = vec![
         MapOperation::Update {
             key: ABSENT,
-            value: Text::new("changed"),
+            value: "changed".to_owned(),
         },
         MapOperation::Update {
             key: K3,
-            value: Text::new("altered"),
+            value: "altered".to_owned(),
         },
     ];
     assert_eq!(events, expected);
@@ -363,9 +351,9 @@ fn updates_to_one_key_overwrite() {
 fn clear_resets_event_queue() {
     let lane = MapLane::new(ID, init());
 
-    lane.update(ABSENT, Text::new("added"));
+    lane.update(ABSENT, "added".to_owned());
     lane.remove(&K1);
-    lane.update(K3, Text::new("altered"));
+    lane.update(K3, "altered".to_owned());
     lane.clear();
 
     let Operations { events, sync } = consume_events(&lane);
@@ -379,7 +367,7 @@ fn clear_resets_event_queue() {
 const SYNC_ID1: Uuid = Uuid::from_u128(8578393934);
 const SYNC_ID2: Uuid = Uuid::from_u128(2847474);
 
-fn to_updates(sync_messages: &Vec<MapOperation<i32, Text>>) -> HashMap<i32, Text> {
+fn to_updates(sync_messages: &[MapOperation<i32, String>]) -> HashMap<i32, String> {
     let mut map = HashMap::new();
     for op in sync_messages {
         match op {
@@ -407,7 +395,7 @@ fn sync_lane_state() {
 
     let expected: HashMap<_, _> = [(K1, V1), (K2, V2), (K3, V3)]
         .into_iter()
-        .map(|(k, v)| (k, Text::new(v)))
+        .map(|(k, v)| (k, v.to_owned()))
         .collect();
     assert_eq!(sync_map, expected);
 }
@@ -428,7 +416,7 @@ fn sync_twice_lane_state() {
 
     let expected: HashMap<_, _> = [(K1, V1), (K2, V2), (K3, V3)]
         .into_iter()
-        .map(|(k, v)| (k, Text::new(v)))
+        .map(|(k, v)| (k, v.to_owned()))
         .collect();
     assert_eq!(sync_map1, expected);
     assert_eq!(sync_map2, expected);
@@ -439,13 +427,13 @@ fn sync_lane_state_and_event() {
     let lane = MapLane::new(ID, init());
 
     lane.sync(SYNC_ID1);
-    lane.update(ABSENT, Text::new("added"));
+    lane.update(ABSENT, "added".to_owned());
 
     let Operations { events, sync } = consume_events(&lane);
 
     let expected_events = vec![MapOperation::Update {
         key: ABSENT,
-        value: Text::new("added"),
+        value: "added".to_owned(),
     }];
     assert_eq!(events, expected_events);
 
@@ -455,7 +443,7 @@ fn sync_lane_state_and_event() {
 
     let expected_sync: HashMap<_, _> = [(K1, V1), (K2, V2), (K3, V3)]
         .into_iter()
-        .map(|(k, v)| (k, Text::new(v)))
+        .map(|(k, v)| (k, v.to_owned()))
         .collect();
     assert_eq!(sync_map, expected_sync);
 }
@@ -475,7 +463,7 @@ fn make_meta<'a>(
 }
 
 struct TestAgent {
-    lane: MapLane<i32, Text>,
+    lane: MapLane<i32, String>,
 }
 
 const LANE_ID: u64 = 9;
@@ -492,7 +480,7 @@ impl TestAgent {
     fn with_init() -> Self {
         let init: HashMap<_, _> = [(K1, V1), (K2, V2), (K3, V3)]
             .into_iter()
-            .map(|(k, v)| (k, Text::new(v)))
+            .map(|(k, v)| (k, v.to_owned()))
             .collect();
 
         TestAgent {
@@ -502,7 +490,7 @@ impl TestAgent {
 }
 
 impl TestAgent {
-    pub const LANE: fn(&TestAgent) -> &MapLane<i32, Text> = |agent| &agent.lane;
+    pub const LANE: fn(&TestAgent) -> &MapLane<i32, String> = |agent| &agent.lane;
 }
 
 fn check_result<T: Eq + Debug>(
@@ -547,7 +535,7 @@ fn map_lane_update_event_handler() {
     let meta = make_meta(&uri, &route_params);
     let agent = TestAgent::default();
 
-    let mut handler = MapLaneUpdate::new(TestAgent::LANE, K1, Text::new(V1));
+    let mut handler = MapLaneUpdate::new(TestAgent::LANE, K1, V1.to_owned());
 
     let result = handler.step(
         &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
@@ -558,7 +546,7 @@ fn map_lane_update_event_handler() {
 
     agent.lane.get_map(|map| {
         assert_eq!(map.len(), 1);
-        assert_eq!(map.get(&K1), Some(&Text::new(V1)));
+        assert_eq!(map.get(&K1).map(String::as_str), Some(V1));
     });
 
     let result = handler.step(
@@ -590,8 +578,8 @@ fn map_lane_remove_event_handler() {
 
     agent.lane.get_map(|map| {
         assert_eq!(map.len(), 2);
-        assert_eq!(map.get(&K2), Some(&Text::new(V2)));
-        assert_eq!(map.get(&K3), Some(&Text::new(V3)));
+        assert_eq!(map.get(&K2).map(String::as_str), Some(V2));
+        assert_eq!(map.get(&K3).map(String::as_str), Some(V3));
     });
 
     let result = handler.step(
@@ -650,7 +638,7 @@ fn map_lane_get_event_handler() {
         meta,
         &agent,
     );
-    check_result(result, false, false, Some(Some(Text::new(V1))));
+    check_result(result, false, false, Some(Some(V1.to_owned())));
 
     let mut handler = MapLaneGet::new(TestAgent::LANE, ABSENT);
 
@@ -736,20 +724,20 @@ fn map_lane_sync_event_handler() {
 
     let expected: HashMap<_, _> = [(K1, V1), (K2, V2), (K3, V3)]
         .into_iter()
-        .map(|(k, v)| (k, Text::new(v)))
+        .map(|(k, v)| (k, v.to_owned()))
         .collect();
     assert_eq!(sync_map, expected);
 }
 
 #[test]
-fn map_lane_with_event_handler_update() {
+fn map_lane_transform_entry_handler_update() {
     let uri = make_uri();
     let route_params = HashMap::new();
     let meta = make_meta(&uri, &route_params);
     let agent = TestAgent::with_init();
 
-    let mut handler = MapLaneWithEntry::new(TestAgent::LANE, K1, |maybe: Option<Text>| {
-        maybe.map(|v| Text::from(v.as_str().to_uppercase()))
+    let mut handler = MapLaneTransformEntry::new(TestAgent::LANE, K1, |maybe: Option<&String>| {
+        maybe.map(|v| v.to_uppercase())
     });
 
     let result = handler.step(
@@ -761,9 +749,9 @@ fn map_lane_with_event_handler_update() {
 
     agent.lane.get_map(|map| {
         assert_eq!(map.len(), 3);
-        assert_eq!(map.get(&K1), Some(&Text::from(V1.to_uppercase())));
-        assert_eq!(map.get(&K2), Some(&Text::new(V2)));
-        assert_eq!(map.get(&K3), Some(&Text::new(V3)));
+        assert_eq!(map.get(&K1), Some(&V1.to_uppercase()));
+        assert_eq!(map.get(&K2).map(String::as_str), Some(V2));
+        assert_eq!(map.get(&K3).map(String::as_str), Some(V3));
     });
 
     let result = handler.step(
@@ -777,17 +765,17 @@ fn map_lane_with_event_handler_update() {
     ));
 
     let event = agent.lane.read_with_prev(|event, _| event);
-    assert_eq!(event, Some(MapLaneEvent::Update(K1, Some(Text::new(V1)))));
+    assert_eq!(event, Some(MapLaneEvent::Update(K1, Some(V1.to_owned()))));
 }
 
 #[test]
-fn map_lane_with_event_handler_remove() {
+fn map_lane_transform_entry_handler_remove() {
     let uri = make_uri();
     let route_params = HashMap::new();
     let meta = make_meta(&uri, &route_params);
     let agent = TestAgent::with_init();
 
-    let mut handler = MapLaneWithEntry::new(TestAgent::LANE, K1, |_: Option<Text>| None);
+    let mut handler = MapLaneTransformEntry::new(TestAgent::LANE, K1, |_: Option<&String>| None);
 
     let result = handler.step(
         &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
@@ -798,8 +786,8 @@ fn map_lane_with_event_handler_remove() {
 
     agent.lane.get_map(|map| {
         assert_eq!(map.len(), 2);
-        assert_eq!(map.get(&K2), Some(&Text::new(V2)));
-        assert_eq!(map.get(&K3), Some(&Text::new(V3)));
+        assert_eq!(map.get(&K2).map(String::as_str), Some(V2));
+        assert_eq!(map.get(&K3).map(String::as_str), Some(V3));
     });
 
     let result = handler.step(
@@ -813,5 +801,299 @@ fn map_lane_with_event_handler_remove() {
     ));
 
     let event = agent.lane.read_with_prev(|event, _| event);
-    assert_eq!(event, Some(MapLaneEvent::Remove(K1, Text::new(V1))));
+    assert_eq!(event, Some(MapLaneEvent::Remove(K1, V1.to_owned())));
+}
+
+#[test]
+fn map_lane_with_entry_handler_absent() {
+    let uri = make_uri();
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+    let agent = TestAgent::with_init();
+
+    let mut handler = MapLaneWithEntry::new(TestAgent::LANE, ABSENT, |maybe_v: Option<&str>| {
+        maybe_v.map(str::to_owned)
+    });
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    check_result(result, false, false, Some(None));
+}
+
+#[test]
+fn map_lane_with_entry_handler_present() {
+    let uri = make_uri();
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+    let agent = TestAgent::with_init();
+
+    let mut handler = MapLaneWithEntry::new(TestAgent::LANE, K1, |maybe_v: Option<&str>| {
+        maybe_v.map(str::to_owned)
+    });
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    check_result(result, false, false, Some(Some(V1.to_owned())));
+}
+
+struct TestSelectorFn(bool);
+
+impl SelectorFn<TestAgent> for TestSelectorFn {
+    type Target = MapLane<i32, String>;
+
+    fn selector(self, context: &TestAgent) -> impl Selector<Target = Self::Target> + '_ {
+        TestSelector(context, self.0)
+    }
+}
+
+struct TestSelector<'a>(&'a TestAgent, bool);
+
+impl<'a> Selector for TestSelector<'a> {
+    type Target = MapLane<i32, String>;
+
+    fn select(&self) -> Option<&Self::Target> {
+        let TestSelector(agent, good) = self;
+        if *good {
+            Some(&agent.lane)
+        } else {
+            None
+        }
+    }
+
+    fn name(&self) -> &str {
+        if self.1 {
+            "lane"
+        } else {
+            "other"
+        }
+    }
+}
+
+#[test]
+fn map_lane_select_update_event_handler() {
+    let uri = make_uri();
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+    let agent = TestAgent::default();
+
+    let mut handler = MapLaneSelectUpdate::new(TestSelectorFn(true), K1, V1.to_owned());
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    check_result(result, true, true, Some(()));
+
+    agent.lane.get_map(|map| {
+        assert_eq!(map.len(), 1);
+        assert_eq!(map.get(&K1).map(String::as_str), Some(V1));
+    });
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    assert!(matches!(
+        result,
+        StepResult::Fail(EventHandlerError::SteppedAfterComplete)
+    ));
+}
+
+#[test]
+fn map_lane_select_update_event_handler_missing() {
+    let uri = make_uri();
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+    let agent = TestAgent::default();
+
+    let mut handler = MapLaneSelectUpdate::new(TestSelectorFn(false), K1, V1.to_owned());
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+
+    if let StepResult::Fail(EventHandlerError::LaneNotFound(name)) = result {
+        assert_eq!(name, "other");
+    } else {
+        panic!("Lane not found error expected.");
+    }
+}
+
+#[test]
+fn map_lane_select_remove_event_handler() {
+    let uri = make_uri();
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+    let agent = TestAgent::with_init();
+
+    let mut handler = MapLaneSelectRemove::new(TestSelectorFn(true), K1);
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    check_result(result, true, true, Some(()));
+
+    agent.lane.get_map(|map| {
+        assert_eq!(map.len(), 2);
+        assert_eq!(map.get(&K2).map(String::as_str), Some(V2));
+        assert_eq!(map.get(&K3).map(String::as_str), Some(V3));
+    });
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    assert!(matches!(
+        result,
+        StepResult::Fail(EventHandlerError::SteppedAfterComplete)
+    ));
+}
+
+#[test]
+fn map_lane_select_remove_event_handler_missing() {
+    let uri = make_uri();
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+    let agent = TestAgent::with_init();
+
+    let mut handler = MapLaneSelectRemove::new(TestSelectorFn(false), K1);
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+
+    if let StepResult::Fail(EventHandlerError::LaneNotFound(name)) = result {
+        assert_eq!(name, "other");
+    } else {
+        panic!("Lane not found error expected.");
+    }
+}
+
+#[test]
+fn map_lane_select_clear_event_handler() {
+    let uri = make_uri();
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+    let agent = TestAgent::with_init();
+
+    let mut handler = MapLaneSelectClear::new(TestSelectorFn(true));
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    check_result(result, true, true, Some(()));
+
+    agent.lane.get_map(|map| {
+        assert!(map.is_empty());
+    });
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    assert!(matches!(
+        result,
+        StepResult::Fail(EventHandlerError::SteppedAfterComplete)
+    ));
+}
+
+#[test]
+fn map_lane_select_clear_event_handler_missing() {
+    let uri = make_uri();
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+    let agent = TestAgent::with_init();
+
+    let mut handler = MapLaneSelectClear::new(TestSelectorFn(false));
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+
+    if let StepResult::Fail(EventHandlerError::LaneNotFound(name)) = result {
+        assert_eq!(name, "other");
+    } else {
+        panic!("Lane not found error expected.");
+    }
+}
+
+#[test]
+fn map_lane_select_sync_event_handler() {
+    let uri = make_uri();
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+    let agent = TestAgent::with_init();
+
+    let mut handler = MapLaneSelectSync::new(TestSelectorFn(true), SYNC_ID1);
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    check_result(result, true, false, Some(()));
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    assert!(matches!(
+        result,
+        StepResult::Fail(EventHandlerError::SteppedAfterComplete)
+    ));
+
+    let Operations { events, sync } = consume_events(&agent.lane);
+
+    assert!(events.is_empty());
+    assert_eq!(sync.len(), 1);
+
+    let sync_map = to_updates(sync.get(&SYNC_ID1).expect("Incorrect Sync ID."));
+
+    let expected: HashMap<_, _> = [(K1, V1), (K2, V2), (K3, V3)]
+        .into_iter()
+        .map(|(k, v)| (k, v.to_owned()))
+        .collect();
+    assert_eq!(sync_map, expected);
+}
+
+#[test]
+fn map_lane_select_sync_event_handler_missing() {
+    let uri = make_uri();
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+    let agent = TestAgent::with_init();
+
+    let mut handler = MapLaneSelectSync::new(TestSelectorFn(false), SYNC_ID1);
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    if let StepResult::Fail(EventHandlerError::LaneNotFound(name)) = result {
+        assert_eq!(name, "other");
+    } else {
+        panic!("Lane not found error expected.");
+    }
 }

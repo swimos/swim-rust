@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swimos_api::handlers::{FnHandler, NoHandler};
+use swimos_utilities::handlers::{FnHandler, NoHandler};
 
 use crate::event_handler::{EventHandler, HandlerFn0, UnitHandler};
 
@@ -20,11 +20,7 @@ use super::utility::HandlerContext;
 
 /// Lifecycle event for the `on_stop` event of an agent.
 pub trait OnStop<Context>: Send {
-    type OnStopHandler<'a>: EventHandler<Context> + 'a
-    where
-        Self: 'a;
-
-    fn on_stop(&self) -> Self::OnStopHandler<'_>;
+    fn on_stop(&self) -> impl EventHandler<Context> + '_;
 }
 
 /// Lifecycle event for the `on_stop` event of an agent where the event handler
@@ -35,7 +31,7 @@ pub trait OnStopShared<Context, Shared>: Send {
         Self: 'a,
         Shared: 'a;
 
-    /// #Arguments
+    /// # Arguments
     /// * `shared` - The shared state.
     /// * `handler_context` - Utility for constructing event handlers.
     fn on_stop<'a>(
@@ -46,12 +42,8 @@ pub trait OnStopShared<Context, Shared>: Send {
 }
 
 impl<Context> OnStop<Context> for NoHandler {
-    type OnStopHandler<'a> = UnitHandler
-    where
-        Self: 'a;
-
-    fn on_stop(&self) -> Self::OnStopHandler<'_> {
-        Default::default()
+    fn on_stop(&self) -> impl EventHandler<Context> + '_ {
+        UnitHandler::default()
     }
 }
 
@@ -75,11 +67,7 @@ where
     F: Fn() -> H + Send,
     H: EventHandler<Context> + 'static,
 {
-    type OnStopHandler<'a> = H
-    where
-        Self: 'a;
-
-    fn on_stop(&self) -> Self::OnStopHandler<'_> {
+    fn on_stop(&self) -> impl EventHandler<Context> + '_ {
         let FnHandler(f) = self;
         f()
     }

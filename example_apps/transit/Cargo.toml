@@ -1,18 +1,19 @@
 [package]
 name = "transit"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
+publish = false
 
 [dependencies]
-swimos = { path = "../../swimos", features = ["server", "agent"] }
-swimos_form = { path = "../../api/swimos_form" }
+swimos = { workspace = true, features = ["server", "agent"] }
+swimos_form = { workspace = true }
+swimos_utilities = { workspace = true, features = ["trigger"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "io-util", "fs"] }
 tokio-stream = { workspace = true, features = ["io-util"] }
 tokio-util = { workspace = true, features = ["io"] }
 example-util = { path = "../example_util" }
 serde = { workspace = true, features = ["derive"] }
-csv = "1.2"
-serde-xml-rs = "0.6"
+csv = { workspace = true }
 thiserror = { workspace = true }
 percent-encoding = { workspace = true }
 reqwest = { workspace = true, features = ["rustls-tls", "gzip"] }
@@ -22,4 +23,4 @@ transit-model = { path = "transit-model" }
 futures = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
-axum = { version = "0.6.20", features = ["tokio", "http1"] }
+axum = { workspace = true, features = ["tokio", "http1"] }

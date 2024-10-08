@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@ use std::{
 };
 
 use swimos::agent::{
-    agent_lifecycle::utility::HandlerContext,
+    agent_lifecycle::HandlerContext,
     event_handler::{EventHandler, HandlerActionExt},
     lanes::{CommandLane, MapLane, ValueLane},
     lifecycle, projections, AgentLaneModel,
@@ -29,8 +29,8 @@ use tracing::{debug, info};
 use crate::model::vehicle::Vehicle;
 
 /// A agent representing the current state of a vehicle.
-#[derive(AgentLaneModel)]
 #[projections]
+#[derive(AgentLaneModel)]
 #[agent(transient, convention = "camel")]
 pub struct VehicleAgent {
     // Description of the vehicle.

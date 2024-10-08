@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,9 +15,10 @@
 use std::collections::{HashMap, VecDeque};
 
 use bytes::{BufMut, Bytes, BytesMut};
-use swimos_api::{agent::UplinkKind, protocol::map::MapOperation};
+use swimos_agent_protocol::MapOperation;
+use swimos_api::agent::UplinkKind;
 use swimos_model::Text;
-use swimos_utilities::{io::byte_channel::ByteWriter, trigger::promise};
+use swimos_utilities::{byte_channel::ByteWriter, trigger::promise};
 use tokio_util::codec::Encoder;
 use uuid::Uuid;
 
@@ -27,10 +28,9 @@ use crate::{
         DisconnectionReason,
     },
     backpressure::{
-        recon::MapOperationReconEncoder, BackpressureStrategy, MapBackpressure, SupplyBackpressure,
-        ValueBackpressure,
+        recon::MapOperationReconEncoder, BackpressureStrategy, InvalidKey, MapBackpressure,
+        SupplyBackpressure, ValueBackpressure,
     },
-    error::InvalidKey,
 };
 
 #[cfg(test)]
@@ -72,7 +72,7 @@ pub enum UplinkResponse {
 const UNREGISTERED_LANE: &str = "Unregistered lane ID.";
 
 impl Uplinks {
-    /// #Arguments
+    /// # Arguments
     /// * `node` - The node URI to attach to the outgoing messages.
     /// * `identity` - The routing address of the agent to add to the outgoing messages.
     /// * `remote_id` - The ID of the target remote.
@@ -99,7 +99,7 @@ impl Uplinks {
 
     /// Push a special action into the queue. Special actions are not subject to backpressure relief and
     /// are always popped before other entries.
-    /// #Arguments
+    /// # Arguments
     /// * `actions` - The special action.
     /// * `registry` - Registry mapping lane IDs to lane names.
     pub fn push_special(
@@ -131,7 +131,7 @@ impl Uplinks {
     }
 
     /// Push an event into the queue.
-    /// #Arguments
+    /// # Arguments
     /// * `lane_id` - ID of the lane to which the event refers.
     /// * `event` - The event.
     /// * `registry` - Registry mapping lane IDs to lane names.
@@ -235,7 +235,7 @@ impl Uplinks {
 
     /// Return the remote sender (and its associated buffer) and pop the next write future (if there is
     /// more work).
-    /// #Arguments
+    /// # Arguments
     /// * `sender` - The sender to return.
     /// * `buffer` - The buffer associated with the sender.
     /// * `registry` - Registry mapping lane IDs to lane names.

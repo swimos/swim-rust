@@ -1,0 +1,17 @@
+[package]
+name = "aggregations"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[dependencies]
+swimos = { workspace = true, features = ["server", "agent"] }
+swimos_client = { workspace = true }
+swimos_form = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+example-util = { path = "../example_util" }
+rand = { workspace = true }
+futures-util = { workspace = true }
+
+[[bin]]
+name = "aggregations_client"

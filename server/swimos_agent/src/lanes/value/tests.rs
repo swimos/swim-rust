@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,23 +15,19 @@
 use std::{collections::HashMap, fmt::Debug};
 
 use bytes::BytesMut;
-use swimos_api::{
-    agent::AgentConfig,
-    protocol::agent::{LaneResponse, ValueLaneResponseDecoder},
-};
-use swimos_utilities::routing::route_uri::RouteUri;
+use swimos_agent_protocol::{encoding::lane::RawValueLaneResponseDecoder, LaneResponse};
+use swimos_api::agent::AgentConfig;
+use swimos_utilities::routing::RouteUri;
 use tokio_util::codec::Decoder;
 use uuid::Uuid;
 
 use crate::{
     agent_model::WriteResult,
-    event_handler::{
-        EventHandlerError, HandlerAction, HandlerFuture, Modification, Spawner, StepResult,
-    },
+    event_handler::{EventHandlerError, HandlerAction, Modification, StepResult},
     item::ValueItem,
     lanes::{
-        value::{ValueLaneGet, ValueLaneSync},
-        LaneItem,
+        value::{ValueLaneGet, ValueLaneSelectSync, ValueLaneSync, ValueLaneWithValue},
+        LaneItem, Selector, SelectorFn, ValueLaneSelectSet,
     },
     meta::AgentMetadata,
     test_context::dummy_context,
@@ -40,14 +36,6 @@ use crate::{
 use super::{ValueLane, ValueLaneSet};
 
 const ID: u64 = 74;
-
-struct NoSpawn;
-
-impl<Context> Spawner<Context> for NoSpawn {
-    fn spawn_suspend(&self, _: HandlerFuture<Context>) {
-        panic!("No suspended futures expected.");
-    }
-}
 
 #[test]
 fn not_dirty_initially() {
@@ -105,7 +93,7 @@ fn write_to_buffer_dirty() {
     assert_eq!(result, WriteResult::Done);
     assert!(!lane.store.has_data_to_write());
 
-    let mut decoder = ValueLaneResponseDecoder::default();
+    let mut decoder = RawValueLaneResponseDecoder::default();
     let content = decoder
         .decode(&mut buffer)
         .expect("Invalid frame.")
@@ -132,7 +120,7 @@ fn write_to_buffer_with_sync_while_clean() {
     let result = lane.write_to_buffer(&mut buffer);
     assert_eq!(result, WriteResult::Done);
 
-    let mut decoder = ValueLaneResponseDecoder::default();
+    let mut decoder = RawValueLaneResponseDecoder::default();
     let first = decoder
         .decode(&mut buffer)
         .expect("Invalid frame.")
@@ -164,7 +152,7 @@ fn write_to_buffer_with_multiple_syncs_while_clean() {
     let result = lane.write_to_buffer(&mut buffer);
     assert_eq!(result, WriteResult::DataStillAvailable);
 
-    let mut decoder = ValueLaneResponseDecoder::default();
+    let mut decoder = RawValueLaneResponseDecoder::default();
 
     let frames = std::iter::repeat_with(|| {
         decoder
@@ -222,7 +210,7 @@ fn write_to_buffer_with_sync_while_dirty() {
     let result = lane.write_to_buffer(&mut buffer);
     assert_eq!(result, WriteResult::DataStillAvailable);
 
-    let mut decoder = ValueLaneResponseDecoder::default();
+    let mut decoder = RawValueLaneResponseDecoder::default();
     let frames = std::iter::repeat_with(|| {
         decoder
             .decode(&mut buffer)
@@ -277,23 +265,28 @@ fn make_meta<'a>(
 
 struct TestAgent {
     lane: ValueLane<i32>,
+    str_lane: ValueLane<String>,
 }
 
 const LANE_ID: u64 = 9;
+const STR_LANE_ID: u64 = 73;
 
 impl Default for TestAgent {
     fn default() -> Self {
         Self {
             lane: ValueLane::new(LANE_ID, 0),
+            str_lane: ValueLane::new(STR_LANE_ID, "hello".to_string()),
         }
     }
 }
 
 impl TestAgent {
     const LANE: fn(&TestAgent) -> &ValueLane<i32> = |agent| &agent.lane;
+    const STR_LANE: fn(&TestAgent) -> &ValueLane<String> = |agent| &agent.str_lane;
 }
 
-fn check_result<T: Eq + Debug>(
+fn check_result_for<T: Eq + Debug>(
+    lane_id: u64,
     result: StepResult<T>,
     written: bool,
     trigger_handler: bool,
@@ -301,9 +294,9 @@ fn check_result<T: Eq + Debug>(
 ) {
     let expected_mod = if written {
         if trigger_handler {
-            Some(Modification::of(LANE_ID))
+            Some(Modification::of(lane_id))
         } else {
-            Some(Modification::no_trigger(LANE_ID))
+            Some(Modification::no_trigger(lane_id))
         }
     } else {
         None
@@ -326,6 +319,15 @@ fn check_result<T: Eq + Debug>(
             panic!("Unexpected result: {:?}", ow);
         }
     }
+}
+
+fn check_result<T: Eq + Debug>(
+    result: StepResult<T>,
+    written: bool,
+    trigger_handler: bool,
+    complete: Option<T>,
+) {
+    check_result_for(LANE_ID, result, written, trigger_handler, complete)
 }
 
 #[test]
@@ -416,7 +418,7 @@ fn value_lane_sync_event_handler() {
     let result = agent.lane.write_to_buffer(&mut buffer);
     assert_eq!(result, WriteResult::Done);
 
-    let mut decoder = ValueLaneResponseDecoder::default();
+    let mut decoder = RawValueLaneResponseDecoder::default();
 
     let frames = std::iter::repeat_with(|| {
         decoder
@@ -437,4 +439,196 @@ fn value_lane_sync_event_handler() {
             panic!("Unexpected response.");
         }
     }
+}
+
+#[test]
+fn value_lane_with_value_event_handler() {
+    let uri = make_uri();
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+    let agent = TestAgent::default();
+
+    let mut handler = ValueLaneWithValue::new(TestAgent::STR_LANE, |s: &str| s.len());
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    check_result_for(STR_LANE_ID, result, false, false, Some(5));
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    assert!(matches!(
+        result,
+        StepResult::Fail(EventHandlerError::SteppedAfterComplete)
+    ));
+}
+
+struct TestSelectorFn(bool);
+
+impl SelectorFn<TestAgent> for TestSelectorFn {
+    type Target = ValueLane<i32>;
+
+    fn selector(self, context: &TestAgent) -> impl Selector<Target = Self::Target> + '_ {
+        TestSelector(context, self.0)
+    }
+}
+
+struct TestSelector<'a>(&'a TestAgent, bool);
+
+impl<'a> Selector for TestSelector<'a> {
+    type Target = ValueLane<i32>;
+
+    fn select(&self) -> Option<&Self::Target> {
+        let TestSelector(agent, good) = self;
+        if *good {
+            Some(&agent.lane)
+        } else {
+            None
+        }
+    }
+
+    fn name(&self) -> &str {
+        if self.1 {
+            "lane"
+        } else {
+            "other"
+        }
+    }
+}
+
+#[test]
+fn value_lane_select_set_event_handler() {
+    let uri = make_uri();
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+    let agent = TestAgent::default();
+
+    let mut handler = ValueLaneSelectSet::new(TestSelectorFn(true), 5);
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    check_result(result, true, true, Some(()));
+
+    assert!(agent.lane.store.has_data_to_write());
+    assert_eq!(agent.lane.read(|n| *n), 5);
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    assert!(matches!(
+        result,
+        StepResult::Fail(EventHandlerError::SteppedAfterComplete)
+    ));
+}
+
+#[test]
+fn value_lane_select_set_event_handler_missing() {
+    let uri = make_uri();
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+    let agent = TestAgent::default();
+
+    let mut handler = ValueLaneSelectSet::new(TestSelectorFn(false), 5);
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+
+    if let StepResult::Fail(EventHandlerError::LaneNotFound(name)) = result {
+        assert_eq!(name, "other");
+    } else {
+        panic!("Lane not found error expected.");
+    }
+
+    assert!(!agent.lane.store.has_data_to_write());
+}
+
+#[test]
+fn value_lane_select_sync_event_handler() {
+    let uri = make_uri();
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+    let agent = TestAgent::default();
+
+    let mut handler = ValueLaneSelectSync::new(TestSelectorFn(true), SYNC_ID1);
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    check_result(result, true, false, Some(()));
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    assert!(matches!(
+        result,
+        StepResult::Fail(EventHandlerError::SteppedAfterComplete)
+    ));
+
+    let mut buffer = BytesMut::new();
+
+    let result = agent.lane.write_to_buffer(&mut buffer);
+    assert_eq!(result, WriteResult::Done);
+
+    let mut decoder = RawValueLaneResponseDecoder::default();
+
+    let frames = std::iter::repeat_with(|| {
+        decoder
+            .decode(&mut buffer)
+            .expect("Invalid frame.")
+            .expect("Incomplete frame.")
+    })
+    .take(2)
+    .collect::<Vec<_>>();
+
+    match frames.as_slice() {
+        [LaneResponse::SyncEvent(id1, body), LaneResponse::Synced(id2)] => {
+            assert_eq!(id1, &SYNC_ID1);
+            assert_eq!(id2, &SYNC_ID1);
+            assert_eq!(body.as_ref(), b"0");
+        }
+        _ => {
+            panic!("Unexpected response.");
+        }
+    }
+}
+
+#[test]
+fn value_lane_select_sync_event_handler_missing() {
+    let uri = make_uri();
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+    let agent = TestAgent::default();
+
+    let mut handler = ValueLaneSelectSync::new(TestSelectorFn(false), SYNC_ID1);
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+
+    if let StepResult::Fail(EventHandlerError::LaneNotFound(name)) = result {
+        assert_eq!(name, "other");
+    } else {
+        panic!("Lane not found error expected.");
+    }
+
+    assert!(!agent.lane.store.has_data_to_write());
 }

@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,9 +19,9 @@ use crate::structural::read::ReadError;
 use num_traits::ToPrimitive;
 use std::convert::TryFrom;
 use std::num::NonZeroUsize;
-use swimos_model::bigint::{BigInt, BigUint};
 use swimos_model::Text;
 use swimos_model::ValueKind;
+use swimos_model::{BigInt, BigUint};
 
 #[derive(Debug)]
 pub struct UnitRecognizer;

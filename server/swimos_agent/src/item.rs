@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::HashMap;
+use std::{borrow::Borrow, collections::HashMap};
 
 use crate::{
     event_handler::{EventHandler, HandlerAction},
@@ -51,7 +51,30 @@ pub trait MapLikeItem<K, V> {
         C: 'static;
 
     fn get_handler<C: 'static>(projection: fn(&C) -> &Self, key: K) -> Self::GetHandler<C>;
+
     fn get_map_handler<C: 'static>(projection: fn(&C) -> &Self) -> Self::GetMapHandler<C>;
+}
+
+pub trait InspectableMapLikeItem<K, V> {
+    type WithEntryHandler<'a, C, F, B, U>: HandlerAction<C, Completion = U> + Send + 'a
+    where
+        Self: 'static,
+        C: 'a,
+        B: ?Sized + 'static,
+        V: Borrow<B>,
+        F: FnOnce(Option<&B>) -> U + Send + 'a;
+
+    fn with_entry_handler<'a, C, F, B, U>(
+        projection: fn(&C) -> &Self,
+        key: K,
+        f: F,
+    ) -> Self::WithEntryHandler<'a, C, F, B, U>
+    where
+        Self: 'static,
+        C: 'a,
+        B: ?Sized + 'static,
+        V: Borrow<B>,
+        F: FnOnce(Option<&B>) -> U + Send + 'a;
 }
 
 pub trait MutableMapLikeItem<K, V> {
@@ -72,24 +95,22 @@ pub trait MutableMapLikeItem<K, V> {
     ) -> Self::UpdateHandler<C>;
     fn remove_handler<C: 'static>(projection: fn(&C) -> &Self, key: K) -> Self::RemoveHandler<C>;
     fn clear_handler<C: 'static>(projection: fn(&C) -> &Self) -> Self::ClearHandler<C>;
-}
 
-pub trait TransformableMapLikeItem<K, V> {
-    type WithEntryHandler<'a, C, F>: EventHandler<C> + Send + 'a
+    type TransformEntryHandler<'a, C, F>: EventHandler<C> + Send + 'a
     where
         Self: 'static,
         C: 'a,
-        F: FnOnce(Option<V>) -> Option<V> + Send + 'a;
+        F: FnOnce(Option<&V>) -> Option<V> + Send + 'a;
 
-    fn with_handler<'a, C, F>(
+    fn transform_entry_handler<'a, C, F>(
         projection: fn(&C) -> &Self,
         key: K,
         f: F,
-    ) -> Self::WithEntryHandler<'a, C, F>
+    ) -> Self::TransformEntryHandler<'a, C, F>
     where
         Self: 'static,
         C: 'a,
-        F: FnOnce(Option<V>) -> Option<V> + Send + 'a;
+        F: FnOnce(Option<&V>) -> Option<V> + Send + 'a;
 }
 
 pub trait ValueLikeItem<T> {
@@ -97,7 +118,25 @@ pub trait ValueLikeItem<T> {
     where
         C: 'static;
 
+    type WithValueHandler<'a, C, F, B, U>: HandlerAction<C, Completion = U> + Send + 'a
+    where
+        Self: 'static,
+        C: 'a,
+        T: Borrow<B>,
+        B: ?Sized + 'static,
+        F: FnOnce(&B) -> U + Send + 'a;
+
     fn get_handler<C: 'static>(projection: fn(&C) -> &Self) -> Self::GetHandler<C>;
+
+    fn with_value_handler<'a, Item, C, F, B, U>(
+        projection: fn(&C) -> &Self,
+        f: F,
+    ) -> Self::WithValueHandler<'a, C, F, B, U>
+    where
+        C: 'a,
+        T: Borrow<B>,
+        B: ?Sized + 'static,
+        F: FnOnce(&B) -> U + Send + 'a;
 }
 
 pub trait MutableValueLikeItem<T> {
@@ -106,4 +145,23 @@ pub trait MutableValueLikeItem<T> {
         C: 'static;
 
     fn set_handler<C: 'static>(projection: fn(&C) -> &Self, value: T) -> Self::SetHandler<C>;
+}
+
+/// Trait for abstracting over common functionality between Join Map and Join Value lanes.
+pub trait JoinLikeItem<L> {
+    /// Handler action for removing a downlink from a join lane.
+    type RemoveDownlinkHandler<C>: HandlerAction<C, Completion = ()> + Send + 'static
+    where
+        C: 'static;
+
+    /// Create a handler that will remove a downlink from the lane and clear any entries in the
+    /// underlying map.
+    ///
+    /// # Arguments
+    /// * `projection`: a projection to the join lane.
+    /// * `link_key`: a key that signifies the downlink to remove.
+    fn remove_downlink_handler<C: 'static>(
+        projection: fn(&C) -> &Self,
+        link_key: L,
+    ) -> Self::RemoveDownlinkHandler<C>;
 }

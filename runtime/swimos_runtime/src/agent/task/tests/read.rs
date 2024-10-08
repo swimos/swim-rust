@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,13 +19,11 @@ use futures::{
     stream::SelectAll,
     Future, StreamExt,
 };
-use swimos_api::{
-    agent::UplinkKind,
-    protocol::{agent::LaneRequest, map::MapMessage},
-};
+use swimos_agent_protocol::{LaneRequest, MapMessage};
+use swimos_api::agent::UplinkKind;
 use swimos_model::Text;
 use swimos_utilities::{
-    io::byte_channel::{byte_channel, ByteReader},
+    byte_channel::{byte_channel, ByteReader},
     trigger,
 };
 use tokio::sync::mpsc;

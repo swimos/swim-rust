@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -25,13 +25,13 @@ use futures::{
 use parking_lot::RwLock;
 use ratchet::{
     CloseCode, CloseReason, ErrorKind, Message, NoExt, NoExtDecoder, NoExtEncoder, NoExtProvider,
-    ProtocolRegistry, WebSocket, WebSocketConfig,
+    SubprotocolRegistry, WebSocket, WebSocketConfig,
 };
 use swimos_messages::warp::{peel_envelope_header_str, RawEnvelope};
 use swimos_model::Value;
-use swimos_recon::{parser::MessageExtractError, printer::print_recon_compact};
+use swimos_recon::{parser::MessageExtractError, print_recon_compact};
 use swimos_utilities::{
-    routing::route_uri::{InvalidRouteUri, RouteUri},
+    routing::{InvalidRouteUri, RouteUri},
     trigger,
 };
 use tokio::{net::TcpStream, sync::mpsc as tmpsc, task::block_in_place};
@@ -516,7 +516,7 @@ fn into_stream(remote: Host, rx: Rx) -> impl Stream<Item = Result<(Host, String)
 
 async fn open_connection(host: &Host) -> Result<WebSocket<TcpStream, NoExt>, ratchet::Error> {
     let socket = TcpStream::connect(&host.host_only()).await?;
-    let subprotocols = ProtocolRegistry::new(vec!["warp0"]).unwrap();
+    let subprotocols = SubprotocolRegistry::new(vec!["warp0"]).unwrap();
     let r = ratchet::subscribe_with(
         WebSocketConfig::default(),
         socket,

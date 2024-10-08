@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,16 +19,17 @@ use std::io;
 use std::io::Write;
 
 use byteorder::WriteBytesExt;
+use num_bigint::Sign;
 use rmp::encode::{
     write_array_len, write_bin, write_bool, write_ext_meta, write_f64, write_map_len, write_nil,
     write_sint, write_str, write_u64, ValueWriteError,
 };
 
-use swimos_form::structural::write::{
+use swimos_form::write::{
     BodyWriter, HeaderWriter, Label, PrimitiveWriter, RecordBodyKind, StructuralWritable,
     StructuralWriter,
 };
-use swimos_model::bigint::{BigInt, BigUint, Sign};
+use swimos_model::{BigInt, BigUint};
 
 use crate::{BIG_INT_EXT, BIG_UINT_EXT};
 
@@ -41,11 +42,11 @@ mod tests;
 /// MessagePack string and bin values. Records have the following encoding.
 ///
 /// - Attributes are written as MessagePack map where the keys are strings. If there are no
-/// attributes an empty map value is still required.
+///   attributes an empty map value is still required.
 /// - The items in the body follow the attributes immediately. If the body consists entirely of
-/// slots it is written as a map. If the body consists of all value items or a mix of value items
-/// and slots it is written as an array. When a slot occurs in an array body it is written as
-/// an array of size two.
+///   slots it is written as a map. If the body consists of all value items or a mix of value items
+///   and slots it is written as an array. When a slot occurs in an array body it is written as
+///   an array of size two.
 ///
 /// # Type Parameters
 ///

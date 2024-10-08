@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,18 +20,18 @@ use futures::{
 };
 use parking_lot::Mutex;
 use swimos_api::{
-    agent::{Agent, AgentConfig, AgentContext, HttpLaneRequestChannel, LaneConfig},
-    downlink::DownlinkKind,
+    agent::{
+        Agent, AgentConfig, AgentContext, DownlinkKind, HttpLaneRequestChannel, LaneConfig,
+        StoreKind, WarpLaneKind,
+    },
     error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError},
-    lane::WarpLaneKind,
-    store::StoreKind,
 };
 use swimos_runtime::agent::UplinkReporterRegistration;
 use swimos_utilities::{
-    future::retryable::RetryStrategy,
-    io::byte_channel::{byte_channel, ByteReader, ByteWriter},
+    byte_channel::{byte_channel, ByteReader, ByteWriter},
+    future::RetryStrategy,
     non_zero_usize,
-    routing::route_uri::RouteUri,
+    routing::RouteUri,
     trigger,
 };
 use tokio::sync::mpsc;
@@ -138,7 +138,7 @@ pub struct FakeContext {
 }
 
 impl AgentContext for FakeContext {
-    fn ad_hoc_commands(&self) -> BoxFuture<'static, Result<ByteWriter, DownlinkRuntimeError>> {
+    fn command_channel(&self) -> BoxFuture<'static, Result<ByteWriter, DownlinkRuntimeError>> {
         panic!("Unexpected request for ad hoc channel.");
     }
 

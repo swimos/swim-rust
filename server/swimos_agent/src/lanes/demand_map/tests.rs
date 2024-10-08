@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,14 +15,9 @@
 use std::collections::{HashMap, HashSet};
 
 use bytes::BytesMut;
-use swimos_api::{
-    agent::AgentConfig,
-    protocol::{
-        agent::{LaneResponse, LaneResponseDecoder},
-        map::{MapOperation, MapOperationDecoder},
-    },
-};
-use swimos_utilities::routing::route_uri::RouteUri;
+use swimos_agent_protocol::{encoding::lane::MapLaneResponseDecoder, LaneResponse, MapOperation};
+use swimos_api::agent::AgentConfig;
+use swimos_utilities::routing::RouteUri;
 use tokio_util::codec::Decoder;
 
 use crate::{
@@ -127,7 +122,7 @@ where
         }
     }
 
-    let mut decoder = LaneResponseDecoder::new(MapOperationDecoder::<i32, i32>::default());
+    let mut decoder = MapLaneResponseDecoder::<i32, i32>::default();
     let mut responses = vec![];
     loop {
         if let Some(response) = decoder.decode(&mut buffer).expect("Decode failed.") {
@@ -178,8 +173,8 @@ where
         panic!("Handler probably diverged.");
     }
     let mut join_lane_init = Default::default();
-    let mut ad_hoc = Default::default();
-    let action_context = &mut dummy_context(&mut join_lane_init, &mut ad_hoc);
+    let mut cmd_buffer = Default::default();
+    let action_context = &mut dummy_context(&mut join_lane_init, &mut cmd_buffer);
     let mut result = HandlerResult(ModificationFlags::empty());
     loop {
         match handler.step(action_context, meta, agent) {

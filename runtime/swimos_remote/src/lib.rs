@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,12 +12,45 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-mod error;
-pub mod net;
-mod task;
-pub mod ws;
+//! # SwimOS Transport Layer
+//!
+//! This crate provides the transport layer for SwimOS (bidirectional web-socket connections over
+//! TCP sockets). It consists of:
+//!
+//! - An abstraction over DNS to allow for the resolution of remote hosts of Swim agents.
+//! - A networking abstraction with basic implementation for unencrypted traffic over TCP sockets.
+//! - An optional implementation of the networking abstraction using TLS encryption.
+//! - Bindings to use the [`ratchet`] web-socket library on top of the networking abstraction.
+//! - A Tokio task to manage a bidirectional web-socket and handle communication with the core SwimOS runtime.
 
-pub use self::{
-    error::{AgentResolutionError, NoSuchAgent},
-    task::{AttachClient, FindNode, LinkError, NodeConnectionRequest, RemoteTask},
+/// DNS support for resolving remote hosts.
+pub mod dns;
+mod net;
+
+/// Basic networking support, without TLS support.
+pub mod plain;
+mod task;
+/// Networking support with TLS provided by the [`rustls`] crate.
+#[cfg(feature = "tls")]
+pub mod tls;
+mod ws;
+
+pub use task::RemoteTask;
+
+pub use net::{
+    BadWarpUrl, ClientConnections, ConnectionError, ExternalConnections, Listener, ListenerError,
+    Scheme, SchemeHostPort, ServerConnections,
 };
+#[doc(hidden)]
+pub use net::{ConnectionResult, ListenerResult};
+
+/// Bindings to use the [`ratchet`] web-sockets crate with the networking abstraction in this crate.
+pub mod websocket {
+
+    pub use super::ws::{
+        RatchetClient, RatchetError, WebsocketClient, WebsocketServer, Websockets, WsOpenFuture,
+    };
+
+    /// The name of the Warp protocol for negotiation web-socket connections.
+    pub const WARP: &str = "warp0";
+}

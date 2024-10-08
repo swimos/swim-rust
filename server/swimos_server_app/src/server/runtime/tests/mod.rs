@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -24,20 +24,17 @@ use futures::{
     future::{join, join3},
     Future,
 };
-use ratchet::{
-    Message, NegotiatedExtension, NoExt, NoExtProvider, Role, WebSocket, WebSocketConfig,
-};
-use swimos_api::net::{Scheme, SchemeHostPort};
-use swimos_api::store::StoreDisabled;
-use swimos_form::structural::write::StructuralWritable;
-use swimos_model::address::RelativeAddress;
-use swimos_recon::printer::print_recon_compact;
-use swimos_remote::{AttachClient, LinkError};
-use swimos_utilities::{
-    io::byte_channel::byte_channel, non_zero_usize, routing::route_pattern::RoutePattern,
-};
+use ratchet::{Message, NoExt, NoExtProvider, Role, WebSocket, WebSocketConfig};
+use swimos_api::{address::RelativeAddress, persistence::StoreDisabled};
+use swimos_form::write::StructuralWritable;
+use swimos_recon::print_recon_compact;
+use swimos_remote::{Scheme, SchemeHostPort};
+use swimos_utilities::{byte_channel::byte_channel, non_zero_usize, routing::RoutePattern};
 
-use swimos_messages::warp::{peel_envelope_header, RawEnvelope};
+use swimos_messages::{
+    remote_protocol::{AttachClient, LinkError},
+    warp::{peel_envelope_header, RawEnvelope},
+};
 use tokio::{
     io::{duplex, DuplexStream},
     sync::{
@@ -207,7 +204,7 @@ impl TestClient {
             ws: WebSocket::from_upgraded(
                 WebSocketConfig::default(),
                 stream,
-                NegotiatedExtension::from(None),
+                None,
                 BytesMut::new(),
                 Role::Client,
             ),

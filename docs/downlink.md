@@ -24,7 +24,7 @@ The common events shared by all downlinks are:
 2. `on_synced`: This is triggered when a consistent view of the state of the remote lane has been assembled in the
    downlink. It takes a reference to the state of the downlink as a parameter.
 3. `on_unlinked`: This is triggered when the link to the remote lane is closed. It takes no parameters.
-4. `on_failed`: This is triggered when the link the the remote lane fails with an error. It takes no parameters.
+4. `on_failed`: This is triggered when the link the remote lane fails with an error. It takes no parameters.
 
 As downlinks have a single type (whereas an agent can have multiple lanes with arbitrary types) it is not necessary to
 use a macro to assemble a downlink lifecycle implementation. Instead, builder types are provided to specify the event
@@ -36,8 +36,8 @@ In this section, we will construct a lifecycle for a value downlink that does no
 We will assume an agent with the following definitions:
 
 ```rust
-#[derive(AgentLaneModel)]
 #[projections]
+#[derive(AgentLaneModel)]
 struct ExampleAgent {
     received: ValueLane<String>,
 }
@@ -77,7 +77,7 @@ the agent at `"/node"` on the host `"swim://example.remote:8080"`. Here `OpenVal
 a `HandlerAction` that results in a value of type:
 
 ```rust
-swimos::agent::agent_model::downlink::hosted::ValueDownlinkHandle
+swimos::agent::agent_model::downlink::ValueDownlinkHandle
 ```
 
 This handle can be used to set the value of the remote lane, through the downlink.
@@ -149,7 +149,7 @@ Each time a value is received on the downlink, it will be set as the value of th
 Building a stateful downlink
 ----------------------------
 
-As with agent lifecycles, it is possible to add state the a downlink lifecycle. As an example, we can extend the
+As with agent lifecycles, it is possible to add state to a downlink lifecycle. As an example, we can extend the
 downlink lifecycle from the previous section to set the value of the `received` lane to be the _previous_ value that was
 received by the downlink.
 

@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,20 +21,16 @@ use std::{
 use bytes::{BufMut, BytesMut};
 use futures::{future::join, StreamExt};
 use parking_lot::Mutex;
+use swimos_agent_protocol::{
+    encoding::lane::{RawMapLaneRequestDecoder, RawValueLaneRequestDecoder},
+    LaneRequest, MapMessage, MapOperation,
+};
+use swimos_api::persistence::NodePersistence;
 use swimos_api::{
     error::StoreError,
-    protocol::{
-        agent::{LaneRequest, LaneRequestDecoder},
-        map::MapMessage,
-        WithLengthBytesCodec,
-    },
-    store::{KeyValue, RangeConsumer},
+    persistence::{KeyValue, RangeConsumer},
 };
-use swimos_api::{
-    protocol::map::{MapMessageDecoder, MapOperation, RawMapOperationDecoder},
-    store::NodePersistence,
-};
-use swimos_utilities::{io::byte_channel::byte_channel, non_zero_usize};
+use swimos_utilities::{byte_channel::byte_channel, non_zero_usize};
 use tokio_util::codec::FramedRead;
 
 use crate::agent::store::{AgentPersistence, StorePersistence};
@@ -207,7 +203,7 @@ async fn value_initializer() {
     let init_task = init.initialize(&mut tx);
 
     let recv_task = async {
-        let mut framed = FramedRead::new(&mut rx, LaneRequestDecoder::new(WithLengthBytesCodec));
+        let mut framed = FramedRead::new(&mut rx, RawValueLaneRequestDecoder::default());
         match framed.next().await {
             Some(Ok(LaneRequest::Command(body))) => {
                 assert_eq!(body.as_ref(), &data);
@@ -238,10 +234,7 @@ async fn map_initializer_empty() {
     let init_task = init.initialize(&mut tx);
 
     let recv_task = async {
-        let mut framed = FramedRead::new(
-            &mut rx,
-            LaneRequestDecoder::new(MapMessageDecoder::new(RawMapOperationDecoder)),
-        );
+        let mut framed = FramedRead::new(&mut rx, RawMapLaneRequestDecoder::default());
         assert!(matches!(
             framed.next().await,
             Some(Ok(LaneRequest::InitComplete))
@@ -269,10 +262,7 @@ async fn map_initializer_with_entries() {
     let init_task = init.initialize(&mut tx);
 
     let recv_task = async {
-        let mut framed = FramedRead::new(
-            &mut rx,
-            LaneRequestDecoder::new(MapMessageDecoder::new(RawMapOperationDecoder)),
-        );
+        let mut framed = FramedRead::new(&mut rx, RawMapLaneRequestDecoder::default());
         let mut received = HashMap::new();
         loop {
             match framed.next().await {

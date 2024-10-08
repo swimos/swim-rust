@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -27,26 +27,27 @@ use futures::{
     Future, FutureExt, SinkExt, StreamExt,
 };
 use parking_lot::Mutex;
-use swimos_api::{
-    downlink::DownlinkKind,
-    error::DownlinkRuntimeError,
-    net::SchemeHostPort,
-    protocol::downlink::{
-        DownlinkNotification, DownlinkOperation, DownlinkOperationEncoder, ValueNotificationDecoder,
+use swimos_agent_protocol::encoding::downlink::{
+    DownlinkOperationEncoder, ValueNotificationDecoder,
+};
+use swimos_agent_protocol::{DownlinkNotification, DownlinkOperation};
+use swimos_api::{address::RelativeAddress, agent::DownlinkKind, error::DownlinkRuntimeError};
+use swimos_messages::{
+    protocol::{
+        Operation, RawRequestMessageDecoder, RequestMessage, ResponseMessage,
+        ResponseMessageEncoder,
     },
+    remote_protocol::{AttachClient, LinkError},
 };
-use swimos_messages::protocol::{
-    Operation, RawRequestMessageDecoder, RequestMessage, ResponseMessage, ResponseMessageEncoder,
-};
-use swimos_model::{address::RelativeAddress, Text};
-use swimos_remote::net::dns::{DnsFut, DnsResolver};
-use swimos_remote::{AttachClient, LinkError};
+use swimos_model::Text;
+use swimos_remote::dns::{DnsFut, DnsResolver};
+use swimos_remote::SchemeHostPort;
 use swimos_runtime::{
     agent::{CommanderKey, CommanderRequest, DownlinkRequest, LinkRequest},
-    downlink::{DownlinkOptions, DownlinkRuntimeConfig, Io},
+    downlink::{DownlinkOptions, DownlinkRuntimeConfig},
 };
 use swimos_utilities::{
-    io::byte_channel::{are_connected, ByteReader, ByteWriter},
+    byte_channel::{are_connected, ByteReader, ByteWriter},
     non_zero_usize, trigger,
 };
 use tokio::sync::{mpsc, oneshot};
@@ -55,7 +56,7 @@ use uuid::Uuid;
 
 use crate::server::runtime::{ClientRegistration, EstablishedClient, NewClientError};
 
-use super::{downlink_task_connector, DlTaskRequest, DownlinkConnectionTask, ServerConnector};
+use super::{downlink_task_connector, DlTaskRequest, DownlinkConnectionTask, Io, ServerConnector};
 
 struct TestContext {
     connector: ServerConnector,
@@ -489,7 +490,7 @@ async fn verify_link_value_dl(id: Uuid, downlink: Io, socket: Io, node: &str) ->
     let mut sock_writer = FramedWrite::new(socket_tx, ResponseMessageEncoder);
     let mut sock_reader = FramedRead::new(socket_rx, RawRequestMessageDecoder);
 
-    let mut dl_writer = FramedWrite::new(&mut dl_tx, DownlinkOperationEncoder);
+    let mut dl_writer = FramedWrite::new(&mut dl_tx, DownlinkOperationEncoder::default());
     let mut dl_reader = FramedRead::new(&mut dl_rx, ValueNotificationDecoder::<i32>::default());
 
     let env = sock_reader

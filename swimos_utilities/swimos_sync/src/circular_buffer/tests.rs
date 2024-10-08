@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,6 +14,7 @@
 
 use crate::circular_buffer::error::{RecvError, SendError};
 use crate::circular_buffer::{InternalQueue, OneItemQueue, LARGE_BOUNDARY};
+use futures::future::join;
 use futures::task::ArcWake;
 use futures::StreamExt;
 use std::future::Future;
@@ -149,6 +150,7 @@ async fn receive_several(n: usize) {
         for i in 0..n {
             assert!(tx.try_send(i).is_ok());
         }
+        tx
     };
 
     let recv_task = async move {
@@ -160,7 +162,8 @@ async fn receive_several(n: usize) {
     let send_handle = tokio::spawn(send_task);
     let recv_handle = tokio::spawn(recv_task);
 
-    assert!(send_handle.await.is_ok());
+    let send_result = send_handle.await;
+    assert!(send_result.is_ok());
     assert!(recv_handle.await.is_ok());
 }
 
@@ -181,6 +184,7 @@ async fn receive_several_stream(n: usize) {
         for i in 0..n {
             assert!(tx.try_send(i).is_ok());
         }
+        tx
     };
 
     let recv_task = async move {
@@ -192,8 +196,9 @@ async fn receive_several_stream(n: usize) {
     let send_handle = tokio::spawn(send_task);
     let recv_handle = tokio::spawn(recv_task);
 
-    assert!(send_handle.await.is_ok());
-    assert!(recv_handle.await.is_ok());
+    let (send_result, recv_result) = join(send_handle, recv_handle).await;
+    assert!(send_result.is_ok());
+    assert!(recv_result.is_ok());
 }
 
 #[tokio::test(flavor = "multi_thread")]

@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@ use std::fmt::Display;
 
 use std::hash::Hash;
 use swimos::agent::{
-    agent_lifecycle::utility::JoinValueContext,
+    agent_lifecycle::JoinValueContext,
     lanes::{join_value::lifecycle::JoinValueLaneLifecycle, LinkClosedResponse},
 };
 use swimos_form::Form;

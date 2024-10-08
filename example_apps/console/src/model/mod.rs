@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,9 +20,9 @@ use std::{
 };
 
 use http::Uri;
-use swimos_api::protocol::map::MapMessage;
+use swimos_agent_protocol::MapMessage;
 use swimos_model::Value;
-use swimos_utilities::routing::route_uri::RouteUri;
+use swimos_utilities::routing::RouteUri;
 
 use crate::{data::DataKind, oneshot};
 

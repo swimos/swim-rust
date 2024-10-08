@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,17 +18,9 @@ use quick_xml::DeError;
 use serde::{Deserialize, Deserializer, Serialize};
 use swimos::model::{Text, ValueKind};
 use swimos_form::{
-    structural::{
-        read::{
-            error::ExpectedEvent,
-            event::ReadEvent,
-            recognizer::{Recognizer, RecognizerReadable},
-            ReadError,
-        },
-        write::{StructuralWritable, StructuralWriter},
-        Tag,
-    },
-    Form,
+    read::{ExpectedEvent, ReadError, ReadEvent, Recognizer, RecognizerReadable},
+    write::{StructuralWritable, StructuralWriter},
+    Form, Tag,
 };
 use thiserror::Error;
 

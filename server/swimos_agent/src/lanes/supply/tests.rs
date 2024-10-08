@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,14 +15,13 @@
 use std::collections::HashMap;
 
 use bytes::BytesMut;
+use swimos_agent_protocol::LaneResponse;
 use tokio_util::codec::Decoder;
 use uuid::Uuid;
 
-use swimos_api::{
-    agent::AgentConfig,
-    protocol::agent::{LaneResponse, ValueLaneResponseDecoder},
-};
-use swimos_utilities::routing::route_uri::RouteUri;
+use swimos_agent_protocol::encoding::lane::RawValueLaneResponseDecoder;
+use swimos_api::agent::AgentConfig;
+use swimos_utilities::routing::RouteUri;
 
 use crate::lanes::supply::{Supply, SupplyLaneSync};
 use crate::{
@@ -145,7 +144,7 @@ fn supply_lane_sync_handler() {
 }
 
 fn read_buffer(buffer: &mut BytesMut) -> Vec<LaneResponse<i32>> {
-    let mut decoder = ValueLaneResponseDecoder::default();
+    let mut decoder = RawValueLaneResponseDecoder::default();
     let mut results = vec![];
     while !buffer.is_empty() {
         let mut r = decoder.decode(buffer).expect("Decode failed.");

@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,14 +13,13 @@
 // limitations under the License.
 
 use std::sync::Arc;
-use swimos_form::structural::read::StructuralReadable;
-use swimos_form::structural::Tag;
+use swimos_form::read::StructuralReadable;
+use swimos_form::Tag;
 use swimos_model::Value;
-use swimos_recon::parser::{parse_recognize, Span};
+use swimos_recon::parser::parse_recognize;
 
 fn run_recognizer<T: StructuralReadable>(rep: &str) -> T {
-    let span = Span::new(rep);
-    parse_recognize(span, false).unwrap()
+    parse_recognize(rep, false).unwrap()
 }
 
 #[test]
@@ -592,8 +591,7 @@ fn derive_empty_enum() {
     #[derive(StructuralReadable, PartialEq, Eq, Debug)]
     enum Empty {}
 
-    let span = Span::new("");
-    assert!(parse_recognize::<Empty>(span, false).is_err());
+    assert!(parse_recognize::<Empty>("", false).is_err());
 }
 
 #[test]

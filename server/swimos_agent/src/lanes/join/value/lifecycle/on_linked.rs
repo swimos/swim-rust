@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swimos_api::handlers::{FnHandler, NoHandler};
-use swimos_model::address::Address;
+use swimos_api::address::Address;
+use swimos_utilities::handlers::{FnHandler, NoHandler};
 
 use crate::{
-    agent_lifecycle::utility::HandlerContext,
+    agent_lifecycle::HandlerContext,
     event_handler::{EventHandler, UnitHandler},
     lanes::join::JoinHandlerFn,
     lifecycle_fn::{LiftShared, WithHandlerContext},

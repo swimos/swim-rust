@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,14 +13,16 @@
 // limitations under the License.
 
 use bytes::{BufMut, BytesMut};
-use swimos_messages::protocol::{
-    BytesRequestMessage, BytesResponseMessage, Notification, Operation, Path, RequestMessage,
-    ResponseMessage,
+use swimos_api::address::RelativeAddress;
+use swimos_messages::{
+    protocol::{
+        BytesRequestMessage, BytesResponseMessage, Notification, Operation, RequestMessage,
+        ResponseMessage,
+    },
+    remote_protocol::NoSuchAgent,
 };
-use swimos_model::{escape_if_needed, identifier::is_identifier};
+use swimos_model::{identifier::is_identifier, literal::escape_if_needed};
 use tokio_util::codec::Encoder;
-
-use crate::error::NoSuchAgent;
 
 #[cfg(test)]
 mod tests;
@@ -52,7 +54,7 @@ impl Encoder<BytesRequestMessage> for ReconEncoder {
 
     fn encode(&mut self, item: BytesRequestMessage, dst: &mut BytesMut) -> Result<(), Self::Error> {
         let RequestMessage {
-            path: Path { node, lane },
+            path: RelativeAddress { node, lane },
             envelope,
             ..
         } = item;
@@ -91,7 +93,7 @@ impl Encoder<BytesResponseMessage> for ReconEncoder {
         dst: &mut BytesMut,
     ) -> Result<(), Self::Error> {
         let ResponseMessage {
-            path: Path { node, lane },
+            path: RelativeAddress { node, lane },
             envelope,
             ..
         } = item;

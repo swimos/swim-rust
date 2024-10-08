@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,16 +19,15 @@ use futures::{
     stream::FuturesUnordered,
     Future, FutureExt, Stream, StreamExt, TryFutureExt,
 };
+use swimos_agent_protocol::encoding::store::StoreInitializedCodec;
 use swimos_api::{
-    agent::{LaneConfig, StoreConfig, UplinkKind},
+    agent::{LaneConfig, StoreConfig, StoreKind, UplinkKind, WarpLaneKind},
     error::{AgentRuntimeError, OpenStoreError, StoreError},
-    lane::WarpLaneKind,
-    protocol::agent::StoreInitializedCodec,
-    store::{StoreDisabled, StoreKind},
+    persistence::StoreDisabled,
 };
 use swimos_model::Text;
 use swimos_utilities::{
-    io::byte_channel::{self, ByteReader, ByteWriter},
+    byte_channel::{self, ByteReader, ByteWriter},
     trigger,
 };
 use tokio::sync::{mpsc, oneshot};
@@ -70,14 +69,14 @@ pub struct AgentInitTask<Store = StoreDisabled> {
 }
 
 pub struct InitTaskConfig {
-    pub ad_hoc_queue_size: NonZeroUsize,
+    pub command_queue_size: NonZeroUsize,
     pub item_init_timeout: Duration,
     pub external_links: LinksTaskConfig,
     pub http_lane_channel_size: NonZeroUsize,
 }
 
 impl AgentInitTask {
-    /// #Arguments
+    /// # Arguments
     /// * `identity` - Unique ID of the agent.
     /// * `requests` - Channel for requests to open new lanes and downlinks.
     /// * `link_requests` - Channel for request to the runtime to open new external links.
@@ -108,7 +107,7 @@ impl<Store> AgentInitTask<Store>
 where
     Store: AgentPersistence + Send + Sync,
 {
-    /// #Arguments
+    /// # Arguments
     /// * `identity` - Unique ID of the agent.
     /// * `requests` - Channel for requests to open new lanes and downlinks.
     /// * `link_requests` - Channel for request to the runtime to open external links.
@@ -149,7 +148,7 @@ impl<Store: AgentPersistence + Send + Sync> AgentInitTask<Store> {
             reporting,
         } = self;
         let InitTaskConfig {
-            ad_hoc_queue_size,
+            command_queue_size,
             item_init_timeout,
             external_links,
             http_lane_channel_size,
@@ -160,7 +159,7 @@ impl<Store: AgentPersistence + Send + Sync> AgentInitTask<Store> {
 
         let mut endpoints = Endpoints::default();
 
-        let (ext_link_tx, ext_link_rx) = mpsc::channel(ad_hoc_queue_size.get());
+        let (ext_link_tx, ext_link_rx) = mpsc::channel(command_queue_size.get());
 
         let ext_link_state = LinksTaskState::new(link_requests.clone());
 
@@ -463,8 +462,7 @@ where
         http_lane_endpoints,
         store_endpoints,
     } = endpoints;
-    let mut initializers: FuturesUnordered<ItemInitTask<'_, Store::StoreId>> =
-        FuturesUnordered::new();
+    let mut initializers: FuturesUnordered<ItemInitTask<'_>> = FuturesUnordered::new();
     loop {
         let event = tokio::select! {
             Some(item_init_done) = initializers.next(), if !initializers.is_empty() => Either::Left(item_init_done),
@@ -484,9 +482,9 @@ where
                 } => store_endpoints.push(store),
             },
             Either::Right(request) => match request {
-                AgentRuntimeRequest::AdHoc(req) => {
+                AgentRuntimeRequest::Command(req) => {
                     if ext_link_tx
-                        .send(ExternalLinkRequest::AdHoc(req))
+                        .send(ExternalLinkRequest::Command(req))
                         .await
                         .is_err()
                     {
@@ -503,7 +501,10 @@ where
                     if let Some(init) =
                         initialization.add_lane(store, name.clone(), kind, config, promise)
                     {
-                        initializers.push(init.map_ok(Into::into).boxed());
+                        initializers.push(
+                            init.map_ok(|(endpoint, _)| ItemEndpoint::Lane { endpoint })
+                                .boxed(),
+                        );
                     }
                 }
                 AgentRuntimeRequest::AddStore(StoreRuntimeSpec {
@@ -516,7 +517,10 @@ where
                     if let Some(init) =
                         initialization.add_store(store, name.clone(), kind, config, promise)?
                     {
-                        initializers.push(init.map_ok(Into::into).boxed());
+                        initializers.push(
+                            init.map_ok(|(endpoint, _)| ItemEndpoint::Store { endpoint })
+                                .boxed(),
+                        );
                     }
                 }
                 AgentRuntimeRequest::OpenDownlink(request) => {

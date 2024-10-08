@@ -1,0 +1,12 @@
+[package]
+name = "time_series"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[dependencies]
+swimos = { workspace = true, features = ["server", "agent"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+example-util = { path = "../example_util" }
+futures-util = { workspace = true }
+swimos_form = { workspace = true }

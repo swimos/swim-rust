@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,9 +16,9 @@ use std::num::ParseIntError;
 use std::{borrow::Cow, time::Duration};
 
 use std::collections::HashMap;
-use swimos_api::protocol::map::MapMessage;
+use swimos_agent_protocol::MapMessage;
 use swimos_model::Value;
-use swimos_recon::parser::parse_value;
+use swimos_recon::parser::parse_recognize;
 
 use crate::data::DataKind;
 
@@ -128,7 +128,7 @@ pub fn parse_controller_command(parts: &[&str]) -> Result<ControllerCommand, Cow
             let (target, tail) = parse_target_ref(tail)?;
             match tail {
                 [body] => {
-                    if let Ok(value) = parse_value(body, false) {
+                    if let Ok(value) = parse_recognize(*body, false) {
                         Ok(ControllerCommand::Command {
                             target,
                             body: value,
@@ -150,8 +150,8 @@ pub fn parse_controller_command(parts: &[&str]) -> Result<ControllerCommand, Cow
             let (target, tail) = parse_target_ref(tail)?;
             match tail {
                 ["update", key, value] => {
-                    let result = parse_value(key, false).and_then(|k| {
-                        parse_value(value, false)
+                    let result = parse_recognize(*key, false).and_then(|k| {
+                        parse_recognize(*value, false)
                             .map(move |v| MapMessage::Update { key: k, value: v })
                     });
                     if let Ok(message) = result {
@@ -167,7 +167,8 @@ pub fn parse_controller_command(parts: &[&str]) -> Result<ControllerCommand, Cow
                     }
                 }
                 ["remove", key] => {
-                    let result = parse_value(key, false).map(|k| MapMessage::Remove { key: k });
+                    let result =
+                        parse_recognize(*key, false).map(|k| MapMessage::Remove { key: k });
                     if let Ok(message) = result {
                         Ok(ControllerCommand::MapCommand {
                             target,

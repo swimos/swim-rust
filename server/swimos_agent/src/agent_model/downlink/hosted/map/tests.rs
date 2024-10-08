@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,7 +13,6 @@
 // limitations under the License.
 
 use std::{
-    cell::RefCell,
     collections::HashMap,
     num::NonZeroUsize,
     ops::Deref,
@@ -32,13 +31,17 @@ use futures::{
     Sink, SinkExt, Stream, StreamExt,
 };
 use parking_lot::Mutex;
-use swimos_api::protocol::{
-    downlink::{DownlinkNotification, DownlinkNotificationEncoder},
-    map::{MapMessage, MapMessageEncoder, MapOperation, MapOperationDecoder, MapOperationEncoder},
+use swimos_agent_protocol::{
+    encoding::{
+        downlink::DownlinkNotificationEncoder,
+        map::{MapMessageEncoder, MapOperationDecoder},
+    },
+    DownlinkNotification, MapMessage, MapOperation,
 };
-use swimos_model::{address::Address, Text};
+use swimos_api::address::Address;
+use swimos_model::Text;
 use swimos_utilities::{
-    io::byte_channel::{self, ByteReader, ByteWriter},
+    byte_channel::{self, ByteReader, ByteWriter},
     non_zero_usize, trigger,
 };
 use tokio::{io::AsyncWriteExt, sync::mpsc};
@@ -46,23 +49,17 @@ use tokio_util::codec::{Encoder, FramedRead, FramedWrite};
 
 use crate::{
     agent_model::downlink::{
-        handlers::{BoxDownlinkChannel, DownlinkChannelEvent},
-        MapDownlinkHandle,
+        BoxDownlinkChannel, DownlinkChannelEvent, DownlinkChannelFactory, MapDownlinkHandle,
     },
     config::MapDownlinkConfig,
     downlink_lifecycle::{
-        map::{
-            on_clear::OnDownlinkClear, on_remove::OnDownlinkRemove, on_update::OnDownlinkUpdate,
-        },
-        on_failed::OnFailed,
-        on_linked::OnLinked,
-        on_synced::OnSynced,
-        on_unlinked::OnUnlinked,
+        OnDownlinkClear, OnDownlinkRemove, OnDownlinkUpdate, OnFailed, OnLinked, OnSynced,
+        OnUnlinked,
     },
-    event_handler::{BoxEventHandler, HandlerActionExt, SideEffect},
+    event_handler::{HandlerActionExt, LocalBoxEventHandler, SideEffect},
 };
 
-use super::{HostedMapDownlinkFactory, MapDlState, MapWriteStream};
+use super::{MapDownlinkFactory, MapWriteStream};
 
 struct FakeAgent;
 
@@ -124,7 +121,7 @@ struct FakeLifecycle {
 }
 
 impl OnLinked<FakeAgent> for FakeLifecycle {
-    type OnLinkedHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    type OnLinkedHandler<'a> = LocalBoxEventHandler<'a, FakeAgent>
     where
         Self: 'a;
 
@@ -132,12 +129,12 @@ impl OnLinked<FakeAgent> for FakeLifecycle {
         SideEffect::from(move || {
             self.events.lock().push(Event::Linked);
         })
-        .boxed()
+        .boxed_local()
     }
 }
 
 impl OnUnlinked<FakeAgent> for FakeLifecycle {
-    type OnUnlinkedHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    type OnUnlinkedHandler<'a> = LocalBoxEventHandler<'a, FakeAgent>
     where
         Self: 'a;
 
@@ -145,12 +142,12 @@ impl OnUnlinked<FakeAgent> for FakeLifecycle {
         SideEffect::from(move || {
             self.events.lock().push(Event::Unlinked);
         })
-        .boxed()
+        .boxed_local()
     }
 }
 
 impl OnFailed<FakeAgent> for FakeLifecycle {
-    type OnFailedHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    type OnFailedHandler<'a> = LocalBoxEventHandler<'a, FakeAgent>
     where
         Self: 'a;
 
@@ -158,12 +155,12 @@ impl OnFailed<FakeAgent> for FakeLifecycle {
         SideEffect::from(move || {
             self.events.lock().push(Event::Failed);
         })
-        .boxed()
+        .boxed_local()
     }
 }
 
 impl OnSynced<HashMap<i32, Text>, FakeAgent> for FakeLifecycle {
-    type OnSyncedHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    type OnSyncedHandler<'a> = LocalBoxEventHandler<'a, FakeAgent>
     where
         Self: 'a;
 
@@ -172,12 +169,12 @@ impl OnSynced<HashMap<i32, Text>, FakeAgent> for FakeLifecycle {
         SideEffect::from(move || {
             self.events.lock().push(Event::Synced(map));
         })
-        .boxed()
+        .boxed_local()
     }
 }
 
 impl OnDownlinkUpdate<i32, Text, FakeAgent> for FakeLifecycle {
-    type OnUpdateHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    type OnUpdateHandler<'a> = LocalBoxEventHandler<'a, FakeAgent>
     where
         Self: 'a;
 
@@ -195,12 +192,12 @@ impl OnDownlinkUpdate<i32, Text, FakeAgent> for FakeLifecycle {
                 .lock()
                 .push(Event::Updated(key, new_value, previous, map));
         })
-        .boxed()
+        .boxed_local()
     }
 }
 
 impl OnDownlinkRemove<i32, Text, FakeAgent> for FakeLifecycle {
-    type OnRemoveHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    type OnRemoveHandler<'a> = LocalBoxEventHandler<'a, FakeAgent>
     where
         Self: 'a;
 
@@ -214,12 +211,12 @@ impl OnDownlinkRemove<i32, Text, FakeAgent> for FakeLifecycle {
         SideEffect::from(move || {
             self.events.lock().push(Event::Removed(key, removed, map));
         })
-        .boxed()
+        .boxed_local()
     }
 }
 
 impl OnDownlinkClear<i32, Text, FakeAgent> for FakeLifecycle {
-    type OnClearHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    type OnClearHandler<'a> = LocalBoxEventHandler<'a, FakeAgent>
     where
         Self: 'a;
 
@@ -227,19 +224,15 @@ impl OnDownlinkClear<i32, Text, FakeAgent> for FakeLifecycle {
         SideEffect::from(move || {
             self.events.lock().push(Event::Cleared(map));
         })
-        .boxed()
+        .boxed_local()
     }
 }
 
-type State = RefCell<MapDlState<i32, Text>>;
-
 const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
-
-type MsgEncoder = MapMessageEncoder<MapOperationEncoder>;
 
 struct Writer {
     sender: FramedWrite<ByteWriter, DownlinkNotificationEncoder>,
-    encoder: MsgEncoder,
+    encoder: MapMessageEncoder,
     buffer: BytesMut,
 }
 
@@ -302,8 +295,7 @@ fn make_hosted_input(agent: &FakeAgent, config: MapDownlinkConfig) -> TestContex
 
     let (write_tx, write_rx) = mpsc::unbounded_channel();
 
-    let fac =
-        HostedMapDownlinkFactory::new(address, lc, State::default(), config, stop_rx, write_rx);
+    let fac = MapDownlinkFactory::new(address, lc, config, stop_rx, write_rx);
 
     let chan = fac.create(agent, out_tx, in_rx);
     TestContext {

@@ -1,17 +1,19 @@
 [package]
 name = "swimos_sync"
-version = "0.1.0"
-authors = ["Swim Inc. developers info@swim.ai"]
-edition = "2021"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+description = "SwimOS Synchronization Channels"
+license.workspace = true
+repository = "https://github.com/swimos/swim-rust/tree/main/swimos_utilities/swimos_sync"
+homepage.workspace = true
 
 [dependencies]
 crossbeam-queue = { workspace = true }
 futures = { workspace = true }
 parking_lot = { workspace = true }
-swimos_future = { path = "../swimos_future" }
-swimos_num = { path = "../swimos_num" }
+swimos_num = { workspace = true }
 
 [dev-dependencies]
 futures = { workspace = true }
-tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
-swimos_trigger = { path = "../swimos_trigger" }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync"] }

@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -23,32 +23,31 @@ use std::{
     sync::{atomic::AtomicU8, Arc},
     task::{Context, Poll},
 };
-use swimos_api::protocol::WithLenReconEncoder;
+use swimos_agent_protocol::encoding::downlink::ValueNotificationDecoder;
+use swimos_agent_protocol::DownlinkNotification;
 use swimos_api::{
-    downlink::DownlinkKind,
+    address::Address,
+    agent::DownlinkKind,
     error::{DownlinkFailureReason, DownlinkRuntimeError, FrameIoError},
-    protocol::downlink::{DownlinkNotification, ValueNotificationDecoder},
 };
-use swimos_form::{
-    structural::{read::recognizer::RecognizerReadable, write::StructuralWritable},
-    Form,
-};
-use swimos_model::{address::Address, Text};
+use swimos_form::{read::RecognizerReadable, write::StructuralWritable, Form};
+use swimos_model::Text;
+use swimos_recon::WithLenReconEncoder;
 use swimos_utilities::{
-    io::byte_channel::{ByteReader, ByteWriter},
-    sync::circular_buffer,
-    trigger,
+    byte_channel::{ByteReader, ByteWriter},
+    circular_buffer, trigger,
 };
 use tokio_util::codec::{FramedRead, FramedWrite};
 use tracing::{debug, error, info, trace};
 
 use crate::{
-    agent_model::downlink::handlers::{
+    agent_model::downlink::{
         BoxDownlinkChannel, DownlinkChannel, DownlinkChannelError, DownlinkChannelEvent,
+        DownlinkChannelFactory,
     },
     config::SimpleDownlinkConfig,
-    downlink_lifecycle::value::ValueDownlinkLifecycle,
-    event_handler::{BoxEventHandler, HandlerActionExt},
+    downlink_lifecycle::ValueDownlinkLifecycle,
+    event_handler::{HandlerActionExt, LocalBoxEventHandler},
 };
 
 use super::{DlState, DlStateObserver, DlStateTracker, OutputWriter, RestartableOutput};
@@ -88,7 +87,7 @@ impl<T: Send> ValueDlState<T> for RefCell<Option<T>> {
     }
 }
 
-pub struct HostedValueDownlinkFactory<T: RecognizerReadable, LC, State> {
+pub struct ValueDownlinkFactory<T: RecognizerReadable, LC, State> {
     address: Address<Text>,
     state: State,
     lifecycle: LC,
@@ -98,7 +97,7 @@ pub struct HostedValueDownlinkFactory<T: RecognizerReadable, LC, State> {
     watch_rx: circular_buffer::Receiver<T>,
 }
 
-impl<T, LC, State> HostedValueDownlinkFactory<T, LC, State>
+impl<T, LC, State> ValueDownlinkFactory<T, LC, State>
 where
     T: Form + Send + 'static,
     T::Rec: Send,
@@ -111,7 +110,7 @@ where
         stop_rx: trigger::Receiver,
         watch_rx: circular_buffer::Receiver<T>,
     ) -> Self {
-        HostedValueDownlinkFactory {
+        ValueDownlinkFactory {
             address,
             state,
             lifecycle,
@@ -122,17 +121,25 @@ where
         }
     }
 
-    pub fn create<Context>(
+    pub fn dl_state(&self) -> &Arc<AtomicU8> {
+        &self.dl_state
+    }
+}
+
+impl<T, LC, State, Context> DownlinkChannelFactory<Context> for ValueDownlinkFactory<T, LC, State>
+where
+    T: Form + Send + 'static,
+    T::Rec: Send,
+    State: ValueDlState<T> + Send + 'static,
+    LC: ValueDownlinkLifecycle<T, Context> + 'static,
+{
+    fn create(
         self,
         context: &Context,
         sender: ByteWriter,
         receiver: ByteReader,
-    ) -> BoxDownlinkChannel<Context>
-    where
-        State: ValueDlState<T> + Send + 'static,
-        LC: ValueDownlinkLifecycle<T, Context> + 'static,
-    {
-        let HostedValueDownlinkFactory {
+    ) -> BoxDownlinkChannel<Context> {
+        let ValueDownlinkFactory {
             address,
             state,
             lifecycle,
@@ -156,8 +163,17 @@ where
         Box::new(chan)
     }
 
-    pub fn dl_state(&self) -> &Arc<AtomicU8> {
-        &self.dl_state
+    fn create_box(
+        self: Box<Self>,
+        context: &Context,
+        tx: ByteWriter,
+        rx: ByteReader,
+    ) -> BoxDownlinkChannel<Context> {
+        (*self).create(context, tx, rx)
+    }
+
+    fn kind(&self) -> DownlinkKind {
+        DownlinkKind::Value
     }
 }
 
@@ -291,7 +307,7 @@ where
         self.select_next().boxed()
     }
 
-    fn next_event(&mut self, _context: &Context) -> Option<BoxEventHandler<'_, Context>> {
+    fn next_event(&mut self, _context: &Context) -> Option<LocalBoxEventHandler<'_, Context>> {
         let HostedValueDownlink {
             address,
             receiver,
@@ -313,12 +329,12 @@ where
                     if dl_state.get() == DlState::Unlinked {
                         dl_state.set(DlState::Linked);
                     }
-                    Some(lifecycle.on_linked().boxed())
+                    Some(lifecycle.on_linked().boxed_local())
                 }
                 Ok(DownlinkNotification::Synced) => state.with(|maybe_value| {
                     debug!(address = %address, "Downlink synced.");
                     dl_state.set(DlState::Synced);
-                    maybe_value.map(|value| lifecycle.on_synced(value).boxed())
+                    maybe_value.map(|value| lifecycle.on_synced(value).boxed_local())
                 }),
                 Ok(DownlinkNotification::Event { body }) => {
                     trace!(address = %address, "Event received for downlink.");
@@ -327,7 +343,7 @@ where
                         let handler = lifecycle
                             .on_event(&body)
                             .followed_by(lifecycle.on_set(prev, &body))
-                            .boxed();
+                            .boxed_local();
                         Some(handler)
                     } else {
                         None
@@ -344,7 +360,7 @@ where
                     } else {
                         dl_state.set(DlState::Unlinked);
                     }
-                    Some(lifecycle.on_unlinked().boxed())
+                    Some(lifecycle.on_unlinked().boxed_local())
                 }
                 Err(_) => {
                     debug!(address = %address, "Downlink failed.");
@@ -355,7 +371,7 @@ where
                     } else {
                         dl_state.set(DlState::Unlinked);
                     }
-                    Some(lifecycle.on_failed().boxed())
+                    Some(lifecycle.on_failed().boxed_local())
                 }
             }
         } else {

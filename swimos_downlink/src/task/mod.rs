@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,15 +18,14 @@ use crate::model::lifecycle::{
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use std::hash::Hash;
-use swimos_api::downlink::{Downlink, DownlinkConfig, DownlinkKind};
-use swimos_api::error::DownlinkTaskError;
+use swimos_api::{address::Address, agent::DownlinkKind, error::DownlinkTaskError};
+use swimos_client_api::{Downlink, DownlinkConfig};
 
-use swimos_form::structural::read::recognizer::RecognizerReadable;
+use swimos_form::read::RecognizerReadable;
 use swimos_form::Form;
-use swimos_model::address::Address;
 use swimos_model::Text;
 
-use swimos_utilities::io::byte_channel::{ByteReader, ByteWriter};
+use swimos_utilities::byte_channel::{ByteReader, ByteWriter};
 
 use tracing::{info_span, Instrument};
 
@@ -120,6 +119,7 @@ pub trait MapKey:
     Clone + Form + Send + Sync + Eq + Hash + Ord + RecognizerReadable + 'static
 {
 }
+
 impl<T> MapKey for T where
     T: Clone + Form + Send + Sync + Eq + Hash + Ord + RecognizerReadable + 'static
 {

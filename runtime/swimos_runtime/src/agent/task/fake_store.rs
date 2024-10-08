@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,11 +21,11 @@ use bytes::BufMut;
 use parking_lot::Mutex;
 use swimos_api::{
     error::StoreError,
-    store::{KeyValue, NodePersistence, RangeConsumer},
+    persistence::{KeyValue, NodePersistence, RangeConsumer},
 };
-use swimos_form::structural::write::StructuralWritable;
+use swimos_form::write::StructuralWritable;
 use swimos_model::Text;
-use swimos_recon::printer::print_recon_compact;
+use swimos_recon::print_recon_compact;
 use swimos_utilities::trigger;
 
 #[derive(Debug, Default)]

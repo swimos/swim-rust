@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,27 +15,22 @@
 use std::collections::HashMap;
 
 use futures::{future::BoxFuture, FutureExt, SinkExt, StreamExt};
-use swimos_api::{
-    agent::{LaneConfig, StoreConfig, UplinkKind},
-    error::StoreError,
-    lane::WarpLaneKind,
-    protocol::{
-        agent::{
-            LaneRequest, LaneRequestDecoder, LaneResponse, LaneResponseEncoder, StoreInitMessage,
-            StoreInitMessageDecoder, StoreInitialized, StoreInitializedCodec,
-        },
-        map::{
-            MapMessage, MapMessageDecoder, MapOperation, MapOperationDecoder,
-            RawMapOperationEncoder,
-        },
-        WithLenRecognizerDecoder, WithLengthBytesCodec,
+use swimos_agent_protocol::{
+    encoding::lane::{
+        MapLaneRequestDecoder, RawMapLaneResponseEncoder, RawValueLaneResponseEncoder,
+        ValueLaneRequestDecoder,
     },
-    store::{NodePersistence, StoreKind},
+    encoding::store::{MapStoreInitDecoder, StoreInitializedCodec, ValueStoreInitDecoder},
+    LaneRequest, LaneResponse, MapMessage, MapOperation, StoreInitMessage, StoreInitialized,
 };
-use swimos_form::structural::read::recognizer::RecognizerReadable;
+use swimos_api::{
+    agent::{LaneConfig, StoreConfig, StoreKind, UplinkKind, WarpLaneKind},
+    error::StoreError,
+    persistence::NodePersistence,
+};
 use swimos_model::Text;
 use swimos_utilities::{
-    io::byte_channel::{self, ByteReader, ByteWriter},
+    byte_channel::{self, ByteReader, ByteWriter},
     trigger,
 };
 use tokio::sync::{mpsc, oneshot};
@@ -96,10 +91,7 @@ const VAL_LANE: &str = "value";
 const VAL_STORE: &str = "value_store";
 
 async fn with_store_init_value(input: &mut ByteReader, output: &mut ByteWriter, expected: i32) {
-    let mut framed_in = FramedRead::new(
-        input,
-        LaneRequestDecoder::new(WithLenRecognizerDecoder::new(i32::make_recognizer())),
-    );
+    let mut framed_in = FramedRead::new(input, ValueLaneRequestDecoder::<i32>::default());
     match framed_in.next().await {
         Some(Ok(LaneRequest::Command(n))) => {
             assert_eq!(n, expected);
@@ -110,7 +102,7 @@ async fn with_store_init_value(input: &mut ByteReader, output: &mut ByteWriter, 
         Some(Ok(LaneRequest::InitComplete)) => {}
         ow => panic!("Unexpected event: {:?}", ow),
     }
-    let mut framed_out = FramedWrite::new(output, LaneResponseEncoder::new(WithLengthBytesCodec));
+    let mut framed_out = FramedWrite::new(output, RawValueLaneResponseEncoder::default());
     framed_out
         .send(LaneResponse::<&[u8]>::Initialized)
         .await
@@ -289,15 +281,12 @@ impl TestInit for SingleMapLane {
     }
 }
 
-type MapReqDecoder = LaneRequestDecoder<MapMessageDecoder<MapOperationDecoder<i32, i32>>>;
-type MapRespEncoder = LaneResponseEncoder<RawMapOperationEncoder>;
-
 async fn with_store_init_map(
     input: &mut ByteReader,
     output: &mut ByteWriter,
     expected: HashMap<i32, i32>,
 ) {
-    let mut framed_in = FramedRead::new(input, MapReqDecoder::default());
+    let mut framed_in = FramedRead::new(input, MapLaneRequestDecoder::<i32, i32>::default());
     let mut init_map = HashMap::new();
     loop {
         match framed_in.next().await {
@@ -309,7 +298,7 @@ async fn with_store_init_map(
         }
     }
     assert_eq!(init_map, expected);
-    let mut framed_out = FramedWrite::new(output, MapRespEncoder::default());
+    let mut framed_out = FramedWrite::new(output, RawMapLaneResponseEncoder::default());
     framed_out
         .send(LaneResponse::<MapOperation<&[u8], &[u8]>>::Initialized)
         .await
@@ -454,10 +443,7 @@ async fn with_store_init_value_store(
     output: &mut ByteWriter,
     expected: i32,
 ) {
-    let mut framed_in = FramedRead::new(
-        input,
-        StoreInitMessageDecoder::new(WithLenRecognizerDecoder::new(i32::make_recognizer())),
-    );
+    let mut framed_in = FramedRead::new(input, ValueStoreInitDecoder::<i32>::default());
     match framed_in.next().await {
         Some(Ok(StoreInitMessage::Command(n))) => {
             assert_eq!(n, expected);
@@ -613,7 +599,7 @@ impl TestInit for MapStoreInit {
     }
 }
 
-type StoreMapReqDecoder = StoreInitMessageDecoder<MapMessageDecoder<MapOperationDecoder<i32, i32>>>;
+type StoreMapReqDecoder = MapStoreInitDecoder<i32, i32>;
 
 async fn with_store_init_map_store(
     input: &mut ByteReader,

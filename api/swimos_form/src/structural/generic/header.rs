@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -139,7 +139,7 @@ impl<T, S: AppendHeaders> HeaderWithBody<T, S> {
 }
 
 /// This trait allows all of the types in this crate to be used with a unified interface
-/// in the the macro-derived implementations.
+/// in the macro-derived implementations.
 pub trait AppendHeaders {
     /// The number of items that will be written into the attribute body.
     fn num_items(&self) -> usize;

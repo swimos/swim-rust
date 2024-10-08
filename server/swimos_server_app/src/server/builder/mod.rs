@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,22 +21,33 @@ use ratchet::{
     deflate::{DeflateConfig, DeflateExtProvider},
     NoExtProvider, WebSocketStream,
 };
-use swimos_api::{agent::Agent, error::StoreError, store::StoreDisabled};
-use swimos_remote::net::{dns::Resolver, plain::TokioPlainTextNetworking, ExternalConnections};
-use swimos_tls::{RustlsNetworking, TlsConfig};
-use swimos_utilities::routing::route_pattern::RoutePattern;
+use rustls::crypto::CryptoProvider;
+
+use swimos_api::{
+    agent::Agent,
+    error::StoreError,
+    persistence::{ServerPersistence, StoreDisabled},
+};
+use swimos_remote::dns::Resolver;
+use swimos_remote::plain::TokioPlainTextNetworking;
+use swimos_remote::tls::{
+    ClientConfig, CryptoProviderConfig, RustlsClientNetworking, RustlsNetworking,
+    RustlsServerNetworking, TlsConfig,
+};
+use swimos_remote::ExternalConnections;
+use swimos_utilities::routing::RoutePattern;
 
 use crate::{
     config::SwimServerConfig,
     error::ServerBuilderError,
-    introspection::IntrospectionConfig,
     plane::{PlaneBuilder, PlaneModel},
+    IntrospectionConfig,
 };
 
 use super::{
     http::HyperWebsockets,
     runtime::{SwimServer, Transport},
-    store::{in_memory::InMemoryPersistence, ServerPersistence},
+    store::in_memory::InMemoryPersistence,
     BoxServer,
 };
 
@@ -49,6 +60,7 @@ pub struct ServerBuilder {
     config: SwimServerConfig,
     store_options: StoreConfig,
     introspection: Option<IntrospectionConfig>,
+    crypto_provider: CryptoProviderConfig,
 }
 
 #[non_exhaustive]
@@ -60,7 +72,7 @@ enum StoreConfig {
     #[cfg(feature = "rocks_store")]
     RockStore {
         path: Option<std::path::PathBuf>,
-        options: crate::RocksOpts,
+        options: swimos_rocks_store::RocksOpts,
     },
 }
 
@@ -76,10 +88,11 @@ impl ServerBuilder {
             config: Default::default(),
             store_options: Default::default(),
             introspection: Default::default(),
+            crypto_provider: CryptoProviderConfig::default(),
         }
     }
 
-    /// #Arguments
+    /// # Arguments
     ///
     /// * `addr` - The address to which the server will bind (default: 0.0.0.0:8080).
     pub fn set_bind_addr(mut self, addr: SocketAddr) -> Self {
@@ -89,7 +102,7 @@ impl ServerBuilder {
 
     /// Add a new route to the plane that the server will run.
     ///
-    /// #Arguments
+    /// # Arguments
     ///
     /// * `pattern` - The route pattern against which to match incoming envelopes.
     /// * `agent` - The agent definition.
@@ -111,7 +124,7 @@ impl ServerBuilder {
 
     /// Enable the deflate extension for websocket connections.
     ///  
-    /// #Arguments
+    /// # Arguments
     /// * `config` - Configuration parameters for the compression.
     pub fn configure_deflate_support(mut self, config: DeflateConfig) -> Self {
         self.deflate = Some(config);
@@ -137,7 +150,7 @@ impl ServerBuilder {
     }
 
     /// Configure the introspection system (this implicitly enables introspection).
-    /// #Arguments
+    /// # Arguments
     /// * `config` - Configuration parameters for the introspection system.
     pub fn configure_introspection(mut self, config: IntrospectionConfig) -> Self {
         self.introspection = Some(config);
@@ -148,6 +161,18 @@ impl ServerBuilder {
     /// be lost when the process stops.
     pub fn with_in_memory_store(mut self) -> Self {
         self.store_options = StoreConfig::InMemory;
+        self
+    }
+
+    /// Uses the process-default [`CryptoProvider`] for any TLS connections.
+    pub fn with_default_crypto_provider(mut self) -> Self {
+        self.crypto_provider = CryptoProviderConfig::ProcessDefault;
+        self
+    }
+
+    /// Uses the provided [`CryptoProvider`] for any TLS connections.
+    pub fn with_crypto_provider(mut self, provider: Arc<CryptoProvider>) -> Self {
+        self.crypto_provider = CryptoProviderConfig::Provided(provider);
         self
     }
 
@@ -162,6 +187,7 @@ impl ServerBuilder {
             config,
             store_options,
             introspection,
+            crypto_provider,
         } = self;
         let routes = plane.build()?;
         if introspection.is_some() {
@@ -174,11 +200,22 @@ impl ServerBuilder {
             deflate,
             introspection,
         };
+        let crypto_provider = crypto_provider.try_build()?;
+
         if let Some(tls_conf) = tls_config {
-            let networking = RustlsNetworking::try_from_config(resolver, tls_conf)?;
+            let client =
+                RustlsClientNetworking::build(resolver, tls_conf.client, crypto_provider.clone())?;
+            let server = RustlsServerNetworking::build(tls_conf.server, crypto_provider)?;
+            let networking = RustlsNetworking::new_tls(client, server);
             Ok(with_store(bind_to, routes, networking, config)?)
         } else {
-            let networking = TokioPlainTextNetworking::new(resolver);
+            let client = RustlsClientNetworking::build(
+                resolver.clone(),
+                ClientConfig::new(Default::default()),
+                crypto_provider,
+            )?;
+            let server = TokioPlainTextNetworking::new(resolver);
+            let networking = RustlsNetworking::new_plain_text(client, server);
             Ok(with_store(bind_to, routes, networking, config)?)
         }
     }
@@ -205,7 +242,7 @@ where
     match store_config {
         #[cfg(feature = "rocks_store")]
         StoreConfig::RockStore { path, options } => {
-            let store = super::store::rocks::create_rocks_store(path, options)?;
+            let store = swimos_rocks_store::open_rocks_store(path, options)?;
             Ok(with_websockets(bind_to, routes, networking, config, store))
         }
         StoreConfig::InMemory => Ok(with_websockets(
@@ -270,7 +307,7 @@ where
 
 #[cfg(feature = "rocks_store")]
 const _: () = {
-    use swimos_persistence::rocks::default_db_opts;
+    use swimos_rocks_store::{default_db_opts, RocksOpts};
     impl ServerBuilder {
         pub fn enable_rocks_store(mut self) -> Self {
             self.store_options = StoreConfig::RockStore {
@@ -296,7 +333,7 @@ const _: () = {
             self
         }
 
-        pub fn modify_rocks_opts<F: FnOnce(&mut crate::RocksOpts)>(mut self, f: F) -> Self {
+        pub fn modify_rocks_opts<F: FnOnce(&mut RocksOpts)>(mut self, f: F) -> Self {
             match &mut self.store_options {
                 StoreConfig::RockStore { options, .. } => {
                     f(options);

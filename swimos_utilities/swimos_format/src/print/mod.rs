@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -38,19 +38,26 @@ where
 }
 
 /// Format a sequence, placing separator between successive elements.
-pub fn join<'a, T>(value: &'a T, sep: &'a str) -> impl Display + 'a
+///
+/// # Arguments
+/// * `values` - The sequence of values.
+/// * `sep` - The separator to insert.
+pub fn join<'a, T>(values: &'a T, sep: &'a str) -> impl Display + 'a
 where
     &'a T: IntoIterator + 'a,
     <&'a T as IntoIterator>::Item: Display + 'a,
 {
-    Joined(value, sep)
+    Joined(values, sep)
 }
 
 /// Print out a sequence with commas between the elements.
-pub fn comma_sep<'a, T>(value: &'a T) -> impl Display + 'a
+///
+/// # Arguments
+/// * `values` - The sequence of values.
+pub fn comma_sep<'a, T>(values: &'a T) -> impl Display + 'a
 where
     &'a T: IntoIterator + 'a,
     <&'a T as IntoIterator>::Item: Display + 'a,
 {
-    join(value, ", ")
+    join(values, ", ")
 }

@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,15 +16,14 @@ use std::{collections::HashMap, time::Duration};
 
 use futures::{future::BoxFuture, FutureExt};
 use swimos_api::{
-    agent::{Agent, AgentConfig, AgentContext, AgentInitResult},
+    agent::{Agent, AgentConfig, AgentContext, AgentInitResult, WarpLaneKind},
     error::{AgentInitError, AgentTaskError},
-    lane::WarpLaneKind,
-    meta::uplink::LanePulse,
 };
+use swimos_meta::LanePulse;
 use swimos_model::Text;
 use swimos_utilities::{
-    io::byte_channel::{ByteReader, ByteWriter},
-    routing::route_uri::RouteUri,
+    byte_channel::{ByteReader, ByteWriter},
+    routing::RouteUri,
     trigger,
 };
 

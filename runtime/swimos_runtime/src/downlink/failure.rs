@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,12 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{convert::Infallible, fmt::Display, num::NonZeroUsize};
+use std::{convert::Infallible, fmt::Display};
 
-use swimos_utilities::format::comma_sep;
-use thiserror::Error;
-use tracing::warn;
-
+/// Configuration for the downlink runtime to instruct it how to respond to bad envelopes.
 #[derive(Debug, PartialEq, Eq)]
 pub enum BadFrameResponse<E> {
     /// Instruction to ignore the bad envelope.
@@ -63,6 +60,7 @@ impl<E: std::error::Error> BadFrameStrategy<E> for AlwaysAbortStrategy {
     }
 }
 
+/// Error type returned by [`ReportStrategy`].
 #[derive(Debug)]
 pub struct ErrReport {
     message: String,
@@ -84,6 +82,7 @@ impl ErrReport {
     }
 }
 
+/// [`BadFrameStrategy`] that creates an [`ErrReport`] from the error returned by the inner strategy.
 pub struct ReportStrategy<S> {
     inner: S,
 }
@@ -117,6 +116,7 @@ where
     }
 }
 
+#[doc(hidden)]
 pub type BoxedReportStrategy<'a, E> = Box<dyn BadFrameStrategy<E, Report = ErrReport> + Send + 'a>;
 
 impl<'a, E> BadFrameStrategy<E> for BoxedReportStrategy<'a, E> {
@@ -139,76 +139,10 @@ impl<E> BadFrameStrategy<E> for AlwaysIgnoreStrategy {
     }
 }
 
-/// A strategy that will ignore several bad envelopes, collecting the errors, and then
-/// abort.
-pub struct CountStrategy<E> {
-    max: usize,
-    count: usize,
-    errors: Vec<E>,
-}
-
-impl<E> CountStrategy<E> {
-    pub fn new(max: NonZeroUsize) -> Self {
-        CountStrategy {
-            max: max.get(),
-            count: 0,
-            errors: vec![],
-        }
-    }
-}
-
-/// A collection of errors, accumulated by a [`CountStrategy`].
-#[derive(Debug, Error, PartialEq, Eq)]
-#[error("Too many bad frames: {errors}")]
-pub struct ErrorLog<E> {
-    errors: Errors<E>,
-}
-
-impl<E> AsRef<[E]> for ErrorLog<E> {
-    fn as_ref(&self) -> &[E] {
-        &self.errors.0
-    }
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub struct Errors<E>(Vec<E>);
-
-impl<E: Display> Display for Errors<E> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "[{}]", comma_sep(&self.0))
-    }
-}
-
-impl<E: std::error::Error> BadFrameStrategy<E> for CountStrategy<E> {
-    type Report = ErrorLog<E>;
-
-    fn failed_with(&mut self, error: E) -> BadFrameResponse<Self::Report> {
-        let CountStrategy { max, count, errors } = self;
-        *count += 1;
-        if *count == *max {
-            errors.push(error);
-            *count = 0;
-            BadFrameResponse::Abort(ErrorLog {
-                errors: Errors(std::mem::take(errors)),
-            })
-        } else {
-            warn!(
-                "Received {n} of a maximum of {m} invalid map messages: {e}",
-                n = *count,
-                m = *max,
-                e = error
-            );
-            errors.push(error);
-            BadFrameResponse::Ignore
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
 
     use super::*;
-    use swimos_utilities::non_zero_usize;
     use thiserror::Error;
 
     #[derive(Debug, Error, PartialEq, Eq)]
@@ -230,35 +164,5 @@ mod tests {
         let mut handler = AlwaysIgnoreStrategy;
         let response = handler.failed_with(TestError("failed".to_string()));
         assert_eq!(response, BadFrameResponse::Ignore);
-    }
-
-    const MAX: NonZeroUsize = non_zero_usize!(3);
-
-    #[test]
-    fn count_errors() {
-        let mut handler = CountStrategy::new(MAX);
-
-        let first = handler.failed_with(TestError("first".to_string()));
-        assert_eq!(BadFrameResponse::Ignore, first);
-
-        let second = handler.failed_with(TestError("second".to_string()));
-        assert_eq!(BadFrameResponse::Ignore, second);
-
-        let third = handler.failed_with(TestError("third".to_string()));
-        match third {
-            BadFrameResponse::Abort(report) => {
-                assert_eq!(
-                    report.as_ref(),
-                    &[
-                        TestError("first".to_string()),
-                        TestError("second".to_string()),
-                        TestError("third".to_string())
-                    ]
-                )
-            }
-            BadFrameResponse::Ignore => {
-                panic!("Error ignored.");
-            }
-        }
     }
 }

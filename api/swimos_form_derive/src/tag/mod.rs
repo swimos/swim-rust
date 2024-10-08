@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,14 +13,14 @@
 // limitations under the License.
 
 use crate::quote::TokenStreamExt;
-use macro_utilities::attr_names::{CONV_NAME, FORM_NAME, TAG_NAME};
-use macro_utilities::attributes::consume_attributes;
-use macro_utilities::{combine_name_transform, NameTransform, NameTransformConsumer};
 use proc_macro2::TokenStream;
 use quote::ToTokens;
 use std::fmt::{Display, Formatter};
-use swimos_utilities::errors::validation::{Validation, ValidationItExt};
+use swimos_macro_utilities::attr_names::{CONV_NAME, FORM_NAME, TAG_NAME};
+use swimos_macro_utilities::attributes::consume_attributes;
+use swimos_macro_utilities::{combine_name_transform, NameTransform, NameTransformConsumer};
 use swimos_utilities::errors::Errors;
+use swimos_utilities::errors::{Validation, ValidationItExt};
 
 /// Model for an enumeration where all variants have no fields.
 pub struct UnitEnum<'a> {
@@ -109,7 +109,7 @@ impl<'a> ToTokens for DeriveTag<UnitEnum<'a>> {
                 const VARIANT_NAMES: [&str; #num_vars] = [#(#literals),*];
 
                 #[automatically_derived]
-                impl #root::structural::Tag for #name {
+                impl #root::Tag for #name {
 
                     const VARIANTS: &'static [&'static str] = &VARIANT_NAMES;
                 }

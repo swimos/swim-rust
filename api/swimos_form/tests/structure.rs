@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,9 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swimos_form::{structural::Tag, Form};
-use swimos_model::time::Timestamp;
-use swimos_model::{Attr, Item, Text, Value};
+use swimos_form::{Form, Tag};
+use swimos_model::{Attr, Item, Text, Timestamp, Value};
 
 #[test]
 fn test_transmute() {
@@ -530,7 +529,7 @@ fn test_enum_tag() {
 
     #[derive(Form, Debug, PartialEq, Clone)]
 
-    struct LogEntry<F: Form> {
+    struct LogEntry<F> {
         #[form(tag)]
         level: Level,
         #[form(header)]
@@ -559,6 +558,7 @@ fn test_enum_tag() {
 }
 
 #[test]
+#[allow(clippy::multiple_bound_locations)]
 fn generic_duplicated_bound() {
     #[derive(Form)]
 

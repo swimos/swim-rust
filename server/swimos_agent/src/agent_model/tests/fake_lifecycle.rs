@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,28 +12,53 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::time::Duration;
+
 use futures::FutureExt;
-use swimos_model::{address::Address, Text};
-use tokio::sync::mpsc;
+use swimos_api::{address::Address, agent::WarpLaneKind, error::LaneSpawnError};
+use swimos_model::Text;
+use tokio::{sync::mpsc, time::Instant};
 
 use crate::{
-    agent_lifecycle::{item_event::ItemEvent, on_init::OnInit, on_start::OnStart, on_stop::OnStop},
+    agent_lifecycle::{
+        item_event::ItemEvent, on_init::OnInit, on_start::OnStart, on_stop::OnStop,
+        on_timer::OnTimer, HandlerContext,
+    },
     event_handler::{
-        ActionContext, BoxEventHandler, HandlerAction, SideEffect, Spawner, StepResult,
+        ActionContext, EventHandler, HandlerAction, HandlerActionExt, LocalBoxEventHandler,
+        Sequentially, SideEffect, Spawner, StepResult,
     },
     meta::AgentMetadata,
 };
 
-use super::{fake_agent::TestAgent, AD_HOC_HOST, AD_HOC_LANE, AD_HOC_NODE, CMD_LANE, HTTP_LANE};
+use super::{
+    fake_agent::TestAgent, AD_HOC_HOST, AD_HOC_LANE, AD_HOC_NODE, CMD_LANE, HTTP_LANE, TIMEOUT_ID,
+};
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum LifecycleEvent {
     Init,
     Start,
+    Timeout(u64),
     Lane(Text),
     RanSuspended(i32),
     RanSuspendedConsequence,
+    DynLane {
+        name: String,
+        kind: WarpLaneKind,
+        result: Result<(), LaneSpawnError>,
+    },
     Stop,
+}
+
+impl LifecycleEvent {
+    pub fn dyn_lane(name: &str, kind: WarpLaneKind, result: Result<(), LaneSpawnError>) -> Self {
+        LifecycleEvent::DynLane {
+            name: name.to_string(),
+            kind,
+            result,
+        }
+    }
 }
 
 pub struct LifecycleHandler {
@@ -42,13 +67,35 @@ pub struct LifecycleHandler {
 }
 
 #[derive(Clone)]
+pub struct AddLane {
+    name: String,
+    kind: WarpLaneKind,
+}
+
+impl AddLane {
+    pub fn new(name: &str, kind: WarpLaneKind) -> Self {
+        AddLane {
+            name: name.to_string(),
+            kind,
+        }
+    }
+}
+
+#[derive(Clone)]
 pub struct TestLifecycle {
     sender: mpsc::UnboundedSender<LifecycleEvent>,
+    add_lanes: Vec<AddLane>,
 }
 
 impl TestLifecycle {
-    pub fn new(tx: mpsc::UnboundedSender<LifecycleEvent>) -> TestLifecycle {
-        TestLifecycle { sender: tx }
+    pub fn new(
+        tx: mpsc::UnboundedSender<LifecycleEvent>,
+        add_lanes: Vec<AddLane>,
+    ) -> TestLifecycle {
+        TestLifecycle {
+            sender: tx,
+            add_lanes,
+        }
     }
 }
 
@@ -73,20 +120,46 @@ impl OnInit<TestAgent> for TestLifecycle {
 }
 
 impl OnStart<TestAgent> for TestLifecycle {
-    type OnStartHandler<'a> = LifecycleHandler where Self: 'a;
-
-    fn on_start(&self) -> Self::OnStartHandler<'_> {
+    fn on_start(&self) -> impl EventHandler<TestAgent> + '_ {
+        let TestLifecycle { add_lanes, sender } = self;
+        let handler_context: HandlerContext<TestAgent> = Default::default();
+        let add_lane_handlers: Vec<_> = add_lanes
+            .iter()
+            .map(move |AddLane { name, kind }| {
+                let tx = sender.clone();
+                let name_cpy = name.clone();
+                let k = *kind;
+                let cb = move |result| {
+                    handler_context.effect(move || {
+                        tx.send(LifecycleEvent::DynLane {
+                            name: name_cpy,
+                            kind: k,
+                            result,
+                        })
+                        .expect("Channel closed.");
+                    })
+                };
+                match kind {
+                    WarpLaneKind::Map => handler_context.open_map_lane(name, cb).boxed(),
+                    WarpLaneKind::Value => handler_context.open_value_lane(name, cb).boxed(),
+                    _ => panic!("Unsupported dynamic lane kind."),
+                }
+            })
+            .collect();
         self.make_handler(LifecycleEvent::Start)
+            .followed_by(Sequentially::new(add_lane_handlers))
     }
 }
 
 impl OnStop<TestAgent> for TestLifecycle {
-    type OnStopHandler<'a> = LifecycleHandler
-    where
-        Self: 'a;
-
-    fn on_stop(&self) -> Self::OnStopHandler<'_> {
+    fn on_stop(&self) -> impl EventHandler<TestAgent> + '_ {
         self.make_handler(LifecycleEvent::Stop)
+    }
+}
+
+impl OnTimer<TestAgent> for TestLifecycle {
+    fn on_timer(&self, timer_id: u64) -> impl EventHandler<TestAgent> + '_ {
+        self.make_handler(LifecycleEvent::Timeout(timer_id))
     }
 }
 
@@ -119,22 +192,32 @@ impl HandlerAction<TestAgent> for LifecycleHandler {
                 match name.as_str() {
                     CMD_LANE => {
                         let n = context.take_cmd();
-                        if n % 2 == 0 {
-                            let tx = sender.clone();
-                            let fut = async move {
-                                tx.send(LifecycleEvent::RanSuspended(n))
-                                    .expect("Channel closed.");
-                                let h = SideEffect::from(move || {
-                                    tx.send(LifecycleEvent::RanSuspendedConsequence)
+                        match n % 3 {
+                            0 => {
+                                let tx = sender.clone();
+                                let fut = async move {
+                                    tx.send(LifecycleEvent::RanSuspended(n))
                                         .expect("Channel closed.");
-                                });
-                                let boxed: BoxEventHandler<TestAgent> = Box::new(h);
-                                boxed
-                            };
-                            action_context.spawn_suspend(fut.boxed());
-                        } else {
-                            let address = Address::new(Some(AD_HOC_HOST), AD_HOC_NODE, AD_HOC_LANE);
-                            action_context.send_command(address, "content", true);
+                                    let h = SideEffect::from(move || {
+                                        tx.send(LifecycleEvent::RanSuspendedConsequence)
+                                            .expect("Channel closed.");
+                                    });
+                                    let boxed: LocalBoxEventHandler<TestAgent> = Box::new(h);
+                                    boxed
+                                };
+                                action_context.spawn_suspend(fut.boxed());
+                            }
+                            1 => {
+                                let address =
+                                    Address::new(Some(AD_HOC_HOST), AD_HOC_NODE, AD_HOC_LANE);
+                                action_context.send_ad_hoc_command(address, "content", true);
+                            }
+                            _ => {
+                                action_context.schedule_timer(
+                                    Instant::now() + Duration::from_millis(5),
+                                    TIMEOUT_ID,
+                                );
+                            }
                         }
                     }
                     HTTP_LANE => {

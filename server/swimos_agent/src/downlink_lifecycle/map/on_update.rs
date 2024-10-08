@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,10 +14,10 @@
 
 use std::{borrow::Borrow, collections::HashMap};
 
-use swimos_api::handlers::{BorrowHandler, FnHandler, NoHandler};
+use swimos_utilities::handlers::{BorrowHandler, FnHandler, NoHandler};
 
 use crate::{
-    agent_lifecycle::utility::HandlerContext,
+    agent_lifecycle::HandlerContext,
     event_handler::{EventHandler, MapUpdateBorrowFn, MapUpdateFn, UnitHandler},
     lifecycle_fn::{LiftShared, WithHandlerContext, WithHandlerContextBorrow},
 };
@@ -28,7 +28,7 @@ pub trait OnDownlinkUpdate<K, V, Context>: Send {
     where
         Self: 'a;
 
-    /// #Arguments
+    /// # Arguments
     /// * `key` - The key that has been updated.
     /// * `map` - The current state of the map.
     /// * `previous` - The previous value, if any.
@@ -50,7 +50,7 @@ pub trait OnDownlinkUpdateShared<K, V, Context, Shared>: Send {
         Self: 'a,
         Shared: 'a;
 
-    /// #Arguments
+    /// # Arguments
     /// * `shared` - The shared state.
     /// * `handler_context` - Utility for constructing event handlers.
     /// * `key` - The key that has been updated.

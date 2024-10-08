@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,9 +16,8 @@ use bytes::BytesMut;
 use frunk::{prelude::HList, HCons, HList, HNil};
 use mime::Mime;
 use std::fmt::Debug;
-use swimos_api::protocol::write_recon;
 use swimos_form::Form;
-use swimos_recon::parser::parse_into;
+use swimos_recon::{parser::parse_recognize, write_recon};
 use thiserror::Error;
 
 use super::content_type::{recon, RECON_SUBTYPE};
@@ -52,7 +51,7 @@ pub trait HttpLaneCodecSupport: Default + Debug + Clone {
 pub trait HttpLaneCodec<T>: HttpLaneCodecSupport {
     /// Attempt to encode the payload for an HTTP response/request.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `content_type` - The content type to use.
     /// * `value` - The payload to encode.
     /// * `buffer` - Buffer into which to encode the payload.
@@ -65,7 +64,7 @@ pub trait HttpLaneCodec<T>: HttpLaneCodecSupport {
 
     /// Attempt to decode a payload from an HTTP request/response.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `content_type` - The content type inferred from the headers.
     /// * `buffer` - The raw payload bytes.
     fn decode(&self, content_type: &Mime, buffer: &[u8]) -> Result<T, CodecError>;
@@ -116,7 +115,7 @@ impl<T: Form> HttpLaneCodec<T> for Recon {
             Ok(body) => body,
             Err(e) => return Err(CodecError::EncodingError(Box::new(e))),
         };
-        parse_into(body, true).map_err(|e| CodecError::EncodingError(Box::new(e)))
+        parse_recognize(body, true).map_err(|e| CodecError::EncodingError(Box::new(e)))
     }
 }
 

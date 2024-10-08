@@ -1,0 +1,17 @@
+[package]
+name = "swimos_macro_utilities"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+description = "SwimOS Macro Utilites"
+license.workspace = true
+repository = "https://github.com/swimos/swim-rust/tree/main/swimos_macro_utilities"
+homepage.workspace = true
+
+[dependencies]
+proc-macro2 = { workspace = true }
+syn = { workspace = true, features = ["printing", "visit", "visit-mut", "parsing", "extra-traits"] }
+quote = { workspace = true }
+convert_case = { workspace = true }
+thiserror = { workspace = true }
+frunk = { workspace = true }

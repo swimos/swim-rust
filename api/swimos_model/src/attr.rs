@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,11 +17,11 @@ use std::cmp::Ordering;
 use std::fmt::{Display, Formatter};
 use std::hash::Hash;
 
-use super::write_string_literal;
+use crate::literal::write_string_literal;
 use crate::{Item, Value};
 
-/// An attribute that can be applied to a record ['Value']. A key value pair where the key is
-/// a ['String'] and the value can be any ['Value'].
+/// An attribute that can be applied to a record [`Value`]. A key-value pair where the key is
+/// a [`String`] and the value can be any [`Value`].
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct Attr {
     pub name: Text,
@@ -29,7 +29,7 @@ pub struct Attr {
 }
 
 impl Attr {
-    /// Create an ['Attr'] from anything that can be converted to one.
+    /// Create an [`Attr`] from anything that can be converted to one.
     ///
     /// #Examples
     ///

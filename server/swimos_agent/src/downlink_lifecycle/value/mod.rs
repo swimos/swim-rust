@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,11 +14,11 @@
 
 use std::{borrow::Borrow, marker::PhantomData};
 
-use swimos_api::handlers::{BorrowHandler, FnHandler, NoHandler};
+use swimos_utilities::handlers::{BorrowHandler, FnHandler, NoHandler};
 
-use crate::{agent_lifecycle::utility::HandlerContext, lifecycle_fn::WithHandlerContextBorrow};
+use crate::{agent_lifecycle::HandlerContext, lifecycle_fn::WithHandlerContextBorrow};
 
-use self::{
+pub use self::{
     on_event::{OnDownlinkEvent, OnDownlinkEventShared},
     on_set::{OnDownlinkSet, OnDownlinkSetShared},
 };
@@ -31,12 +31,12 @@ use super::{
 };
 use crate::lifecycle_fn::{LiftShared, WithHandlerContext};
 
-pub mod on_event;
-pub mod on_set;
+mod on_event;
+mod on_set;
 
 /// Trait for the lifecycle of a value downlink.
 ///
-/// #Type Parameters
+/// # Type Parameters
 /// * `T` - The type of the state of the lane.
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
 pub trait ValueDownlinkLifecycle<T, Context>:
@@ -61,7 +61,7 @@ impl<LC, T, Context> ValueDownlinkLifecycle<T, Context> for LC where
 
 /// A lifecycle for a value downlink where the individual event handlers can share state.
 ///
-/// #Type Parameters
+/// # Type Parameters
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
 /// * `State` - The type of the shared state.
 /// * `T` - The type of the downlink.
@@ -580,7 +580,7 @@ where
 
 /// A lifecycle for a value downlink where the individual event handlers do not share state.
 ///
-/// #Type Parameters
+/// # Type Parameters
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
 /// * `T` - The type of the downlink.
 pub trait StatelessValueLifecycle<Context, T>: ValueDownlinkLifecycle<T, Context> {
@@ -647,7 +647,7 @@ pub trait StatelessValueLifecycle<Context, T>: ValueDownlinkLifecycle<T, Context
 
 /// A lifecycle for a value downlink where the individual event handlers have shared state.
 ///
-/// #Type Parameters
+/// # Type Parameters
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
 /// * `Shared` - The type of the shared state.
 /// * `T` - The type of the downlink.
@@ -709,7 +709,7 @@ pub trait StatefulValueLifecycle<Context, Shared, T>: ValueDownlinkLifecycle<T, 
 
 /// A lifecycle for a value downlink where the individual event handlers do not share state.
 ///
-/// #Type Parameters
+/// # Type Parameters
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
 /// * `T` - The type of the downlink.
 /// * `FLinked` - The type of the 'on_linked' handler.
@@ -896,6 +896,7 @@ where
     }
 }
 
+#[doc(hidden)]
 pub type LiftedValueLifecycle<Context, T, State, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet> =
     StatefulValueDownlinkLifecycle<
         Context,

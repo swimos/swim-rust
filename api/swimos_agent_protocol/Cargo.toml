@@ -1,0 +1,21 @@
+[package]
+name = "swimos_agent_protocol"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+description = "SwimOS Agent Protocol"
+license.workspace = true
+repository = "https://github.com/swimos/swim-rust/tree/main/api/swimos_agent_protocol"
+homepage.workspace = true
+
+[dependencies]
+bytes = { workspace = true }
+tokio-util = { workspace = true, features = ["codec"] }
+swimos_api = { workspace = true }
+swimos_model = { workspace = true }
+uuid = { workspace = true }
+swimos_form = { workspace = true }
+swimos_recon = { workspace = true }
+thiserror = { workspace = true }
+swimos_utilities = { workspace = true, features = ["encoding"] }
+bitflags = { workspace = true }

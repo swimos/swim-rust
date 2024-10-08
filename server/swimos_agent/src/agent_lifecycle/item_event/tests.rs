@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -39,10 +39,10 @@ pub fn run_handler_expect_mod<H, Agent>(
     H: HandlerAction<Agent, Completion = ()>,
 {
     let mut join_lane_init = HashMap::new();
-    let mut ad_hoc_buffer = BytesMut::new();
+    let mut command_buffer = BytesMut::new();
     loop {
         match event_handler.step(
-            &mut dummy_context(&mut join_lane_init, &mut ad_hoc_buffer),
+            &mut dummy_context(&mut join_lane_init, &mut command_buffer),
             meta,
             agent,
         ) {
@@ -59,7 +59,7 @@ pub fn run_handler_expect_mod<H, Agent>(
         }
     }
     assert!(join_lane_init.is_empty());
-    assert!(ad_hoc_buffer.is_empty());
+    assert!(command_buffer.is_empty());
 }
 
 pub fn run_handler<H, Agent>(meta: AgentMetadata<'_>, agent: &Agent, event_handler: H)

@@ -120,7 +120,7 @@ of time. To achieve this using the derive macro, a tag can be added to the lane 
 ```rust
 #[derive(AgentLaneModel)]
 struct ExampleAgent {
-    #[lane(transient)]
+    #[item(transient)]
     value_lane: ValueLane<i32>,
     map_lane: MapLane<String, u64>,
 }

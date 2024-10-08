@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swimos_api::handlers::{FnHandler, NoHandler};
+use swimos_utilities::handlers::{FnHandler, NoHandler};
 
 use crate::event_handler::{EventHandler, HandlerFn0, UnitHandler};
 
@@ -20,11 +20,7 @@ use super::utility::HandlerContext;
 
 /// Lifecycle event for the `on_start` event of an agent.
 pub trait OnStart<Context>: Send {
-    type OnStartHandler<'a>: EventHandler<Context> + 'a
-    where
-        Self: 'a;
-
-    fn on_start(&self) -> Self::OnStartHandler<'_>;
+    fn on_start(&self) -> impl EventHandler<Context> + '_;
 }
 
 /// Lifecycle event for the `on_start` event of an agent where the event handler
@@ -35,7 +31,7 @@ pub trait OnStartShared<Context, Shared>: Send {
         Self: 'a,
         Shared: 'a;
 
-    /// #Arguments
+    /// # Arguments
     /// * `shared` - The shared state.
     /// * `handler_context` - Utility for constructing event handlers.
     fn on_start<'a>(
@@ -46,10 +42,8 @@ pub trait OnStartShared<Context, Shared>: Send {
 }
 
 impl<Context> OnStart<Context> for NoHandler {
-    type OnStartHandler<'a> = UnitHandler where Self: 'a;
-
-    fn on_start(&self) -> Self::OnStartHandler<'_> {
-        Default::default()
+    fn on_start(&self) -> impl EventHandler<Context> + '_ {
+        UnitHandler::default()
     }
 }
 
@@ -58,11 +52,7 @@ where
     F: Fn() -> H + Send,
     H: EventHandler<Context> + 'static,
 {
-    type OnStartHandler<'a> = H
-    where
-        Self: 'a;
-
-    fn on_start(&self) -> Self::OnStartHandler<'_> {
+    fn on_start(&self) -> impl EventHandler<Context> + '_ {
         let FnHandler(f) = self;
         f()
     }

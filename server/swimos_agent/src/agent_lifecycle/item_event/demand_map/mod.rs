@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,7 +15,7 @@
 use futures::future::Either;
 
 use crate::{
-    agent_lifecycle::utility::HandlerContext,
+    agent_lifecycle::HandlerContext,
     lanes::{
         demand_map::{
             demand_map_handler, demand_map_handler_shared,
@@ -168,7 +168,7 @@ where
     fn item_event<'a>(
         &'a self,
         context: &Context,
-        item_name: &str,
+        item_name: &'a str,
     ) -> Option<Self::ItemEventHandler<'a>> {
         let DemandMapBranch {
             label,

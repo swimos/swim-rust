@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
 
 use std::{borrow::Borrow, marker::PhantomData};
 
-use swimos_api::handlers::{BorrowHandler, NoHandler};
+use swimos_utilities::handlers::{BorrowHandler, NoHandler};
 
 use self::on_command::{OnCommand, OnCommandShared};
 
@@ -22,7 +22,7 @@ pub mod on_command;
 
 /// Trait for the lifecycle of a command lane.
 ///
-/// #Type Parameters
+/// # Type Parameters
 /// * `T` - The type of the commands.
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
 pub trait CommandLaneLifecycle<T, Context>: OnCommand<T, Context> {}
@@ -30,7 +30,7 @@ pub trait CommandLaneLifecycle<T, Context>: OnCommand<T, Context> {}
 /// Trait for the lifecycle of a command lane where the lifecycle has access to some shared state (shared
 /// with all other lifecycles in the agent).
 ///
-/// #Type Parameters
+/// # Type Parameters
 /// * `T` - The type of the commands.
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
 /// * `Shared` - The shared state to which the lifecycle has access.
@@ -48,7 +48,7 @@ impl<T, Context, Shared, L> CommandLaneLifecycleShared<T, Context, Shared> for L
 
 /// A lifecycle for a command lane with some shared state (shard with other lifecycles in the same agent).
 ///
-/// #Type Parameters
+/// # Type Parameters
 /// * `Context` - The context for the event handlers (providing access to the agent lanes).
 /// * `Shared` - The shared state to which the lifecycle has access.
 /// * `T` - The type of the commands.
@@ -91,7 +91,7 @@ where
     fn on_command<'a>(
         &'a self,
         shared: &'a Shared,
-        handler_context: crate::agent_lifecycle::utility::HandlerContext<Context>,
+        handler_context: crate::agent_lifecycle::HandlerContext<Context>,
         value: &T,
     ) -> Self::OnCommandHandler<'a> {
         self.on_command.on_command(shared, handler_context, value)

@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -45,7 +45,7 @@ impl Coproduct for CNil {
 }
 
 /// A non-empty coproduct. In general, we should have `T: Coproduct`, however, this makes it
-/// impossible to implement traits for general co-products due the the potentially unbounded
+/// impossible to implement traits for general co-products due potentially unbounded
 /// recursion.
 pub enum CCons<H, T> {
     Head(H),

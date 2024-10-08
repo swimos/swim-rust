@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,12 +13,11 @@
 // limitations under the License.
 
 use std::borrow::Cow;
-use swimos_form::structural::read::event::{NumericValue, ReadEvent};
-use swimos_form::structural::read::recognizer::Recognizer;
-use swimos_form::structural::read::recognizer::RecognizerReadable;
-use swimos_form::structural::read::StructuralReadable;
-use swimos_model::bigint::{BigInt, BigUint};
+use swimos_form::read::StructuralReadable;
+use swimos_form::read::{NumericValue, ReadEvent};
+use swimos_form::read::{Recognizer, RecognizerReadable};
 use swimos_model::{Attr, Blob, Item, Text, Value};
+use swimos_model::{BigInt, BigUint};
 
 fn run_recognizer<'a, T, I>(rep: I) -> T
 where

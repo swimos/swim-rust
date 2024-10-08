@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swimos_utilities::routing::route_pattern::RoutePattern;
+use swimos_utilities::routing::RoutePattern;
 
 /// The name of the route paramter containing the encoded node URI.
 pub const NODE_PARAM: &str = "node_uri";
@@ -41,7 +41,7 @@ pub fn lane_pattern() -> RoutePattern {
 #[cfg(test)]
 mod tests {
     use crate::route::mesh_pattern;
-    use swimos_utilities::routing::route_uri::RouteUri;
+    use swimos_utilities::routing::RouteUri;
 
     use super::{lane_pattern, node_pattern, LANE_PARAM, NODE_PARAM};
 

@@ -1,8 +1,12 @@
 [package]
 name = "swimos_algebra"
-version = "0.1.0"
-authors = ["Swim Inc. developers info@swim.ai"]
-edition = "2021"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+description = "SwimOS Algebraic Traits"
+license.workspace = true
+repository = "https://github.com/swimos/swim-rust/tree/main/swimos_utilities/swimos_algebra"
+homepage.workspace = true
 
 [dependencies]
 

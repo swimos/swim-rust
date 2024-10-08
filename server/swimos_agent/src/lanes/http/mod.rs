@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,8 +15,10 @@
 use std::{borrow::Cow, cell::RefCell, marker::PhantomData};
 
 use bytes::Bytes;
-use swimos_api::agent::{HttpLaneRequest, HttpLaneResponse, HttpResponseSender};
-use swimos_model::http::{Header, HttpRequest, StatusCode, SupportedMethod, Version};
+use swimos_api::{
+    agent::{HttpLaneRequest, HttpResponseSender, RawHttpLaneResponse},
+    http::{Header, HttpRequest, StatusCode, SupportedMethod, Version},
+};
 use tracing::debug;
 
 use crate::{
@@ -43,8 +45,8 @@ pub(crate) use model::{MethodAndPayload, Request};
 pub use model::{Response, UnitResponse};
 
 /// An HTTP lane allows an agent to expose an HTTP endpoint over the HTTP server exposed by the server
-/// hosting the agent. If an agent is hosted with the node URI '/node' on a host 'host', listening on port
-/// 8080, a lane named 'http_lane' can be addressed at the URI: 'https://host:8080/node?lane=http_lane'.
+/// hosting the agent. If an agent is hosted with the node URI `/node` on a host `host`, listening on port
+/// `8080`, a lane named `http_lane` can be addressed at the URI: `https://host:8080/node?lane=http_lane`.
 ///
 /// An HTTP lane can respond to GET, POST, PUT, DELETE and HEAD requests which are defined by attaching
 /// lifecycle events to the agent.
@@ -220,9 +222,9 @@ where
     }
 }
 
-fn bad_request(status_code: StatusCode, message: Option<String>) -> HttpLaneResponse {
+fn bad_request(status_code: StatusCode, message: Option<String>) -> RawHttpLaneResponse {
     let payload = message.map(Bytes::from).unwrap_or_default();
-    HttpLaneResponse {
+    RawHttpLaneResponse {
         status_code,
         version: Version::HTTP_1_1,
         headers: vec![],
@@ -234,7 +236,7 @@ fn try_decode_payload<T, Codec>(
     headers: &[Header],
     codec: &Codec,
     payload: &[u8],
-) -> Result<T, HttpLaneResponse>
+) -> Result<T, RawHttpLaneResponse>
 where
     Codec: HttpLaneCodec<T>,
 {

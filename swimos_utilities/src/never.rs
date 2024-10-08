@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-/// Empty type for cases that can never ocurr (reading a primitive as a record for example).
+/// Empty type for cases that can never occur (reading a primitive as a record for example).
 /// This is essentially the same as [`core::convert::Infallible`] but is intended to be useable
 /// for cases that are not only error types. It should be possible to replace it with `!` when it
 /// is stabilized.

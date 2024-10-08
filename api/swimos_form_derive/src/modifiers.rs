@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,15 +14,17 @@
 
 use crate::structural::model::field::FieldSelector;
 use crate::SynValidation;
-use macro_utilities::attr_names::{CONV_NAME, FIELDS_NAME, NEWTYPE_PATH, SCHEMA_NAME, TAG_NAME};
-use macro_utilities::attributes::{IgnoreConsumer, NestedMetaConsumer};
-use macro_utilities::{
+use quote::ToTokens;
+use swimos_macro_utilities::attr_names::{
+    CONV_NAME, FIELDS_NAME, NEWTYPE_PATH, SCHEMA_NAME, TAG_NAME,
+};
+use swimos_macro_utilities::attributes::{IgnoreConsumer, NestedMetaConsumer};
+use swimos_macro_utilities::{
     CaseConvention, NameTransform, NameTransformConsumer, Symbol, Transformation,
     TypeLevelNameTransform, TypeLevelNameTransformConsumer,
 };
-use quote::ToTokens;
-use swimos_utilities::errors::validation::{Validation, ValidationItExt};
 use swimos_utilities::errors::Errors;
+use swimos_utilities::errors::{Validation, ValidationItExt};
 
 /// Fold the attributes present on some syntactic element, accumulating errors.
 pub fn fold_attr_meta<'a, It, S, F>(path: Symbol, attrs: It, init: S, mut f: F) -> SynValidation<S>

@@ -1,17 +1,22 @@
 [package]
 name = "swimos_msgpack"
-version = "0.1.0"
-authors = ["Swim Inc. developers info@swim.ai"]
-edition = "2021"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+description = "SwimOS MessagePack"
+license.workspace = true
+repository = "https://github.com/swimos/swim-rust/tree/main/api/formats/swimos_msgpack"
+homepage.workspace = true
 
 [dependencies]
 base64 = { workspace = true }
 either = { workspace = true }
-swimos_form = { path = "../../swimos_form" }
-swimos_model = { path = "../../swimos_model" }
+swimos_form = { workspace = true }
+swimos_model = { workspace = true }
 bytes = { workspace = true }
-byteorder = "1.4"
-rmp = "0.8"
+byteorder = { workspace = true }
+rmp = { workspace = true }
+num-bigint = { workspace = true }
 
 [dev-dependencies]
 

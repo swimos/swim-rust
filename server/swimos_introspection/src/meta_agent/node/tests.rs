@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,24 +15,16 @@
 use std::{collections::HashMap, num::NonZeroUsize};
 
 use futures::{future::join, Future, StreamExt};
-use swimos_api::{
-    agent::LaneConfig,
-    lane::WarpLaneKind,
-    meta::{
-        lane::{LaneInfo, LaneKind},
-        uplink::NodePulse,
-    },
-    protocol::{
-        agent::{LaneResponse, LaneResponseDecoder},
-        map::{MapOperation, MapOperationDecoder},
-        WithLenRecognizerDecoder,
-    },
+use swimos_agent_protocol::{
+    encoding::lane::{MapLaneResponseDecoder, ValueLaneResponseDecoder},
+    LaneResponse, MapOperation,
 };
-use swimos_form::structural::read::recognizer::RecognizerReadable;
+use swimos_api::agent::{LaneConfig, LaneKind, WarpLaneKind};
+use swimos_meta::{LaneInfo, NodePulse};
 use swimos_model::Text;
 use swimos_runtime::agent::reporting::UplinkReporter;
 use swimos_utilities::{
-    io::byte_channel::{byte_channel, ByteReader, ByteWriter},
+    byte_channel::{byte_channel, ByteReader, ByteWriter},
     non_zero_usize, trigger,
 };
 use tokio::sync::mpsc;
@@ -65,7 +57,7 @@ struct TestContext {
 
 const SYNC_ID: Uuid = Uuid::from_u128(9727474);
 
-type RespDecoder = LaneResponseDecoder<MapOperationDecoder<Text, LaneInfo>>;
+type RespDecoder = MapLaneResponseDecoder<Text, LaneInfo>;
 
 struct LaneReceiver {
     reader: FramedRead<ByteReader, RespDecoder>,
@@ -74,10 +66,7 @@ struct LaneReceiver {
 impl LaneReceiver {
     fn new(reader: ByteReader) -> Self {
         LaneReceiver {
-            reader: FramedRead::new(
-                reader,
-                LaneResponseDecoder::new(MapOperationDecoder::default()),
-            ),
+            reader: FramedRead::new(reader, MapLaneResponseDecoder::default()),
         }
     }
 
@@ -386,8 +375,7 @@ async fn provide_node(
     }
 }
 
-type PulseDec =
-    LaneResponseDecoder<WithLenRecognizerDecoder<<NodePulse as RecognizerReadable>::Rec>>;
+type PulseDec = ValueLaneResponseDecoder<NodePulse>;
 
 struct PulseLaneReader<'a> {
     inner: FramedRead<&'a mut ByteReader, PulseDec>,
@@ -396,12 +384,7 @@ struct PulseLaneReader<'a> {
 impl<'a> PulseLaneReader<'a> {
     fn new(reader: &'a mut ByteReader) -> Self {
         PulseLaneReader {
-            inner: FramedRead::new(
-                reader,
-                LaneResponseDecoder::new(WithLenRecognizerDecoder::new(
-                    NodePulse::make_recognizer(),
-                )),
-            ),
+            inner: FramedRead::new(reader, ValueLaneResponseDecoder::default()),
         }
     }
 

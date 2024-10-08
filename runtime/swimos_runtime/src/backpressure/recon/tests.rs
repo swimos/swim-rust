@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,9 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::backpressure::{RawMapOperation, RawMapOperationMut};
+
 use super::MapOperationReconEncoder;
 use bytes::{Bytes, BytesMut};
-use swimos_api::protocol::map::{MapOperation, RawMapOperation, RawMapOperationMut};
+use swimos_agent_protocol::MapOperation;
 use tokio_util::codec::Encoder;
 
 #[test]

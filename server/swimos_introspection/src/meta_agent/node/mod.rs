@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,21 +19,19 @@ use futures::{
     future::{BoxFuture, Either},
     FutureExt, SinkExt, StreamExt,
 };
-use swimos_api::{
-    agent::{Agent, AgentConfig, AgentContext, AgentInitResult},
-    error::{AgentInitError, AgentTaskError, FrameIoError},
-    lane::WarpLaneKind,
-    meta::{lane::LaneInfo, uplink::NodePulse},
-    protocol::{
-        agent::{LaneRequest, LaneRequestDecoder, LaneResponse, LaneResponseEncoder},
-        map::{MapOperation, MapOperationEncoder},
-        WithLengthBytesCodec,
-    },
+use swimos_agent_protocol::{
+    encoding::lane::{MapLaneResponseEncoder, RawValueLaneRequestDecoder},
+    LaneRequest, LaneResponse, MapOperation,
 };
+use swimos_api::{
+    agent::{Agent, AgentConfig, AgentContext, AgentInitResult, WarpLaneKind},
+    error::{AgentInitError, AgentTaskError, FrameIoError},
+};
+use swimos_meta::{LaneInfo, NodePulse};
 use swimos_model::Text;
 use swimos_utilities::{
-    io::byte_channel::{ByteReader, ByteWriter},
-    routing::route_uri::RouteUri,
+    byte_channel::{ByteReader, ByteWriter},
+    routing::RouteUri,
     trigger,
 };
 use tokio_util::codec::{FramedRead, FramedWrite};
@@ -162,7 +160,7 @@ async fn run_task(
 /// A lane that will return information on all of the lanes of an agent, as a map, when a Sync
 /// request is sent to the lane.
 ///
-/// #Arguments
+/// # Arguments
 /// * `shutdown_rx` - Shutdown signal for when the agent is stopping.
 /// * `handle` - Introspection handle used to refresh the view of the lanes.
 /// * lanes_io` - The input and output channels for the lane.
@@ -174,8 +172,8 @@ async fn run_lanes_descriptor_lane(
     let (tx, rx) = lanes_io;
 
     let mut input =
-        FramedRead::new(rx, LaneRequestDecoder::new(WithLengthBytesCodec)).take_until(shutdown_rx);
-    let mut output = FramedWrite::new(tx, LaneResponseEncoder::new(MapOperationEncoder));
+        FramedRead::new(rx, RawValueLaneRequestDecoder::default()).take_until(shutdown_rx);
+    let mut output = FramedWrite::new(tx, MapLaneResponseEncoder::default());
 
     let mut snapshot = if let Some(s) = handle.new_snapshot() {
         s

@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,14 +15,14 @@
 use std::time::Duration;
 
 use swimos::agent::{
-    agent_lifecycle::utility::HandlerContext,
+    agent_lifecycle::HandlerContext,
     event_handler::{EventHandler, HandlerAction, HandlerActionExt},
     lanes::{DemandLane, ValueLane},
     lifecycle, projections, AgentLaneModel,
 };
 
-#[derive(AgentLaneModel)]
 #[projections]
+#[derive(AgentLaneModel)]
 pub struct ExampleAgent {
     lane: ValueLane<i32>,
     demand: DemandLane<i32>,
@@ -31,7 +31,7 @@ pub struct ExampleAgent {
 #[derive(Clone)]
 pub struct ExampleLifecycle;
 
-const CUE_PERIOD: Duration = Duration::from_secs(5);
+const CUE_PERIOD: Duration = Duration::from_secs(1);
 
 #[lifecycle(ExampleAgent)]
 impl ExampleLifecycle {

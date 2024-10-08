@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,12 +14,13 @@
 
 use crate::structural::read::error::ExpectedEvent;
 use crate::structural::read::ReadError;
+use num_bigint::ToBigInt;
 use num_traits::ToPrimitive;
 use std::borrow::Cow;
 use std::hash::{Hash, Hasher};
-use swimos_model::bigint::{BigInt, BigUint, ToBigInt};
 use swimos_model::Text;
 use swimos_model::ValueKind;
+use swimos_model::{BigInt, BigUint};
 
 /// Reading a serialized representation of a record in the Swim data model produces
 /// a stream of these events. An event is either a token, a notification that an
@@ -72,6 +73,7 @@ impl<'a> ReadEvent<'a> {
     }
 }
 
+/// A numeric value constituent of a [`ReadEvent`].
 #[derive(Debug, Clone)]
 pub enum NumericValue {
     Int(i64),

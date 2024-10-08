@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,9 +14,9 @@
 
 use std::{borrow::Borrow, collections::HashMap, marker::PhantomData};
 
-use swimos_api::handlers::{BorrowHandler, FnHandler, NoHandler};
+use swimos_utilities::handlers::{BorrowHandler, FnHandler, NoHandler};
 
-use crate::agent_lifecycle::utility::HandlerContext;
+use crate::agent_lifecycle::HandlerContext;
 
 use self::{
     on_clear::{OnClear, OnClearShared},
@@ -30,7 +30,7 @@ pub mod on_update;
 
 /// Trait for the lifecycle of a map lane.
 ///
-/// #Type Parameters
+/// # Type Parameters
 /// * `K` - The type of the map keys.
 /// * `V` - The type of the map values.
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
@@ -60,7 +60,7 @@ impl<L, K, V, Context, Shared> MapLaneLifecycleShared<K, V, Context, Shared> for
 
 /// A lifecycle for a map lane with some shared state (shard with other lifecycles in the same agent).
 ///
-/// #Type Parameters
+/// # Type Parameters
 /// * `Context` - The context for the event handlers (providing access to the agent lanes).
 /// * `Shared` - The shared state to which the lifecycle has access.
 /// * `FUpd` - The `on_update` event handler.

@@ -1,11 +1,14 @@
 [package]
 name = "swimos_route"
-version = "0.1.0"
-authors = ["Swim Inc. developers info@swim.ai"]
-edition = "2021"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+description = "SwimOS Routing Utilities"
+license.workspace = true
+repository = "https://github.com/swimos/swim-rust/tree/main/swimos_utilities/swimos_route"
+homepage.workspace = true
 
 [dependencies]
-http = { workspace = true }
 percent-encoding = { workspace = true }
 nom = { workspace = true }
 nom_locate = { workspace = true }

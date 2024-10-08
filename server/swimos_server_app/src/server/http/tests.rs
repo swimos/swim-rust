@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -26,22 +26,21 @@ use futures::{
     stream::{BoxStream, FuturesUnordered, SelectAll},
     Future, StreamExt,
 };
-use hyper::{
-    body::to_bytes, client::conn::http1, header::HeaderValue, Body, Request, Response, Uri,
-};
+use http_body_util::{BodyExt, Full};
+use hyper::body::Incoming;
+use hyper::{client::conn::http1, header::HeaderValue, Request, Response, Uri};
+use hyper_util::rt::TokioIo;
 use ratchet::{CloseReason, Message, NoExt, NoExtProvider, WebSocket, WebSocketConfig};
+use ratchet_core::{HttpError, SubprotocolRegistry};
 use swimos_api::{
-    agent::{HttpLaneRequest, HttpLaneResponse},
-    net::Scheme,
-};
-use swimos_model::{
+    agent::{HttpLaneRequest, RawHttpLaneResponse},
     http::{StatusCode, Version},
-    Text,
 };
-use swimos_remote::{
-    net::{Listener, ListenerResult},
+use swimos_messages::remote_protocol::{
     AgentResolutionError, FindNode, NoSuchAgent, NodeConnectionRequest,
 };
+use swimos_model::Text;
+use swimos_remote::{Listener, ListenerResult, Scheme};
 use swimos_utilities::non_zero_usize;
 use tokio::{io::DuplexStream, sync::mpsc};
 use tokio_stream::wrappers::ReceiverStream;
@@ -58,11 +57,16 @@ async fn client(tx: &mpsc::Sender<DuplexStream>, tag: &str) {
 
     tx.send(server).await.expect("Failed to open channel.");
 
-    let mut websocket =
-        ratchet::subscribe(WebSocketConfig::default(), client, "ws://localhost:8080")
-            .await
-            .expect("Client handshake failed.")
-            .into_websocket();
+    let mut websocket = ratchet::subscribe_with(
+        WebSocketConfig::default(),
+        client,
+        "ws://localhost:8080",
+        NoExtProvider,
+        SubprotocolRegistry::new(["warp0"]).unwrap(),
+    )
+    .await
+    .expect("Client handshake failed.")
+    .into_websocket();
 
     websocket
         .write_text(format!("Hello: {}", tag))
@@ -122,7 +126,6 @@ impl Listener<DuplexStream> for TestListener {
 }
 
 async fn run_server(rx: mpsc::Receiver<DuplexStream>, find_tx: mpsc::Sender<FindNode>) {
-    println!("Server start");
     let listener = TestListener { rx };
 
     let config = HttpConfig {
@@ -190,6 +193,34 @@ async fn single_client() {
         drop(tx);
     };
 
+    join(server, client).await;
+}
+
+#[tokio::test]
+async fn no_subprotocol() {
+    let (tx, rx) = mpsc::channel(8);
+    let (find_tx, _find_rx) = mpsc::channel(CHANNEL_SIZE.get());
+    let server = run_server(rx, find_tx);
+    let client = async move {
+        let (client, server) = tokio::io::duplex(BUFFER_SIZE);
+        tx.send(server).await.expect("Failed to open channel.");
+
+        let result = ratchet::subscribe_with(
+            WebSocketConfig::default(),
+            client,
+            "ws://localhost:8080",
+            NoExtProvider,
+            SubprotocolRegistry::default(),
+        )
+        .await;
+        let err = result.expect_err("Expected a HTTP error");
+        let err = err
+            .downcast_ref::<HttpError>()
+            .expect("Expected Http error");
+        assert!(matches!(err, HttpError::Status(400)));
+
+        drop(tx);
+    };
     join(server, client).await;
 }
 
@@ -320,7 +351,7 @@ async fn fake_plane(responses: HashMap<Text, FindResponse>, mut find_rx: mpsc::R
                 let (_, response_tx) = request.into_parts();
                 match provision {
                     Provision::Immediate => {
-                        let response = HttpLaneResponse {
+                        let response = RawHttpLaneResponse {
                             status_code: StatusCode::OK,
                             version: Version::HTTP_1_1,
                             headers: vec![],
@@ -333,7 +364,7 @@ async fn fake_plane(responses: HashMap<Text, FindResponse>, mut find_rx: mpsc::R
                     }
                     Provision::Delay => {
                         tokio::time::sleep(2 * REQ_TIMEOUT).await;
-                        let response = HttpLaneResponse {
+                        let response = RawHttpLaneResponse {
                             status_code: StatusCode::OK,
                             version: Version::HTTP_1_1,
                             headers: vec![],
@@ -359,15 +390,15 @@ fn setup_responses() -> HashMap<Text, FindResponse> {
     .collect()
 }
 
-async fn http_client(tx: mpsc::Sender<DuplexStream>, node: &str, lane: &str) -> Response<Body> {
+async fn http_client(tx: mpsc::Sender<DuplexStream>, node: &str, lane: &str) -> Response<Incoming> {
     let (client, server) = tokio::io::duplex(BUFFER_SIZE);
     tx.send(server).await.expect("Failed to open channel.");
-    let (mut sender, connection) = http1::handshake(client)
+    let (mut sender, connection) = http1::handshake(TokioIo::new(client))
         .await
         .expect("HTTP handshake failed.");
 
     let send = async move {
-        let mut request = Request::<Body>::default();
+        let mut request = Request::<Full<Bytes>>::default();
         let uri =
             Uri::try_from(format!("http://example:8080/{}?lane={}", node, lane)).expect("Bad URI.");
         *request.method_mut() = hyper::Method::GET;
@@ -404,11 +435,14 @@ async fn good_http_request() {
         let responses = setup_responses();
         let agent = fake_plane(responses, find_rx);
         let client = http_client(tx, "node", "name");
-        let (_, mut response, _) = join3(server, client, agent).await;
+        let (_, response, _) = join3(server, client, agent).await;
         assert_eq!(response.status(), hyper::StatusCode::OK);
-        let body = std::mem::take(response.body_mut());
-        let body_bytes = to_bytes(body).await.expect("Failed to read body.");
-        assert_eq!(body_bytes.as_ref(), b"Response");
+        let body = response
+            .collect()
+            .await
+            .expect("Failed to read body.")
+            .to_bytes();
+        assert_eq!(body.as_ref(), b"Response");
     })
     .await
 }

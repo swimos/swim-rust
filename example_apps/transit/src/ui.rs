@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,11 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use axum::body::Body;
 use axum::http::{header, HeaderValue};
-use axum::{
-    body::StreamBody, extract::State, http::StatusCode, response::IntoResponse, routing::get,
-    Router,
-};
+use axum::{extract::State, http::StatusCode, response::IntoResponse, routing::get, Router};
 use futures::{TryFutureExt, TryStreamExt};
 use tokio::fs::File;
 use tokio::io::{AsyncBufReadExt, BufReader};
@@ -36,7 +34,7 @@ impl UiConfig {
 
 /// Trivial web server to present the app UI.
 ///
-/// #Arguments
+/// # Arguments
 /// * `port` - The port that the swimos server is listening on.
 pub fn ui_server_router(port: u16) -> Router {
     Router::new()
@@ -102,7 +100,7 @@ async fn load_file(path: &str) -> impl IntoResponse {
         .await
     {
         let headers = [(header::CONTENT_LENGTH, HeaderValue::from(len))];
-        Ok((headers, StreamBody::new(ReaderStream::new(file))))
+        Ok((headers, Body::from_stream(ReaderStream::new(file))))
     } else {
         Err((StatusCode::NOT_FOUND, format!("File not found: {}", target)))
     }

@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@ use std::{
     time::Duration,
 };
 
-use swimos_api::meta::uplink::WarpUplinkPulse;
+use swimos_meta::WarpUplinkPulse;
 
 #[cfg(test)]
 mod tests;
@@ -39,7 +39,7 @@ struct UplinkCounters {
     command_count: AtomicU64,
 }
 
-/// A snapshot taken from an [`UplinkCounters`].
+/// A snapshot taken from the uplink counters.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct UplinkSnapshot {
     pub link_count: u64,
@@ -91,7 +91,7 @@ pub struct UplinkReporter {
     counters: Arc<UplinkCounters>,
 }
 
-/// A cosumer attached to an [`UplinkReporter`]. When the corresponding reporter is dropped, this
+/// A consumer attached to an [`UplinkReporter`]. When the corresponding reporter is dropped, this
 /// will become invalidated and all future snapshot calls will return nothing.
 #[derive(Debug, Clone)]
 pub struct UplinkReportReader {

@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@ use crate::structural::write::{RecordBodyKind, StructuralWritable};
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
-use swimos_model::bigint::{BigInt, BigUint};
+use swimos_model::{BigInt, BigUint};
 use swimos_model::{Blob, Item, Text, Value};
 
 #[test]

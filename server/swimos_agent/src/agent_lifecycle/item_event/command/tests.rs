@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@ use std::{collections::HashMap, sync::Arc};
 use parking_lot::Mutex;
 use swimos_api::agent::AgentConfig;
 use swimos_model::Text;
-use swimos_utilities::routing::route_uri::RouteUri;
+use swimos_utilities::routing::RouteUri;
 
 use crate::{
     agent_lifecycle::item_event::{

@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use base64::write::EncoderWriter;
-use base64::{DecodeError, URL_SAFE};
+use base64::{engine::general_purpose::URL_SAFE, write::EncoderWriter, DecodeError, Engine};
 use core::fmt;
 use std::borrow::{Borrow, BorrowMut};
 use std::fmt::{Display, Formatter};
@@ -41,17 +40,17 @@ impl Blob {
 
     /// Attempts to encode this blob's data into the provided writer.
     pub fn encode_to_writer<W: Write>(&self, mut writer: W) -> io::Result<()> {
-        EncoderWriter::new(&mut writer, URL_SAFE).write_all(&self.data)
+        EncoderWriter::new(&mut writer, &URL_SAFE).write_all(&self.data)
     }
 
     /// Consumes this BLOB and returns the decoded data.
     pub fn into_decoded(self) -> Result<Vec<u8>, DecodeError> {
-        base64::decode_config(self.data, URL_SAFE)
+        URL_SAFE.decode(self.data)
     }
 
     /// Clone the underlying data and decode it.
     pub fn as_decoded(&self) -> Result<Vec<u8>, DecodeError> {
-        base64::decode_config(self.data.clone(), URL_SAFE)
+        URL_SAFE.decode(self.data.clone())
     }
 
     /// Attempts to decode the provided data. Returning a result containing either the decoded data
@@ -60,12 +59,12 @@ impl Blob {
     where
         T: AsRef<[u8]>,
     {
-        base64::decode_config(encoded.as_ref(), URL_SAFE).map(Blob::from_vec)
+        URL_SAFE.decode(encoded).map(Blob::from_vec)
     }
 
     /// Encodes the provided data into a [`Blob`].
     pub fn encode<T: AsRef<[u8]>>(input: T) -> Blob {
-        let encoded = base64::encode_config(input, URL_SAFE);
+        let encoded = URL_SAFE.encode(input);
         Blob {
             data: Vec::from(encoded.as_bytes()),
         }
@@ -114,8 +113,8 @@ mod tests {
 
     #[test]
     fn from_encoded() {
-        let encoded = base64::encode_config("swimming", URL_SAFE);
-        let decoded = base64::decode_config(encoded.as_bytes(), URL_SAFE).unwrap();
+        let encoded = URL_SAFE.encode("swimming");
+        let decoded = URL_SAFE.decode(encoded.as_bytes()).unwrap();
         let blob = Blob::from_encoded(Vec::from(encoded.as_bytes()));
 
         assert_eq!(decoded, blob.into_decoded().unwrap())

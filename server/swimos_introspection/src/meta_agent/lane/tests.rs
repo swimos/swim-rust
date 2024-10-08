@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -23,18 +23,11 @@ use crate::{
     task::IntrospectionMessage,
 };
 use futures::StreamExt;
-use swimos_api::{
-    agent::LaneConfig,
-    lane::WarpLaneKind,
-    meta::{lane::LaneKind, uplink::LanePulse},
-    protocol::{
-        agent::{LaneResponse, LaneResponseDecoder},
-        WithLenRecognizerDecoder,
-    },
-};
-use swimos_form::structural::read::recognizer::RecognizerReadable;
+use swimos_agent_protocol::{encoding::lane::ValueLaneResponseDecoder, LaneResponse};
+use swimos_api::agent::{LaneConfig, LaneKind, WarpLaneKind};
+use swimos_meta::LanePulse;
 use swimos_runtime::agent::reporting::UplinkReporter;
-use swimos_utilities::io::byte_channel::ByteReader;
+use swimos_utilities::byte_channel::ByteReader;
 use tokio::sync::mpsc;
 use tokio_util::codec::FramedRead;
 
@@ -120,8 +113,7 @@ async fn provide_lane(
     }
 }
 
-type PulseDec =
-    LaneResponseDecoder<WithLenRecognizerDecoder<<LanePulse as RecognizerReadable>::Rec>>;
+type PulseDec = ValueLaneResponseDecoder<LanePulse>;
 
 struct PulseLaneReader<'a> {
     inner: FramedRead<&'a mut ByteReader, PulseDec>,
@@ -130,12 +122,7 @@ struct PulseLaneReader<'a> {
 impl<'a> PulseLaneReader<'a> {
     fn new(reader: &'a mut ByteReader) -> Self {
         PulseLaneReader {
-            inner: FramedRead::new(
-                reader,
-                LaneResponseDecoder::new(WithLenRecognizerDecoder::new(
-                    LanePulse::make_recognizer(),
-                )),
-            ),
+            inner: FramedRead::new(reader, ValueLaneResponseDecoder::default()),
         }
     }
 

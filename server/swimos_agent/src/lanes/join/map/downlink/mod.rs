@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,14 +13,12 @@
 // limitations under the License.
 
 use std::{collections::HashSet, hash::Hash};
-use swimos_api::protocol::map::MapMessage;
-use swimos_model::{address::Address, Text};
+use swimos_agent_protocol::MapMessage;
+use swimos_api::address::Address;
+use swimos_model::Text;
 
 use crate::{
-    downlink_lifecycle::{
-        event::on_event::OnConsumeEvent, on_failed::OnFailed, on_linked::OnLinked,
-        on_synced::OnSynced, on_unlinked::OnUnlinked,
-    },
+    downlink_lifecycle::{OnConsumeEvent, OnFailed, OnLinked, OnSynced, OnUnlinked},
     event_handler::{
         ActionContext, AndThen, AndThenContextual, ConstHandler, ContextualTrans, FollowedBy,
         HandlerAction, HandlerActionExt, HandlerTrans, Modification, StepResult,
@@ -51,7 +49,7 @@ pub struct JoinMapDownlink<L, K, V, LC, Context> {
 }
 
 impl<L, K, V, LC, Context> JoinMapDownlink<L, K, V, LC, Context> {
-    /// #Arguments
+    /// # Arguments
     /// * `projection` - Projection from the agent to the join value lane.
     /// * `link_key` - A key to identify the link.
     /// * `lane` - Address of the remote lane to which the downlink will be attached.

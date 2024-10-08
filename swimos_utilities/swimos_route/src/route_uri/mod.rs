@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -99,11 +99,12 @@ impl RouteUri {
     }
 
     /// Returns an iterator that will yield each segment in the path.
-    pub fn path_iter(&self) -> PathSegmentIterator<'_> {
+    pub fn path_iter(&self) -> impl Iterator<Item = &str> {
         PathSegmentIterator(self.path())
     }
 }
 
+/// Error type that is produced by an attempt to parse an invalid [`RouteUri`] from a string.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InvalidRouteUri(String);
 

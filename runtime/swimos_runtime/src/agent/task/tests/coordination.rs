@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -35,17 +35,14 @@ use futures::{
 };
 use http::Uri;
 use std::fmt::Debug;
+use swimos_agent_protocol::{LaneRequest, MapMessage};
 use swimos_api::{
-    agent::{HttpLaneRequest, UplinkKind},
-    lane::WarpLaneKind,
-    protocol::{agent::LaneRequest, map::MapMessage},
-};
-use swimos_model::{
+    agent::{HttpLaneRequest, UplinkKind, WarpLaneKind},
     http::{HttpRequest, HttpResponse, Method, StatusCode, Version},
-    Text,
 };
+use swimos_model::Text;
 use swimos_utilities::{
-    io::byte_channel::byte_channel,
+    byte_channel::byte_channel,
     trigger::{self, promise},
 };
 use tokio::sync::{mpsc, oneshot};
@@ -527,6 +524,17 @@ async fn immediate_shutdown() {
     } = state;
     assert_eq!(value_lanes.remove(VAL_LANE), Some(0));
     assert_eq!(map_lanes.remove(MAP_LANE), Some(BTreeMap::new()));
+}
+
+impl AgentAttachmentRequest {
+    fn downlink(id: Uuid, io: Io, completion: promise::Sender<DisconnectionReason>) -> Self {
+        AgentAttachmentRequest::TwoWay {
+            id,
+            io,
+            completion,
+            on_attached: None,
+        }
+    }
 }
 
 async fn attach_remote(

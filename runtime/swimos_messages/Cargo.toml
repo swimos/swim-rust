@@ -1,18 +1,23 @@
 [package]
 name = "swimos_messages"
-version = "0.1.0"
-authors = ["Swim Inc. developers info@swim.ai"]
-edition = "2021"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+description = "SwimOS Runtime Internal Messaging Protocol"
+license.workspace = true
+repository = "https://github.com/swimos/swim-rust/tree/main/runtime/swimos_messages"
+homepage.workspace = true
 
 [dependencies]
 bytes = { workspace = true }
 futures = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }
 tokio-util = { workspace = true, features = ["codec"] }
-swimos_model = { path = "../../api/swimos_model" }
-swimos_form = { path = "../../api/swimos_form" }
-swimos_recon = { path = "../../api/formats/swimos_recon", features = ["async_parser"] }
-swimos_utilities = { path = "../../swimos_utilities", features = ["algebra"] }
+swimos_model = { workspace = true }
+swimos_api = { workspace = true }
+swimos_form = { workspace = true }
+swimos_recon = { workspace = true }
+swimos_utilities = { workspace = true, features = ["algebra"] }
 thiserror = { workspace = true }
 uuid = { workspace = true }
 smallvec = { workspace = true }
@@ -20,6 +25,5 @@ smallvec = { workspace = true }
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt"] }
 uuid = { workspace = true, features = ["v4"] }
-swimos_utilities = { path = "../../swimos_utilities", features = ["buf_channel"] }
+swimos_utilities = { workspace = true, features = ["buf_channel"] }
 rand = { workspace = true }
-swimos_api = { path = "../../api/swimos_api" }

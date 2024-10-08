@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,7 +15,7 @@
 use std::collections::HashMap;
 
 use swimos_api::agent::AgentConfig;
-use swimos_utilities::routing::route_uri::RouteUri;
+use swimos_utilities::routing::RouteUri;
 
 /// Metadata to describe a running agent instance.
 #[derive(Clone, Copy, Debug)]
@@ -43,6 +43,10 @@ impl<'a> AgentMetadata<'a> {
 
     pub fn agent_uri(&self) -> &'a RouteUri {
         self.path
+    }
+
+    pub fn get_params(&self) -> &HashMap<String, String> {
+        self.route_params
     }
 
     pub fn get_param(&self, name: &str) -> Option<&'a str> {

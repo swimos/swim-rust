@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -22,18 +22,18 @@ use std::{
 };
 
 use bytes::BytesMut;
-use swimos_api::{agent::AgentConfig, downlink::DownlinkKind};
-use swimos_model::address::Address;
-use swimos_utilities::routing::route_uri::RouteUri;
+use swimos_api::{
+    address::Address,
+    agent::{AgentConfig, DownlinkKind},
+};
+use swimos_utilities::routing::RouteUri;
 
 use crate::{
     event_handler::{DowncastError, JoinLaneInitializer},
-    lanes::{
-        join::test_util::TestDownlinkContext,
-        join_value::default_lifecycle::DefaultJoinValueLifecycle, JoinValueLane,
-    },
+    lanes::{join_value::default_lifecycle::DefaultJoinValueLifecycle, JoinValueLane},
     meta::AgentMetadata,
     test_context::run_with_futures,
+    test_util::TestDownlinkContext,
 };
 
 use super::LifecycleInitializer;
@@ -149,15 +149,14 @@ async fn successfully_create_action() {
     let route_params = HashMap::new();
     let meta = make_meta(&uri, &route_params);
     let mut inits = HashMap::new();
-    let mut ad_hoc_buffer = BytesMut::new();
+    let mut command_buffer = BytesMut::new();
 
     run_with_futures(
-        &context,
         &context,
         &agent,
         meta,
         &mut inits,
-        &mut ad_hoc_buffer,
+        &mut command_buffer,
         handler,
     )
     .await;

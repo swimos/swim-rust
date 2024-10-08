@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,23 +14,19 @@
 
 use std::marker::PhantomData;
 
-use swimos_api::handlers::FnHandler;
-use swimos_form::structural::read::recognizer::RecognizerReadable;
-use swimos_model::{address::Address, Text};
+use swimos_agent_protocol::MapMessage;
+use swimos_api::address::Address;
+use swimos_form::read::RecognizerReadable;
+use swimos_model::Text;
+use swimos_utilities::handlers::FnHandler;
 
 use crate::{
-    agent_model::downlink::{hosted::EventDownlinkHandle, OpenEventDownlinkAction},
+    agent_model::downlink::{EventDownlinkHandle, OpenEventDownlinkAction},
     config::SimpleDownlinkConfig,
     downlink_lifecycle::{
-        event::{
-            on_event::{OnConsumeEvent, OnConsumeEventShared},
-            StatefulEventDownlinkLifecycle, StatefulEventLifecycle,
-            StatelessEventDownlinkLifecycle, StatelessEventLifecycle,
-        },
-        on_failed::{OnFailed, OnFailedShared},
-        on_linked::{OnLinked, OnLinkedShared},
-        on_synced::{OnSynced, OnSyncedShared},
-        on_unlinked::{OnUnlinked, OnUnlinkedShared},
+        OnConsumeEvent, OnConsumeEventShared, OnFailed, OnFailedShared, OnLinked, OnLinkedShared,
+        OnSynced, OnSyncedShared, OnUnlinked, OnUnlinkedShared, StatefulEventDownlinkLifecycle,
+        StatefulEventLifecycle, StatelessEventDownlinkLifecycle, StatelessEventLifecycle,
     },
     event_handler::HandlerAction,
     lifecycle_fn::WithHandlerContext,
@@ -47,6 +43,8 @@ pub struct StatelessEventDownlinkBuilder<
     address: Address<Text>,
     config: SimpleDownlinkConfig,
     inner: LC,
+    // This determines whether then downlink reports a kind of Event or MapEvent and makes no functional difference.
+    map_events: bool,
 }
 
 /// A builder for constructing an event downlink. The lifecycle event handlers share state and, by default,
@@ -61,6 +59,7 @@ pub struct StatefulEventDownlinkBuilder<
     address: Address<Text>,
     config: SimpleDownlinkConfig,
     inner: LC,
+    map_events: bool,
 }
 
 impl<Context, T> StatelessEventDownlinkBuilder<Context, T> {
@@ -70,6 +69,21 @@ impl<Context, T> StatelessEventDownlinkBuilder<Context, T> {
             address,
             config,
             inner: StatelessEventDownlinkLifecycle::default(),
+            map_events: false,
+        }
+    }
+}
+
+impl<Context, K, V> StatelessEventDownlinkBuilder<Context, MapMessage<K, V>> {
+    // Creates a lifecycle for an event downlink that consumes events from a remote map lane. This alters
+    // the type reported by the downlink from Event to MapEvent and makes not function difference.
+    pub(crate) fn new_map(address: Address<Text>, config: SimpleDownlinkConfig) -> Self {
+        StatelessEventDownlinkBuilder {
+            _type: PhantomData,
+            address,
+            config,
+            inner: StatelessEventDownlinkLifecycle::default(),
+            map_events: true,
         }
     }
 }
@@ -81,6 +95,7 @@ impl<Context, T, State> StatefulEventDownlinkBuilder<Context, T, State> {
             address,
             config,
             inner: StatefulEventDownlinkLifecycle::new(state),
+            map_events: false,
         }
     }
 }
@@ -89,6 +104,10 @@ impl<Context, T, LC> StatelessEventDownlinkBuilder<Context, T, LC>
 where
     LC: StatelessEventLifecycle<Context, T>,
 {
+    /// Specify a handler for the `on_linked` event.
+    ///
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_linked<F>(
         self,
         handler: F,
@@ -100,6 +119,7 @@ where
             address,
             config,
             inner,
+            map_events,
             ..
         } = self;
         StatelessEventDownlinkBuilder {
@@ -107,9 +127,14 @@ where
             address,
             config,
             inner: inner.on_linked(handler),
+            map_events,
         }
     }
 
+    /// Specify a handler for the `on_synced` event.
+    ///
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_synced<F>(
         self,
         handler: F,
@@ -121,6 +146,7 @@ where
             address,
             config,
             inner,
+            map_events,
             ..
         } = self;
         StatelessEventDownlinkBuilder {
@@ -128,9 +154,14 @@ where
             address,
             config,
             inner: inner.on_synced(handler),
+            map_events,
         }
     }
 
+    /// Specify a handler for the `on_unlinked` event.
+    ///
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_unlinked<F>(
         self,
         handler: F,
@@ -142,6 +173,7 @@ where
             address,
             config,
             inner,
+            map_events,
             ..
         } = self;
         StatelessEventDownlinkBuilder {
@@ -149,9 +181,14 @@ where
             address,
             config,
             inner: inner.on_unlinked(handler),
+            map_events,
         }
     }
 
+    /// Specify a handler for the `on_failed` event (called if the downlink terminates with an error).
+    ///
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_failed<F>(
         self,
         handler: F,
@@ -163,6 +200,7 @@ where
             address,
             config,
             inner,
+            map_events,
             ..
         } = self;
         StatelessEventDownlinkBuilder {
@@ -170,9 +208,14 @@ where
             address,
             config,
             inner: inner.on_failed(handler),
+            map_events,
         }
     }
 
+    /// Specify a handler for the `on_event` event, called when the downlink receives a new value.
+    ///
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_event<F>(
         self,
         handler: F,
@@ -184,6 +227,7 @@ where
             address,
             config,
             inner,
+            map_events,
             ..
         } = self;
         StatelessEventDownlinkBuilder {
@@ -191,9 +235,14 @@ where
             address,
             config,
             inner: inner.on_event(handler),
+            map_events,
         }
     }
 
+    /// Augment the lifecycle with some state that is shared between the event handlers.
+    ///
+    /// # Arguments
+    /// * `shared` - The shared state.
     pub fn with_shared_state<Shared: Send>(
         self,
         shared: Shared,
@@ -202,6 +251,7 @@ where
             address,
             config,
             inner,
+            map_events,
             ..
         } = self;
         StatefulEventDownlinkBuilder {
@@ -209,6 +259,7 @@ where
             address,
             config,
             inner: inner.with_shared_state(shared),
+            map_events,
         }
     }
 }
@@ -229,9 +280,10 @@ where
             address,
             config,
             inner,
+            map_events,
             ..
         } = self;
-        OpenEventDownlinkAction::new(address, inner, config, false)
+        OpenEventDownlinkAction::new(address, inner, config, map_events)
     }
 }
 
@@ -239,6 +291,10 @@ impl<Context, T, State, LC> StatefulEventDownlinkBuilder<Context, T, State, LC>
 where
     LC: StatefulEventLifecycle<Context, State, T>,
 {
+    /// Specify a handler for the `on_linked` event.
+    ///
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_linked<F>(
         self,
         handler: F,
@@ -250,6 +306,7 @@ where
             address,
             config,
             inner,
+            map_events,
             ..
         } = self;
         StatefulEventDownlinkBuilder {
@@ -257,9 +314,14 @@ where
             address,
             config,
             inner: inner.on_linked(handler),
+            map_events,
         }
     }
 
+    /// Specify a handler for the `on_synced` event.
+    ///
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_synced<F>(
         self,
         handler: F,
@@ -271,6 +333,7 @@ where
             address,
             config,
             inner,
+            map_events,
             ..
         } = self;
         StatefulEventDownlinkBuilder {
@@ -278,9 +341,14 @@ where
             address,
             config,
             inner: inner.on_synced(handler),
+            map_events,
         }
     }
 
+    /// Specify a handler for the `on_unlinked` event.
+    ///
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_unlinked<F>(
         self,
         handler: F,
@@ -292,6 +360,7 @@ where
             address,
             config,
             inner,
+            map_events,
             ..
         } = self;
         StatefulEventDownlinkBuilder {
@@ -299,9 +368,14 @@ where
             address,
             config,
             inner: inner.on_unlinked(handler),
+            map_events,
         }
     }
 
+    /// Specify a handler for the `on_failed` event (called if the downlink terminates with an error).
+    ///
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_failed<F>(
         self,
         handler: F,
@@ -313,6 +387,7 @@ where
             address,
             config,
             inner,
+            map_events,
             ..
         } = self;
         StatefulEventDownlinkBuilder {
@@ -320,9 +395,14 @@ where
             address,
             config,
             inner: inner.on_failed(handler),
+            map_events,
         }
     }
 
+    /// Specify a handler for the `on_event` event, called when then downlink receives a new value.
+    ///
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_event<F>(
         self,
         handler: F,
@@ -334,6 +414,7 @@ where
             address,
             config,
             inner,
+            map_events,
             ..
         } = self;
         StatefulEventDownlinkBuilder {
@@ -341,6 +422,7 @@ where
             address,
             config,
             inner: inner.on_event(handler),
+            map_events,
         }
     }
 }
@@ -361,8 +443,9 @@ where
             address,
             config,
             inner,
+            map_events,
             ..
         } = self;
-        OpenEventDownlinkAction::new(address, inner, config, false)
+        OpenEventDownlinkAction::new(address, inner, config, map_events)
     }
 }

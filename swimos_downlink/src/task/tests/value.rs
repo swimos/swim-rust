@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,21 +13,26 @@
 // limitations under the License.
 
 use std::fmt::Debug;
+use std::marker::PhantomData;
 use std::num::NonZeroUsize;
 
-use swimos_api::{
-    downlink::DownlinkConfig,
-    error::{DownlinkTaskError, FrameIoError, InvalidFrame},
-    protocol::downlink::DownlinkNotification,
-};
-
-use swimos_utilities::non_zero_usize;
+use bytes::BytesMut;
 use tokio::sync::mpsc;
+use tokio_util::codec::Decoder;
 
-use super::run_downlink_task;
+use swimos_agent_protocol::encoding::downlink::DownlinkOperationDecoder;
+use swimos_agent_protocol::DownlinkNotification;
+use swimos_api::error::{DownlinkTaskError, FrameIoError, InvalidFrame};
+use swimos_client_api::DownlinkConfig;
+use swimos_form::read::RecognizerReadable;
+use swimos_recon::parser::parse_recognize;
+use swimos_utilities::non_zero_usize;
+
 use crate::model::lifecycle::{BasicValueDownlinkLifecycle, ValueDownlinkLifecycle};
 use crate::model::ValueDownlinkSet;
 use crate::{DownlinkTask, ValueDownlinkModel};
+
+use super::run_value_downlink_task;
 
 #[derive(Debug, PartialEq, Eq)]
 enum TestMessage<T> {
@@ -85,7 +90,7 @@ async fn link_downlink() {
         buffer_size: DEFAULT_BUFFER_SIZE,
     };
 
-    let result = run_downlink_task(
+    let result = run_value_downlink_task(
         DownlinkTask::new(model),
         config,
         |mut writer, reader| async move {
@@ -114,7 +119,7 @@ async fn invalid_sync_downlink() {
         buffer_size: DEFAULT_BUFFER_SIZE,
     };
 
-    let result = run_downlink_task(
+    let result = run_value_downlink_task(
         DownlinkTask::new(model),
         config,
         |mut writer, reader| async move {
@@ -142,7 +147,7 @@ async fn sync_downlink() {
         buffer_size: DEFAULT_BUFFER_SIZE,
     };
 
-    let result = run_downlink_task(
+    let result = run_value_downlink_task(
         DownlinkTask::new(model),
         config,
         |mut writer, reader| async move {
@@ -176,7 +181,7 @@ async fn report_events_before_sync() {
         buffer_size: DEFAULT_BUFFER_SIZE,
     };
 
-    let result = run_downlink_task(
+    let result = run_value_downlink_task(
         DownlinkTask::new(model),
         config,
         |mut writer, reader| async move {
@@ -214,7 +219,7 @@ async fn report_events_after_sync() {
         buffer_size: DEFAULT_BUFFER_SIZE,
     };
 
-    let result = run_downlink_task(
+    let result = run_value_downlink_task(
         DownlinkTask::new(model),
         config,
         |mut writer, reader| async move {
@@ -252,7 +257,7 @@ async fn terminate_after_unlinked() {
         buffer_size: DEFAULT_BUFFER_SIZE,
     };
 
-    let result = run_downlink_task(
+    let result = run_value_downlink_task(
         DownlinkTask::new(model),
         config,
         |mut writer, reader| async move {
@@ -294,7 +299,7 @@ async fn terminate_after_corrupt_frame() {
         buffer_size: DEFAULT_BUFFER_SIZE,
     };
 
-    let result = run_downlink_task(
+    let result = run_value_downlink_task(
         DownlinkTask::new(model),
         config,
         |mut writer, reader| async move {
@@ -326,7 +331,7 @@ async fn unlink_discards_value() {
         buffer_size: DEFAULT_BUFFER_SIZE,
     };
 
-    let result = run_downlink_task(
+    let result = run_value_downlink_task(
         DownlinkTask::new(model),
         config,
         |mut writer, reader| async move {
@@ -364,7 +369,7 @@ async fn relink_downlink() {
         buffer_size: DEFAULT_BUFFER_SIZE,
     };
 
-    let result = run_downlink_task(
+    let result = run_value_downlink_task(
         DownlinkTask::new(model),
         config,
         |mut writer, reader| async move {
@@ -395,6 +400,36 @@ async fn relink_downlink() {
     assert!(result.unwrap().recv().await.is_none());
 }
 
+struct StringDecoder<T>(PhantomData<T>);
+
+impl<T> Default for StringDecoder<T> {
+    fn default() -> Self {
+        StringDecoder(PhantomData)
+    }
+}
+
+impl<T> Decoder for StringDecoder<T>
+where
+    T: RecognizerReadable,
+{
+    type Item = T;
+    type Error = std::io::Error;
+
+    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        let err = || std::io::ErrorKind::Other.into();
+        match DownlinkOperationDecoder.decode(src)? {
+            Some(op) => {
+                let body_str = std::str::from_utf8(op.body.as_ref()).map_err(|_| err())?;
+                match parse_recognize(body_str, false) {
+                    Ok(v) => Ok(Some(v)),
+                    Err(_) => Err(err()),
+                }
+            }
+            None => Ok(None),
+        }
+    }
+}
+
 #[tokio::test]
 async fn send_on_downlink() {
     let (event_tx, _event_rx) = mpsc::unbounded_channel::<TestMessage<i32>>();
@@ -408,13 +443,13 @@ async fn send_on_downlink() {
         buffer_size: DEFAULT_BUFFER_SIZE,
     };
 
-    let result = run_downlink_task(
+    let result = run_value_downlink_task(
         DownlinkTask::new(model),
         config,
         |writer, mut reader| async move {
             let _writer = writer;
             handle_tx.send(ValueDownlinkSet { to: 12 }).await.unwrap();
-            assert_eq!(reader.recv::<i32>().await, Ok(Some(12)));
+            assert_eq!(reader.decode(StringDecoder::default()).await, Ok(Some(12)));
         },
     )
     .await;

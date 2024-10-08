@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -22,19 +22,22 @@ use super::super::{AttachAction, DownlinkOptions, ValueDownlinkRuntime};
 use super::*;
 use futures::future::{join3, join4};
 use futures::{SinkExt, StreamExt};
-use swimos_api::error::{DownlinkTaskError, FrameIoError, InvalidFrame};
-use swimos_api::protocol::downlink::{
-    DownlinkNotification, DownlinkOperation, DownlinkOperationEncoder, ValueNotificationDecoder,
+use swimos_agent_protocol::encoding::downlink::{
+    DownlinkOperationEncoder, ValueNotificationDecoder,
 };
-use swimos_form::structural::read::recognizer::RecognizerReadable;
+use swimos_agent_protocol::{DownlinkNotification, DownlinkOperation};
+use swimos_api::{
+    address::RelativeAddress,
+    error::{DownlinkTaskError, FrameIoError, InvalidFrame},
+};
+use swimos_form::read::RecognizerReadable;
 use swimos_form::Form;
 use swimos_messages::protocol::{
-    AgentMessageDecoder, MessageDecodeError, Operation, Path, RequestMessage, ResponseMessage,
+    MessageDecodeError, Operation, RequestMessage, RequestMessageDecoder, ResponseMessage,
     ResponseMessageEncoder,
 };
-use swimos_model::address::RelativeAddress;
 use swimos_model::Text;
-use swimos_utilities::io::byte_channel::{self, ByteReader, ByteWriter};
+use swimos_utilities::byte_channel::{self, ByteReader, ByteWriter};
 use swimos_utilities::trigger;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
@@ -80,7 +83,7 @@ async fn run_fake_downlink(
     let (tx_in, rx_in) = byte_channel::byte_channel(BUFFER_SIZE);
     let (tx_out, rx_out) = byte_channel::byte_channel(BUFFER_SIZE);
     if sub
-        .send(AttachAction::new(rx_out, tx_in, options))
+        .send(AttachAction::new((tx_in, rx_out), options))
         .await
         .is_err()
     {
@@ -89,7 +92,7 @@ async fn run_fake_downlink(
     let mut state = State::Unlinked;
     let mut read = FramedRead::new(rx_in, ValueNotificationDecoder::default());
 
-    let mut write = FramedWrite::new(tx_out, DownlinkOperationEncoder);
+    let mut write = FramedWrite::new(tx_out, DownlinkOperationEncoder::default());
 
     let mut current = Text::default();
 
@@ -225,7 +228,7 @@ where
 
 struct TestSender(FramedWrite<ByteWriter, ResponseMessageEncoder>);
 
-type MsgDecoder<T> = AgentMessageDecoder<T, <T as RecognizerReadable>::Rec>;
+type MsgDecoder<T> = RequestMessageDecoder<T, <T as RecognizerReadable>::Rec>;
 struct TestReceiver<M: RecognizerReadable>(FramedRead<ByteReader, MsgDecoder<M>>);
 
 impl TestSender {
@@ -236,7 +239,7 @@ impl TestSender {
     async fn link(&mut self) {
         self.send(ResponseMessage::linked(
             REMOTE_ADDR,
-            Path::new(REMOTE_NODE, REMOTE_LANE),
+            RelativeAddress::new(REMOTE_NODE, REMOTE_LANE),
         ))
         .await;
     }
@@ -244,7 +247,7 @@ impl TestSender {
     async fn sync(&mut self) {
         self.send(ResponseMessage::synced(
             REMOTE_ADDR,
-            Path::new(REMOTE_NODE, REMOTE_LANE),
+            RelativeAddress::new(REMOTE_NODE, REMOTE_LANE),
         ))
         .await;
     }
@@ -254,14 +257,20 @@ impl TestSender {
     }
 
     async fn update(&mut self, message: Message) {
-        let message =
-            ResponseMessage::event(REMOTE_ADDR, Path::new(REMOTE_NODE, REMOTE_LANE), message);
+        let message = ResponseMessage::event(
+            REMOTE_ADDR,
+            RelativeAddress::new(REMOTE_NODE, REMOTE_LANE),
+            message,
+        );
         self.send(message).await;
     }
 
     async fn update_text(&mut self, message: Text) {
-        let message: ResponseMessage<&str, Text, &[u8]> =
-            ResponseMessage::event(REMOTE_ADDR, Path::new(REMOTE_NODE, REMOTE_LANE), message);
+        let message: ResponseMessage<&str, Text, &[u8]> = ResponseMessage::event(
+            REMOTE_ADDR,
+            RelativeAddress::new(REMOTE_NODE, REMOTE_LANE),
+            message,
+        );
         assert!(self.0.send(message).await.is_ok());
     }
 
@@ -384,7 +393,7 @@ async fn shutdowm_after_attached() {
 }
 
 #[tokio::test]
-async fn shutdowm_after_corrupted_frame() {
+async fn shutdown_after_corrupted_frame() {
     let (events, result) = run_test(DownlinkOptions::empty(), |context| async move {
         let TestContext {
             mut tx,
@@ -731,7 +740,7 @@ async fn exhaust_output_buffer() {
 }
 
 #[tokio::test]
-async fn shutdowm_after_timeout_with_no_subscribers() {
+async fn shutdown_after_timeout_with_no_subscribers() {
     let ((_stop, events), result) = run_test_with_config(
         DownlinkOptions::empty(),
         DownlinkRuntimeConfig {
@@ -785,7 +794,7 @@ async fn run_simple_fake_downlink(
     let (tx_in, rx_in) = byte_channel::byte_channel(BUFFER_SIZE);
     let (tx_out, rx_out) = byte_channel::byte_channel(BUFFER_SIZE);
     if sub
-        .send(AttachAction::new(rx_out, tx_in, options))
+        .send(AttachAction::new((tx_in, rx_out), options))
         .await
         .is_err()
     {
@@ -794,7 +803,7 @@ async fn run_simple_fake_downlink(
     let mut state = State::Unlinked;
     let mut read = FramedRead::new(rx_in, ValueNotificationDecoder::default());
 
-    let mut write = FramedWrite::new(tx_out, DownlinkOperationEncoder);
+    let mut write = FramedWrite::new(tx_out, DownlinkOperationEncoder::default());
 
     while let Some(message) = read.next().await.transpose()? {
         assert!(event_tx.send(message.clone()).is_ok());
@@ -1078,4 +1087,101 @@ async fn receive_from_two_consumers() {
     assert!(second_result.is_ok());
     assert_eq!(first_events, vec![DownlinkNotification::Unlinked]);
     assert_eq!(second_events, vec![DownlinkNotification::Unlinked]);
+}
+
+#[tokio::test]
+async fn sync_no_event() {
+    let (events, result) = run_test(
+        DownlinkOptions::SYNC,
+        |TestContext {
+             mut tx,
+             mut rx,
+             start_client,
+             stop,
+             mut events,
+             ..
+         }| async move {
+            expect_message(rx.recv().await, Operation::Link);
+
+            tx.link().await;
+
+            start_client.trigger();
+
+            expect_event(
+                events.next().await,
+                State::Unlinked,
+                DownlinkNotification::Linked,
+            );
+            expect_message(rx.recv().await, Operation::Sync);
+
+            tx.sync().await;
+
+            expect_event(
+                events.next().await,
+                State::Linked,
+                DownlinkNotification::Synced,
+            );
+
+            stop.trigger();
+            events.collect::<Vec<_>>().await
+        },
+    )
+    .await;
+    assert!(result.is_ok());
+    assert_eq!(
+        events,
+        vec![(State::Synced, DownlinkNotification::Unlinked)]
+    );
+}
+
+#[tokio::test]
+async fn sync_empty_event() {
+    let (events, result) = run_test(
+        DownlinkOptions::SYNC,
+        |TestContext {
+             mut tx,
+             mut rx,
+             start_client,
+             stop,
+             mut events,
+             ..
+         }| async move {
+            expect_message(rx.recv().await, Operation::Link);
+
+            tx.link().await;
+
+            start_client.trigger();
+
+            expect_event(
+                events.next().await,
+                State::Unlinked,
+                DownlinkNotification::Linked,
+            );
+            expect_message(rx.recv().await, Operation::Sync);
+
+            let content = Message::CurrentValue(Text::new(""));
+            tx.update(content.clone()).await;
+            tx.sync().await;
+
+            expect_event(
+                events.next().await,
+                State::Linked,
+                DownlinkNotification::Event { body: content },
+            );
+            expect_event(
+                events.next().await,
+                State::Linked,
+                DownlinkNotification::Synced,
+            );
+
+            stop.trigger();
+            events.collect::<Vec<_>>().await
+        },
+    )
+    .await;
+    assert!(result.is_ok());
+    assert_eq!(
+        events,
+        vec![(State::Synced, DownlinkNotification::Unlinked)]
+    );
 }

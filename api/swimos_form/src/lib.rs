@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,17 +12,30 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//! # SwimOS serialization
+//!
+//! This crate contains the [`Form`] trait that describes how a type can be transformed to and from
+//! the SwimOS serialization model (described in [`swimos_model`]). This trait is implemented for most
+//! common primitive types and common standard library collections such as [`Vec`] and
+//! [`std::collections::HashMap`].
+//!
+//! A derivation macro is provided that can automatically generate implementations for straightforward
+//! struct and enum types. For instructions on how to use this, see the [`Form`] trait or the SwimOS
+//! documentation.
+
 #![allow(clippy::match_wild_err_arm)]
-#[doc(hidden)]
-#[allow(unused_imports)]
+
 pub use swimos_form_derive::Form;
 
-use crate::structural::read::{ReadError, StructuralReadable};
-use crate::structural::write::StructuralWritable;
+use read::{ReadError, StructuralReadable};
 use swimos_model::Value;
+use write::StructuralWritable;
 
+#[doc(hidden)]
 pub use swimos_model as model;
-pub mod structural;
+
+mod structural;
+pub use structural::{generic, read, write, Tag};
 
 #[cfg(test)]
 mod tests;
@@ -42,7 +55,7 @@ extern crate swimos_form_derive;
 ///
 /// ## Container attributes
 /// - `#[form(tag = "name")]` on `struct`ures will transmute the structure to a value with the
-/// provided tag name.
+///   provided tag name.
 ///
 /// ```
 /// use swimos_model::{Attr, Item, Value};
@@ -327,3 +340,5 @@ pub trait Form: StructuralReadable + StructuralWritable {
 }
 
 impl<T: StructuralReadable + StructuralWritable> Form for T {}
+
+pub use swimos_form_derive::Tag;

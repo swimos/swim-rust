@@ -1,0 +1,32 @@
+[package]
+name = "swimos_connector"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+description = "SwimOS Connector Implementation"
+license.workspace = true
+repository = "https://github.com/swimos/swim-rust/tree/main/server/swimos_connector"
+homepage.workspace = true
+
+[dependencies]
+futures = { workspace = true }
+swimos_utilities = { workspace = true }
+swimos_model = { workspace = true }
+swimos_form = { workspace = true }
+swimos_recon = { workspace = true }
+bytes = { workspace = true }
+tokio = { workspace = true, features = ["macros", "time"] }
+tokio-util = { workspace = true, features = ["codec"] }
+swimos_api = { workspace = true }
+swimos_agent = { workspace = true }
+swimos_agent_protocol = { workspace = true }
+tokio-stream = { workspace = true }
+tracing = { workspace = true }
+frunk = { workspace = true }
+uuid = { workspace = true }
+thiserror = { workspace = true }
+bitflags = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt", "test-util", "time"] }
+parking_lot = { workspace = true }

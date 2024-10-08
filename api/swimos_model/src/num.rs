@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -84,20 +84,14 @@ mod tests {
 
         #[test]
         fn much_less() {
-            assert_eq!(cmp_i32_u32(10, u32::max_value()), Ordering::Less);
-            assert_eq!(cmp_u32_i32(10, i32::max_value()), Ordering::Less);
+            assert_eq!(cmp_i32_u32(10, u32::MAX), Ordering::Less);
+            assert_eq!(cmp_u32_i32(10, i32::MAX), Ordering::Less);
         }
 
         #[test]
         fn much_greater() {
-            assert_eq!(
-                cmp_i32_u32(i32::max_value(), u32::min_value()),
-                Ordering::Greater
-            );
-            assert_eq!(
-                cmp_u32_i32(u32::max_value(), i32::min_value()),
-                Ordering::Greater
-            );
+            assert_eq!(cmp_i32_u32(i32::MAX, u32::MIN), Ordering::Greater);
+            assert_eq!(cmp_u32_i32(u32::MAX, i32::MIN), Ordering::Greater);
         }
     }
 
@@ -125,20 +119,14 @@ mod tests {
 
         #[test]
         fn much_less() {
-            assert_eq!(cmp_i64_u64(10, u64::max_value()), Ordering::Less);
-            assert_eq!(cmp_u64_i64(10, i64::max_value()), Ordering::Less);
+            assert_eq!(cmp_i64_u64(10, u64::MAX), Ordering::Less);
+            assert_eq!(cmp_u64_i64(10, i64::MAX), Ordering::Less);
         }
 
         #[test]
         fn much_greater() {
-            assert_eq!(
-                cmp_i64_u64(i64::max_value(), u64::min_value()),
-                Ordering::Greater
-            );
-            assert_eq!(
-                cmp_u64_i64(u64::max_value(), i64::min_value()),
-                Ordering::Greater
-            );
+            assert_eq!(cmp_i64_u64(i64::MAX, u64::MIN), Ordering::Greater);
+            assert_eq!(cmp_u64_i64(u64::MAX, i64::MIN), Ordering::Greater);
         }
     }
 }

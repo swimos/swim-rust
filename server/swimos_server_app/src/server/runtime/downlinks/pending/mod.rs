@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,8 +17,8 @@ use std::{
     net::SocketAddr,
 };
 
-use swimos_api::downlink::DownlinkKind;
-use swimos_model::{address::RelativeAddress, Text};
+use swimos_api::{address::RelativeAddress, agent::DownlinkKind};
+use swimos_model::Text;
 use swimos_runtime::agent::{CommanderRequest, DownlinkRequest};
 use tracing::debug;
 

@@ -1,0 +1,14 @@
+[package]
+name = "join_map"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[dependencies]
+swimos = { workspace = true, features = ["server", "agent"] }
+swimos_client = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+example-util = { path = "../example_util" }
+
+[[bin]]
+name = "join_map_client"

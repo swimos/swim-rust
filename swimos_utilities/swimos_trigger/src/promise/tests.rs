@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -32,7 +32,7 @@ async fn await_promise() {
 
     let receive_task = async move {
         let result = rx.await;
-        assert!(matches!(result, Ok(v) if *v == 4));
+        assert!(matches!(result, Ok(v) if v == 4));
     };
 
     join(send_task, receive_task).await;
@@ -49,7 +49,7 @@ async fn await_promise_threaded() {
 
         let receive_task = async move {
             let result = rx.await;
-            assert!(matches!(result, Ok(v) if *v == 4));
+            assert!(matches!(result, Ok(v) if v == 4));
         };
 
         let (r1, r2) = join(tokio::spawn(send_task), tokio::spawn(receive_task)).await;

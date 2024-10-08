@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,12 +16,12 @@ use crate::modifiers::{combine_enum_trans_parts, EnumPartConsumer, StructTransfo
 use crate::structural::model::record::{SegregatedStructModel, StructDef, StructModel};
 use crate::structural::model::ValidateFrom;
 use crate::SynValidation;
-use macro_utilities::attr_names::FORM_NAME;
-use macro_utilities::attributes::consume_attributes;
 use quote::ToTokens;
 use std::collections::HashSet;
-use swimos_utilities::errors::validation::{Validation, ValidationItExt};
+use swimos_macro_utilities::attr_names::FORM_NAME;
+use swimos_macro_utilities::attributes::consume_attributes;
 use swimos_utilities::errors::Errors;
+use swimos_utilities::errors::{Validation, ValidationItExt};
 use syn::{Attribute, DataEnum, Ident};
 
 /// Preprocessed description of an enum type.

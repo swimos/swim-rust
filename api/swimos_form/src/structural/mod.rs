@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,25 +18,25 @@ mod tests;
 use swimos_model::Text;
 
 mod bridge;
+#[doc(hidden)]
 pub mod generic;
+
 pub mod read;
+
 #[macro_use]
 pub mod write;
 mod tags;
 
 use std::str::FromStr;
-#[doc(hidden)]
-#[allow(unused_imports)]
-pub use swimos_form_derive::Tag;
 
 /// A tag for a field in a form. When deriving the `Form` trait, a field that is annotated with
 /// `#[form(tag)]` will be converted into a string and replace the original structure's name.
 ///
 /// ```
 /// use swimos_form::Form;
-/// use swimos_form::structural::Tag;
+/// use swimos_form::Tag;
 /// use swimos_model::{Attr, Item, Value};
-/// use swimos_model::time::Timestamp;
+/// use swimos_model::Timestamp;
 ///
 /// #[derive(Tag, Clone)]
 /// #

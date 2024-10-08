@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,8 +15,8 @@
 use std::any::{Any, TypeId};
 use std::hash::Hash;
 
+use swimos_api::address::Address;
 use swimos_form::Form;
-use swimos_model::address::Address;
 use swimos_model::Text;
 
 use crate::event_handler::{DowncastError, EventHandler, JoinLaneInitializer};
@@ -30,7 +30,7 @@ mod tests;
 
 /// Uses a [`JoinValueLaneLifecycle`] to create a handler action that will open a new downlink
 /// for a join value lane. The purposes of this is to hide the specific types of the lane behind
-/// the [`JoinValueInitializer`] trait so it can be stored inside the agent context (which has no
+/// the [`JoinLaneInitializer`] trait so it can be stored inside the agent context (which has no
 /// knowledge of the types).
 pub struct LifecycleInitializer<Context, K, V, F> {
     projection: fn(&Context) -> &JoinValueLane<K, V>,

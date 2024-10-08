@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,16 +21,11 @@ use std::{
 
 use bytes::BytesMut;
 use parking_lot::Mutex;
-use swimos_api::{
-    agent::AgentConfig,
-    protocol::{
-        agent::{LaneResponse, LaneResponseDecoder},
-        map::{MapOperation, MapOperationDecoder},
-    },
-};
+use swimos_agent_protocol::{encoding::lane::MapLaneResponseDecoder, LaneResponse, MapOperation};
+use swimos_api::agent::AgentConfig;
 use swimos_form::Form;
 use swimos_model::Text;
-use swimos_utilities::routing::route_uri::RouteUri;
+use swimos_utilities::routing::RouteUri;
 use tokio_util::codec::Decoder;
 use uuid::Uuid;
 
@@ -238,10 +233,10 @@ where
     H: HandlerAction<Agent, Completion = ()>,
 {
     let mut join_lane_init = HashMap::new();
-    let mut ad_hoc_buffer = BytesMut::new();
+    let mut command_buffer = BytesMut::new();
     let modified = loop {
         match event_handler.step(
-            &mut dummy_context(&mut join_lane_init, &mut ad_hoc_buffer),
+            &mut dummy_context(&mut join_lane_init, &mut command_buffer),
             meta,
             agent,
         ) {
@@ -257,7 +252,7 @@ where
         }
     };
     assert!(join_lane_init.is_empty());
-    assert!(ad_hoc_buffer.is_empty());
+    assert!(command_buffer.is_empty());
     modified
 }
 
@@ -329,7 +324,7 @@ fn check<K, V>(
         assert_eq!(lane.write_to_buffer(&mut buffer), WriteResult::Done);
     }
 
-    let mut decoder = LaneResponseDecoder::new(MapOperationDecoder::<K, V>::default());
+    let mut decoder = MapLaneResponseDecoder::<K, V>::default();
 
     let msg = decoder
         .decode(&mut buffer)

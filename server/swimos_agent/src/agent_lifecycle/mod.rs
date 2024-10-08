@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,25 +12,42 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use self::{item_event::ItemEvent, on_init::OnInit, on_start::OnStart, on_stop::OnStop};
+use self::{
+    item_event::ItemEvent, on_init::OnInit, on_start::OnStart, on_stop::OnStop, on_timer::OnTimer,
+};
 
+#[doc(hidden)]
 pub mod item_event;
+/// The `on_init` event is called when an agent starts. It is a simple function (rather than an event
+/// handler) and is guaranteed to run before any event handlers execute. The signature of the event is
+/// described by the [`on_init::OnInit`] trait.
 pub mod on_init;
+/// The `on_start` event handler is executed when an agent starts. The signature of the event is
+/// described by the [`on_start::OnStart`] trait.
 pub mod on_start;
+/// The `on_stop` event handler is executed when an agent stops. No more event handlers will be executed
+/// after execution of this handler stops. The signature of the event is described by the
+/// [`on_stop::OnStop`] trait.
 pub mod on_stop;
-pub mod stateful;
-pub mod stateless;
-pub mod utility;
+/// The `on_timer` event handler is executed each time a timeout (that was requested by the agent lifecycle)
+/// completes. The signature of this event is described by the [`on_timer::OnTimer`] trait.
+pub mod on_timer;
+mod stateful;
+mod utility;
 
-/// Trait for agent lifecycles.
-/// #Type Parameters
+/// This includes all of the required event handler traits to implement an agent lifecycle. It should not
+/// be implemented directly as it it has a blanket implementation for any type that can implement it.
+/// # Type Parameters
 /// * `Context` - The context in which the lifecycle events run (provides access to the lanes of the agent).
 pub trait AgentLifecycle<Context>:
-    OnInit<Context> + OnStart<Context> + OnStop<Context> + ItemEvent<Context>
+    OnInit<Context> + OnStart<Context> + OnStop<Context> + OnTimer<Context> + ItemEvent<Context>
 {
 }
 
 impl<L, Context> AgentLifecycle<Context> for L where
-    L: OnInit<Context> + OnStart<Context> + OnStop<Context> + ItemEvent<Context>
+    L: OnInit<Context> + OnStart<Context> + OnStop<Context> + OnTimer<Context> + ItemEvent<Context>
 {
 }
+
+pub use stateful::StatefulAgentLifecycle;
+pub use utility::*;

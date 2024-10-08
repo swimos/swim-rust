@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ enum ErrorsInner<E> {
     Multiple(Vec<E>),
 }
 
+/// A list of errors. This type will only allocate if there is more than 1 error in the list.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Errors<E>(ErrorsInner<E>);
 

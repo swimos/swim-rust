@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -224,7 +224,7 @@ impl<Context, T: Debug> Debug for History<Context, T> {
 }
 
 impl<Context, T> History<Context, T> {
-    /// #Arguments
+    /// # Arguments
     /// * `max_size` - The maximum size of the window to accumulate in the history.
     pub fn new(max_size: usize) -> Self {
         History {

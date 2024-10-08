@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,11 +18,11 @@ use std::{
 };
 
 use swimos_api::error::StoreError;
-use swimos_remote::net::ConnectionError;
-use swimos_tls::TlsError;
+use swimos_remote::tls::TlsError;
+use swimos_remote::ConnectionError;
 use thiserror::Error;
 
-use swimos_utilities::{format::comma_sep, routing::route_pattern::RoutePattern};
+use swimos_utilities::{format::comma_sep, routing::RoutePattern};
 
 /// Indicates that the routes specified for plane are ambiguous (overlap with each other).
 #[derive(Debug)]
@@ -76,28 +76,35 @@ impl Display for AmbiguousRoutes {
 
 impl Error for AmbiguousRoutes {}
 
+/// Error type returned from the server task if it encounters a non-recoverable error.
 #[derive(Debug, Error)]
 pub enum ServerError {
+    /// A network connection failed and could not be re-established.
     #[error("The server network connection failed.")]
     Networking(#[from] ConnectionError),
+    /// The storage layer encountered a fatal error restoring or persisting the state of the agents.
     #[error("Opening the store for a plane failed.")]
     Persistence(#[from] StoreError),
 }
 
+/// Error type that is returned if a server cannot be started.
 #[derive(Debug, Error)]
 pub enum ServerBuilderError {
+    /// The specified agent routes are ambiguous (contain overlaps).
     #[error("The specified agent routes are invalid: {0}")]
     BadRoutes(#[from] AmbiguousRoutes),
+    /// The persistence store specified for the server could not be opened.
     #[error("Opening the store failed: {0}")]
     Persistence(#[from] StoreError),
+    /// The server TLS configuration is invalid.
     #[error("Invalid TLS configuration/certificate: {0}")]
     Tls(#[from] TlsError),
 }
 
 #[cfg(test)]
 mod tests {
-    use swimos_introspection::route::{lane_pattern, node_pattern};
-    use swimos_utilities::routing::route_pattern::RoutePattern;
+    use swimos_introspection::{lane_pattern, node_pattern};
+    use swimos_utilities::routing::RoutePattern;
 
     use super::AmbiguousRoutes;
 

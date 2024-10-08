@@ -1,0 +1,40 @@
+[package]
+name = "swimos_client"
+version.workspace = true
+edition.workspace = true
+description = "SwimOS Client"
+license.workspace = true
+repository = "https://github.com/swimos/swim-rust/tree/main/swimos_client"
+homepage.workspace = true
+
+[features]
+default = ["aws_lc_rs_provider"]
+deflate = ["ratchet/deflate"]
+hickory_dns = ["swimos_runtime/hickory_dns"]
+ring_provider = ["swimos_remote/ring_provider"]
+aws_lc_rs_provider = ["swimos_remote/aws_lc_rs_provider"]
+
+[dependencies]
+swimos_agent_protocol = { workspace = true }
+swimos_recon = { workspace = true }
+swimos_messages = { workspace = true }
+swimos_utilities = { workspace = true, features = ["trigger"] }
+swimos_downlink = { workspace = true }
+swimos_api = { workspace = true }
+swimos_client_api = { workspace = true }
+swimos_model = { workspace = true }
+swimos_form = { workspace = true }
+swimos_runtime = { workspace = true }
+swimos_remote = { workspace = true, features = ["tls"] }
+ratchet = { workspace = true }
+url = { workspace = true }
+tracing = { workspace = true }
+fnv = { workspace = true }
+uuid = { workspace = true }
+futures = { workspace = true }
+futures-util = { workspace = true }
+bytes = { workspace = true }
+tokio = { workspace = true, features = ["io-util", "sync"] }
+tokio-util = { workspace = true, features = ["codec"] }
+thiserror = { workspace = true }
+rustls = { workspace = true }

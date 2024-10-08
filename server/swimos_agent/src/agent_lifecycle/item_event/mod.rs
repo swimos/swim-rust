@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
 
 use std::fmt::Debug;
 
-use swimos_api::handlers::NoHandler;
+use swimos_utilities::handlers::NoHandler;
 
 use crate::event_handler::{EventHandler, UnitHandler};
 
@@ -23,11 +23,16 @@ use super::utility::HandlerContext;
 mod command;
 mod demand;
 mod demand_map;
+mod dynamic;
 mod http;
 mod map;
 #[cfg(test)]
 mod tests;
 mod value;
+
+pub use dynamic::{
+    dynamic_handler, BorrowItem, DynamicAgent, DynamicHandler, DynamicItem, DynamicLifecycle,
+};
 
 pub use command::{
     CommandBranch, CommandLeaf, CommandLifecycleHandler, CommandLifecycleHandlerShared,
@@ -57,13 +62,13 @@ pub trait ItemEvent<Context> {
     /// Create the handler for an item, if it exists. It is the responsibility of the items to keep track
     /// of which what events need to be triggered. If the item does not exist or no event is pending, no
     /// handler will be returned.
-    /// #Arguments
+    /// # Arguments
     /// * `context` - The context of the agent (allowing access to the items).
     /// * `item_name` - The name of the item.
     fn item_event<'a>(
         &'a self,
         context: &Context,
-        item_name: &str,
+        item_name: &'a str,
     ) -> Option<Self::ItemEventHandler<'a>>;
 }
 
@@ -79,7 +84,7 @@ pub trait ItemEventShared<Context, Shared> {
     /// Create the handler for an item, if it exists. It is the responsibility of the items to keep track
     /// of which what events need to be triggered. If the item does not exist or no event is pending, no
     /// handler will be returned.
-    /// #Arguments
+    /// # Arguments
     /// * `shared` - The shared state.
     /// * `handler_context` - Utility for constructing event handlers.
     /// * `context` - The context of the agent (allowing access to the items).

@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
 
 use std::cell::RefCell;
 
-use swimos::agent::agent_lifecycle::utility::HandlerContext;
+use swimos::agent::agent_lifecycle::HandlerContext;
 use swimos::agent::agent_model::AgentModel;
 use swimos::agent::event_handler::{EventHandler, HandlerActionExt};
 use swimos::agent::lanes::ValueLane;
@@ -38,8 +38,8 @@ fn make_agent() -> impl Agent + Send {
  * with a real example) after the macro crate is added.
  */
 
-#[derive(Debug, AgentLaneModel)]
 #[projections]
+#[derive(Debug, AgentLaneModel)]
 pub struct MyAgent {
     first: ValueLane<i32>,
     second: ValueLane<Text>,

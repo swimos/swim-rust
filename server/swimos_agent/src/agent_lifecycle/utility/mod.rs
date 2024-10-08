@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use std::any::Any;
+use std::borrow::Borrow;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::time::Duration;
@@ -20,30 +21,34 @@ use std::{collections::HashMap, marker::PhantomData};
 
 use futures::stream::unfold;
 use futures::{Future, FutureExt, Stream, StreamExt};
-use swimos_form::structural::read::recognizer::RecognizerReadable;
-use swimos_form::structural::write::StructuralWritable;
-use swimos_form::Form;
-use swimos_model::address::Address;
-use swimos_utilities::routing::route_uri::RouteUri;
+use swimos_agent_protocol::MapMessage;
+use swimos_api::agent::WarpLaneKind;
+use swimos_api::error::LaneSpawnError;
 use tokio::time::Instant;
 
-use crate::agent_model::downlink::hosted::{
-    EventDownlinkHandle, MapDownlinkHandle, ValueDownlinkHandle,
-};
+use swimos_api::address::Address;
+use swimos_form::read::RecognizerReadable;
+use swimos_form::write::StructuralWritable;
+use swimos_form::Form;
+use swimos_utilities::routing::RouteUri;
+
+use crate::agent_model::downlink::{EventDownlinkHandle, MapDownlinkHandle, ValueDownlinkHandle};
 use crate::agent_model::downlink::{
     OpenEventDownlinkAction, OpenMapDownlinkAction, OpenValueDownlinkAction,
 };
+use crate::commander::{Commander, RegisterCommander};
 use crate::config::{MapDownlinkConfig, SimpleDownlinkConfig};
-use crate::downlink_lifecycle::event::EventDownlinkLifecycle;
-use crate::downlink_lifecycle::map::MapDownlinkLifecycle;
-use crate::downlink_lifecycle::value::ValueDownlinkLifecycle;
+use crate::downlink_lifecycle::ValueDownlinkLifecycle;
+use crate::downlink_lifecycle::{EventDownlinkLifecycle, MapDownlinkLifecycle};
 use crate::event_handler::{
-    run_after, run_schedule, run_schedule_async, ConstHandler, EventHandler, GetParameter,
-    HandlerActionExt, SendCommand, Sequentially, Stop, Suspend, UnitHandler,
+    run_after, run_schedule, run_schedule_async, ConstHandler, EventHandler, Fail, GetParameter,
+    HandlerActionExt, ScheduleTimerEvent, SendCommand, Sequentially, Stop, Suspend, UnitHandler,
+    WithParameters,
 };
 use crate::event_handler::{GetAgentUri, HandlerAction, SideEffect};
 use crate::item::{
-    MapLikeItem, MutableMapLikeItem, MutableValueLikeItem, TransformableMapLikeItem, ValueLikeItem,
+    InspectableMapLikeItem, JoinLikeItem, MapLikeItem, MutableMapLikeItem, MutableValueLikeItem,
+    ValueLikeItem,
 };
 use crate::lanes::command::{CommandLane, DoCommand};
 use crate::lanes::demand::{Cue, DemandLane};
@@ -51,7 +56,7 @@ use crate::lanes::demand_map::CueKey;
 use crate::lanes::join_map::JoinMapAddDownlink;
 use crate::lanes::join_value::{JoinValueAddDownlink, JoinValueLane};
 use crate::lanes::supply::{Supply, SupplyLane};
-use crate::lanes::{DemandMapLane, JoinMapLane};
+use crate::lanes::{DemandMapLane, JoinMapLane, OpenLane};
 
 pub use self::downlink_builder::event::{
     StatefulEventDownlinkBuilder, StatelessEventDownlinkBuilder,
@@ -60,8 +65,12 @@ pub use self::downlink_builder::map::{StatefulMapDownlinkBuilder, StatelessMapDo
 pub use self::downlink_builder::value::{
     StatefulValueDownlinkBuilder, StatelessValueDownlinkBuilder,
 };
-use self::join_map_builder::StatelessJoinMapLaneBuilder;
-pub use self::join_value_builder::{StatefulJoinValueLaneBuilder, StatelessJoinValueLaneBuilder};
+pub use self::join_map_builder::{
+    StatefulJoinMapLifecycleBuilder, StatelessJoinMapLifecycleBuilder,
+};
+pub use self::join_value_builder::{
+    StatefulJoinValueLifecycleBuilder, StatelessJoinValueLifecycleBuilder,
+};
 
 mod downlink_builder;
 mod join_map_builder;
@@ -115,23 +124,22 @@ impl<Agent: 'static> HandlerContext<Agent> {
 
     /// Send a command to a lane (either on a remote host or locally to an agent on the same plane).
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `host` - The target remote host or [`None`] for an agent in the same plane.
     /// * `node` - The target node hosting the lane.
     /// * `lane` - The name of the target lane.
     /// * `command` - The value to send.
-    pub fn send_command<'a, S, T>(
+    pub fn send_command<'a, T>(
         &self,
-        host: Option<S>,
-        node: S,
-        lane: S,
+        host: Option<&str>,
+        node: &str,
+        lane: &str,
         command: T,
     ) -> impl EventHandler<Agent> + 'a
     where
-        S: AsRef<str> + 'a,
         T: StructuralWritable + 'a,
     {
-        let addr = Address::new(host, node, lane);
+        let addr = Address::text(host, node, lane);
         SendCommand::new(addr, command, true)
     }
 
@@ -143,7 +151,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
     }
 
     /// Get the value of a parameter extracted from the route URI of the agent instance.
-    /// #Arguments
+    /// # Arguments
     /// * `name` - The name of the parameter.
     pub fn get_parameter<'a>(
         &self,
@@ -152,47 +160,98 @@ impl<Agent: 'static> HandlerContext<Agent> {
         GetParameter::new(name)
     }
 
+    /// Compute a value from the parameters extracted from the route URI of the agent instance.
+    /// # Arguments
+    /// * `f` - The function to apply to the parameters.
+    pub fn with_parameters<F, T>(&self, f: F) -> impl HandlerAction<Agent, Completion = T>
+    where
+        F: FnOnce(&HashMap<String, String>) -> T,
+    {
+        WithParameters::new(f)
+    }
+
     /// Create an event handler that will get the value of a value lane store of the agent.
     ///
     /// #Arguments
-    /// * `lane` - Projection to the value lane.
+    /// * `item` - Projection to the value lane or store.
     pub fn get_value<Item, T>(
         &self,
-        lane: fn(&Agent) -> &Item,
+        item: fn(&Agent) -> &Item,
     ) -> impl HandlerAction<Agent, Completion = T> + Send + 'static
     where
         Item: ValueLikeItem<T>,
         T: Clone + Send + 'static,
     {
-        Item::get_handler::<Agent>(lane)
+        Item::get_handler::<Agent>(item)
     }
 
-    /// Create an event handler that will set a new value into value lane or store of the agent.
+    /// Create an event handler that will set a new value into a value lane or store of the agent.
     ///
     /// #Arguments
-    /// * `lane` - Projection to the value lane.
+    /// * `item` - Projection to the value lane or store.
     /// * `value` - The value to set.
     pub fn set_value<Item, T>(
         &self,
-        lane: fn(&Agent) -> &Item,
+        item: fn(&Agent) -> &Item,
         value: T,
     ) -> impl HandlerAction<Agent, Completion = ()> + Send + 'static
     where
         Item: MutableValueLikeItem<T>,
         T: Send + 'static,
     {
-        Item::set_handler::<Agent>(lane, value)
+        Item::set_handler::<Agent>(item, value)
+    }
+
+    /// Create an event handler that will transform the value of a value lane or store of the agent.
+    ///
+    /// #Arguments
+    /// * `item` - Projection to the value lane or store.
+    /// * `f` - A closure that produces a new value from a reference to the existing value.
+    pub fn transform_value<'a, Item, T, F>(
+        &self,
+        item: fn(&Agent) -> &Item,
+        f: F,
+    ) -> impl HandlerAction<Agent, Completion = ()> + Send + 'a
+    where
+        Agent: 'static,
+        Item: ValueLikeItem<T> + MutableValueLikeItem<T> + 'static,
+        T: 'static,
+        F: FnOnce(&T) -> T + Send + 'a,
+    {
+        Item::with_value_handler::<Item, Agent, F, T, T>(item, f)
+            .and_then(move |v| Item::set_handler(item, v))
+    }
+
+    /// Create an event handler that will inspect the value of a value lane or store and generate a result from it.
+    /// This differs from using [`Self::get_value`] in that it does not require a clone to be made of the existing value.
+    ///
+    /// #Arguments
+    /// * `item` - Projection to the value lane or store.
+    /// * `f` - A closure that produces a value from a reference to the current value of the item.
+    pub fn with_value<'a, Item, T, F, B, U>(
+        &self,
+        item: fn(&Agent) -> &Item,
+        f: F,
+    ) -> impl HandlerAction<Agent, Completion = U> + Send + 'a
+    where
+        Agent: 'static,
+        Item: ValueLikeItem<T> + 'static,
+        T: Borrow<B>,
+        B: 'static,
+        F: FnOnce(&B) -> U + Send + 'a,
+    {
+        Item::with_value_handler::<Item, Agent, F, B, U>(item, f)
     }
 
     /// Create an event handler that will update an entry in a map lane or store of the agent.
     ///
     /// #Arguments
-    /// * `lane` - Projection to the map lane.
+    /// * `item` - Projection to the map lane or store.
     /// * `key - The key to update.
     /// * `value` - The new value.
     pub fn update<Item, K, V>(
         &self,
-        lane: fn(&Agent) -> &Item,
+        item: fn(&Agent) -> &Item,
         key: K,
         value: V,
     ) -> impl HandlerAction<Agent, Completion = ()> + Send + 'static
@@ -201,39 +260,66 @@ impl<Agent: 'static> HandlerContext<Agent> {
         K: Send + Clone + Eq + Hash + 'static,
         V: Send + 'static,
     {
-        Item::update_handler::<Agent>(lane, key, value)
+        Item::update_handler::<Agent>(item, key, value)
+    }
+
+    /// Create an event handler that will inspect an entry in the map and produce a new value from it.
+    /// This differs from using [`Self::get_entry`] in that it does not require that a clone be made of the existing value.
+    ///
+    /// #Arguments
+    /// * `item` - Projection to the map lane or store.
+    /// * `key - The key to update.
+    /// * `f` - A function to apple to the entry in the map.
+    pub fn with_entry<'a, Item, K, V, F, B, U>(
+        &self,
+        item: fn(&Agent) -> &Item,
+        key: K,
+        f: F,
+    ) -> impl HandlerAction<Agent, Completion = U> + Send + 'a
+    where
+        Agent: 'static,
+        Item: InspectableMapLikeItem<K, V> + 'static,
+        K: Send + Clone + Eq + Hash + 'static,
+        V: Borrow<B> + 'static,
+        B: ?Sized + 'static,
+        F: FnOnce(Option<&B>) -> U + Send + 'a,
+    {
+        Item::with_entry_handler::<Agent, F, B, U>(item, key, f)
     }
 
     /// Create an event handler that will transform the value in an entry of a map lane or store of the agent.
+    /// If the map contains an entry with that key, it will be updated (or removed) based on the result of the calling
+    /// the closure on it. If the map does not contain an entry with that key, the closure will be called with [`None`]
+    /// and an entry will be inserted if it returns a value.
     ///
     /// #Arguments
-    /// * `lane` - Projection to the map lane.
+    /// * `item` - Projection to the map lane.
     /// * `key - The key to update.
-    /// * `f` - A function to apple to the entry in the map.
-    pub fn with_entry<'a, Item, K, V, F>(
+    /// * `f` - A closure to apply to the entry in the map to produce the replacement.
+    pub fn transform_entry<'a, Item, K, V, F>(
         &self,
-        lane: fn(&Agent) -> &Item,
+        item: fn(&Agent) -> &Item,
         key: K,
         f: F,
     ) -> impl HandlerAction<Agent, Completion = ()> + Send + 'a
     where
         Agent: 'static,
-        Item: TransformableMapLikeItem<K, V> + 'static,
+        Item: MutableMapLikeItem<K, V> + 'static,
         K: Send + Clone + Eq + Hash + 'static,
-        V: Clone + 'static,
-        F: FnOnce(Option<V>) -> Option<V> + Send + 'a,
+        V: 'static,
+        F: FnOnce(Option<&V>) -> Option<V> + Send + 'a,
     {
-        Item::with_handler::<Agent, F>(lane, key, f)
+        Item::transform_entry_handler::<Agent, F>(item, key, f)
     }
 
     /// Create an event handler that will remove an entry from a map lane or store of the agent.
     ///
     /// #Arguments
-    /// * `lane` - Projection to the map lane.
+    /// * `item` - Projection to the map lane or store.
     /// * `key - The key to remove.
     pub fn remove<Item, K, V>(
         &self,
-        lane: fn(&Agent) -> &Item,
+        item: fn(&Agent) -> &Item,
         key: K,
     ) -> impl HandlerAction<Agent, Completion = ()> + Send + 'static
     where
@@ -241,33 +327,33 @@ impl<Agent: 'static> HandlerContext<Agent> {
         K: Send + Clone + Eq + Hash + 'static,
         V: Send + 'static,
     {
-        Item::remove_handler::<Agent>(lane, key)
+        Item::remove_handler::<Agent>(item, key)
     }
 
     /// Create an event handler that will clear a map lane or store of the agent.
     ///
     /// #Arguments
-    /// * `lane` - Projection to the map lane.
+    /// * `item` - Projection to the map lane or store.
     pub fn clear<Item, K, V>(
         &self,
-        lane: fn(&Agent) -> &Item,
+        item: fn(&Agent) -> &Item,
     ) -> impl HandlerAction<Agent, Completion = ()> + Send + 'static
     where
         Item: MutableMapLikeItem<K, V>,
         K: Send + Clone + Eq + Hash + 'static,
         V: Send + 'static,
     {
-        Item::clear_handler::<Agent>(lane)
+        Item::clear_handler::<Agent>(item)
     }
 
     /// Create an event handler that replaces the entire contents of a map lane or store.
     ///
     /// #Arguments
-    /// * `lane` - Projection to the map lane.
+    /// * `item` - Projection to the map lane or store.
     /// * `entries` - The new entries for the lane.
     pub fn replace_map<Item, K, V, I>(
         &self,
-        lane: fn(&Agent) -> &Item,
+        item: fn(&Agent) -> &Item,
         entries: I,
     ) -> impl HandlerAction<Agent, Completion = ()> + Send + 'static
     where
@@ -280,19 +366,19 @@ impl<Agent: 'static> HandlerContext<Agent> {
         let context = *self;
         let insertions = entries
             .into_iter()
-            .map(move |(k, v)| context.update(lane, k, v));
-        self.clear(lane).followed_by(Sequentially::new(insertions))
+            .map(move |(k, v)| context.update(item, k, v));
+        self.clear(item).followed_by(Sequentially::new(insertions))
     }
 
     /// Create an event handler that will attempt to get an entry from a map-like item of the agent.
     /// This includes map lanes and stores and join lanes.
     ///
     /// #Arguments
-    /// * `lane` - Projection to the map lane.
+    /// * `item` - Projection to the map-like item.
     /// * `key - The key to fetch.
     pub fn get_entry<Item, K, V>(
         &self,
-        lane: fn(&Agent) -> &Item,
+        item: fn(&Agent) -> &Item,
         key: K,
     ) -> impl HandlerAction<Agent, Completion = Option<V>> + Send + 'static
     where
@@ -300,32 +386,32 @@ impl<Agent: 'static> HandlerContext<Agent> {
         K: Send + Clone + Eq + Hash + 'static,
         V: Send + Clone + 'static,
     {
-        Item::get_handler::<Agent>(lane, key)
+        Item::get_handler::<Agent>(item, key)
     }
 
     /// Create an event handler that will attempt to get the entire contents of a map-like item of the
     /// agent. This includes map lanes and stores and join lanes.
     ///
     /// #Arguments
-    /// * `lane` - Projection to the map lane.
+    /// * `item` - Projection to the map-like item.
     pub fn get_map<Item, K, V>(
         &self,
-        lane: fn(&Agent) -> &Item,
+        item: fn(&Agent) -> &Item,
     ) -> impl HandlerAction<Agent, Completion = HashMap<K, V>> + Send + 'static
     where
         Item: MapLikeItem<K, V>,
         K: Send + Clone + Eq + Hash + 'static,
         V: Send + Clone + 'static,
     {
-        Item::get_map_handler::<Agent>(lane)
+        Item::get_map_handler::<Agent>(item)
     }
 
     /// Create an event handler that will send a command to a command lane of the agent.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `lane` - Projection to the value lane.
     /// * `value` - The value of the command.
-    pub fn command<T: Send + 'static>(
+    pub fn command<T>(
         &self,
         lane: fn(&Agent) -> &CommandLane<T>,
         value: T,
@@ -338,7 +424,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
 
     /// Create an event handler that will cue a demand lane to produce a value.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `lane` - Projection to the demand lane.
     pub fn cue<T>(
         &self,
@@ -352,7 +438,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
 
     /// Create an event handler that will cue a key on a demand-map lane to produce a value.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `lane` - Projection to the demand-map lane.
     /// * `key` - The key to cue.
     pub fn cue_key<K, V>(
@@ -369,7 +455,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
 
     /// Create an event handler that will supply an event to a supply lane.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `lane` - Projection to the supply lane.
     /// * `value` - The value to supply.
     pub fn supply<V>(
@@ -393,7 +479,16 @@ impl<Agent: 'static> HandlerContext<Agent> {
         Suspend::new(future)
     }
 
-    /// Schedule a handler to run after a fixed delay.
+    /// Suspend an [`EventHandler`] to be executed after a fixed duration.
+    ///
+    /// # Note
+    ///
+    /// Suspended handlers must be [`Send`] as the task running the agent maybe moved to another thread
+    /// before the handler is executed.
+    ///
+    /// # Arguments
+    /// * `delay` - The duration to wait.
+    /// * `handler` - The handler to run after the delay.
     pub fn run_after<H>(
         &self,
         delay: Duration,
@@ -405,11 +500,19 @@ impl<Agent: 'static> HandlerContext<Agent> {
         run_after(delay, handler)
     }
 
-    /// Run a (potentially infinite) sequence of handlers on a schedule. For each pair of a duration
+    /// Run a (potentially infinite) sequence of [`EventHandler`]s on a schedule. For each pair of a duration
     /// and handler produced by the iterator the handler will be scheduled to run after the delay.
     /// This is the most general scheduling handler and it will often be possible to achieve simpler
-    /// schedule with [run_handlers_with_delay](HandlerAction::run_handlers_with_delay) and
-    /// [schedule_repeatedly](HandlerAction::schedule_repeatedly).
+    /// schedule with [run_handlers_with_delay](HandlerContext::run_handlers_with_delay) and
+    /// [schedule_repeatedly](HandlerContext::schedule_repeatedly).
+    ///
+    /// # Note
+    ///
+    /// Both the iterator and the handlers must be [`Send`] as the task running the agent could be moved while
+    /// they are still in use.
+    ///
+    /// # Arguments
+    /// * `schedule` - An iterator returning a sequence of pairs of delays and handlers.
     pub fn run_schedule<I, H>(&self, schedule: I) -> impl EventHandler<Agent> + Send + 'static
     where
         I: IntoIterator<Item = (Duration, H)> + 'static,
@@ -419,16 +522,34 @@ impl<Agent: 'static> HandlerContext<Agent> {
         run_schedule(schedule)
     }
 
-    /// Run a (potentially infinite) sequence of futures (each resulting in an event handler).
-    pub fn suspend_schedule<S, H>(&self, schedule: S) -> impl EventHandler<Agent> + Send + 'static
+    /// Schedule a (potentially infinite) stream of [`EventHandler`]s to run. The handlers are scheduled sequentially,
+    /// not simultaneously.
+    ///
+    /// # Note
+    ///
+    /// Both the stream and the handlers must be [`Send`] as the task running the agent could be moved to another thread
+    /// while they are still in use.
+    ///
+    /// # Arguments
+    /// * `handlers` - A asynchronous stream of handlers.
+    pub fn suspend_schedule<S, H>(&self, handlers: S) -> impl EventHandler<Agent> + Send + 'static
     where
         S: Stream<Item = H> + Send + Unpin + 'static,
         H: EventHandler<Agent> + Send + 'static,
     {
-        run_schedule_async(schedule)
+        run_schedule_async(handlers)
     }
 
     /// Schedule a (potentially infinite) sequence of handlers to run with a fixed delay between them.
+    ///
+    /// # Note
+    ///
+    /// Both the iterator and the handlers must be [`Send`] as the task running the agent could be moved
+    /// to another thread while they are still in use.
+    ///
+    /// # Arguments
+    /// * `delay` - The fixed delay.
+    /// * `handlers` - An iterator returning a sequence of pairs of delays and handlers.
     pub fn run_handlers_with_delay<I, H>(
         &self,
         delay: Duration,
@@ -442,9 +563,18 @@ impl<Agent: 'static> HandlerContext<Agent> {
         self.run_schedule(handlers.into_iter().map(move |h| (delay, h)))
     }
 
-    /// Schedule a (potentially infinite) sequence of futures (each resulting in an event handler) to
+    /// Schedule a (potentially infinite) sequence of futures (each resulting in an [`EventHandler`]) to
     /// run with a fixed delay between them. The delay is computed when the future starts executing so if
     /// a futures takes longer than the delay to complete, the next will start immediately.
+    ///
+    /// # Note
+    ///
+    /// The iterator, futures and handlers must be [`Send`] as the task running the agent could be moved
+    /// to another thread while they are still in use.
+    ///
+    /// # Arguments
+    /// * `delay` - The fixed delay.
+    /// * `futures` - The sequence of event futures.
     pub fn suspend_handlers_with_delay<I, F, H>(
         &self,
         delay: Duration,
@@ -471,7 +601,17 @@ impl<Agent: 'static> HandlerContext<Agent> {
         self.suspend_schedule(stream.boxed())
     }
 
-    /// Schedule a sequence of handlers, generated by a closure, to execute with a fixed delay between them.
+    /// Schedule a (potentially infinite) sequence of handlers, generated by a closure, to run with a
+    /// fixed delay between them.
+    ///
+    /// # Note
+    ///
+    /// Both the closure and the handlers must be [`Send`] as the task running the agent could be moved
+    /// to another thread while they are still in use.
+    ///
+    /// # Arguments
+    /// * `delay` - The fixed delay.
+    /// * `f` - An closure generating the handlers.
     pub fn schedule_repeatedly<H, F>(
         &self,
         delay: Duration,
@@ -484,9 +624,18 @@ impl<Agent: 'static> HandlerContext<Agent> {
         self.run_handlers_with_delay(delay, std::iter::from_fn(f))
     }
 
-    /// Schedule a sequences of futures (each resulting in an event handler) to execute with a fixed delay
-    /// between them. The delay is computed when the future starts executing so if a futures takes longer
-    /// than the delay to complete, the next will start immediately.
+    /// Suspend a (potentially infinite) sequence of handlers, generated by a closure, to run with a
+    /// fixed delay between them. The closure generates a sequence of futures which can be awaited to
+    /// produce and [`EventHandler`] that is then executed.
+    ///
+    /// # Note
+    ///
+    /// Both the closure, the futures and the handlers must be [`Send`] as the task running the agent could
+    /// be moved to another thread while they are still in use.
+    ///
+    /// # Arguments
+    /// * `delay` - The fixed delay.
+    /// * `f` - An closure generating the futures.
     pub fn suspend_repeatedly<H, Fut, F>(
         &self,
         delay: Duration,
@@ -501,6 +650,10 @@ impl<Agent: 'static> HandlerContext<Agent> {
     }
 
     /// Suspend a future to be executed by the agent task.
+    /// # Note
+    ///
+    /// The future must be [`Send`] as the task running the agent could be moved to another thread while it
+    /// is still in use.
     pub fn suspend_effect<Fut>(&self, future: Fut) -> impl EventHandler<Agent> + Send + 'static
     where
         Fut: Future<Output = ()> + Send + 'static,
@@ -510,7 +663,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
 
     /// Open a value downlink to a lane on another agent.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `host` - The remote host at which the agent resides (a local agent if not specified).
     /// * `node` - The node URI of the agent.
     /// * `lane` - The lane to downlink from.
@@ -534,7 +687,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
 
     /// Open an event downlink to a lane on another agent.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `host` - The remote host at which the agent resides (a local agent if not specified).
     /// * `node` - The node URI of the agent.
     /// * `lane` - The lane to downlink from.
@@ -558,7 +711,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
 
     /// Open a map downlink to a lane on another agent.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `host` - The remote host at which the agent resides (a local agent if not specified).
     /// * `node` - The node URI of the agent.
     /// * `lane` - The lane to downlink from.
@@ -583,7 +736,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
     }
 
     /// Create a builder to construct a request to open an event downlink.
-    /// #Arguments
+    /// # Arguments
     /// * `host` - The remote host at which the agent resides (a local agent if not specified).
     /// * `node` - The node URI of the agent.
     /// * `lane` - The lane to downlink from.
@@ -602,8 +755,30 @@ impl<Agent: 'static> HandlerContext<Agent> {
         StatelessEventDownlinkBuilder::new(Address::text(host, node, lane), config)
     }
 
+    /// Create a builder to construct a request to open an event downlink to a map lane.
+    /// # Arguments
+    /// * `host` - The remote host at which the agent resides (a local agent if not specified).
+    /// * `node` - The node URI of the agent.
+    /// * `lane` - The lane to downlink from.
+    /// * `config` - Configuration parameters for the downlink.
+    pub fn map_event_downlink_builder<K, V>(
+        &self,
+        host: Option<&str>,
+        node: &str,
+        lane: &str,
+        config: SimpleDownlinkConfig,
+    ) -> StatelessEventDownlinkBuilder<Agent, MapMessage<K, V>>
+    where
+        K: RecognizerReadable + Send + Sync + 'static,
+        K::Rec: Send,
+        V: RecognizerReadable + Send + Sync + 'static,
+        V::Rec: Send,
+    {
+        StatelessEventDownlinkBuilder::new_map(Address::text(host, node, lane), config)
+    }
+
     /// Create a builder to construct a request to open a value downlink.
-    /// #Arguments
+    /// # Arguments
     /// * `host` - The remote host at which the agent resides (a local agent if not specified).
     /// * `node` - The node URI of the agent.
     /// * `lane` - The lane to downlink from.
@@ -623,7 +798,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
     }
 
     /// Create a builder to construct a request to open a map downlink.
-    /// #Arguments
+    /// # Arguments
     /// * `host` - The remote host at which the agent resides (a local agent if not specified).
     /// * `node` - The node URI of the agent.
     /// * `lane` - The lane to downlink from.
@@ -647,9 +822,9 @@ impl<Agent: 'static> HandlerContext<Agent> {
     /// Add a downlink to a Join Value lane. All values received on the downlink will be set into the map
     /// state of the lane, using the provided key.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `lane` - Projection to the lane.
-    /// * `key - The key for the downlink.
+    /// * `key` - The key for the downlink.
     /// * `host` - The remote host at which the agent resides (a local agent if not specified).
     /// * `node` - The node URI of the agent.
     /// * `lane_uri` - The lane to downlink from.
@@ -670,12 +845,30 @@ impl<Agent: 'static> HandlerContext<Agent> {
         JoinValueAddDownlink::new(lane, key, address)
     }
 
+    /// Removes a downlink from a Join lane. Removing any associated values the downlink holds in
+    /// the underlying map.
+    ///
+    /// # Arguments
+    /// * `lane` - Projection to the lane.
+    /// * `link_key` - The link key for the downlink.
+    pub fn remove_downlink<L, K>(
+        &self,
+        lane: fn(&Agent) -> &L,
+        link_key: K,
+    ) -> impl HandlerAction<Agent, Completion = ()> + Send + 'static
+    where
+        K: Clone + Send + Eq + PartialEq + Hash + 'static,
+        L: JoinLikeItem<K>,
+    {
+        L::remove_downlink_handler(lane, link_key)
+    }
+
     /// Add a downlink to a Join Map lane. All key-value pairs received on the downlink will be set into the
     /// map state of the lane.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `lane` - Projection to the lane.
-    /// * `link_key - A key to identify the link.
+    /// * `link_key` - A key to identify the link.
     /// * `host` - The remote host at which the agent resides (a local agent if not specified).
     /// * `node` - The node URI of the agent.
     /// * `lane_uri` - The lane to downlink from.
@@ -705,8 +898,110 @@ impl<Agent: 'static> HandlerContext<Agent> {
     pub fn stop(&self) -> impl EventHandler<Agent> + Send + 'static {
         HandlerActionExt::<Agent>::discard(Stop)
     }
+
+    /// Create a handler that will fail with the provided error.
+    ///
+    /// # Arguments
+    /// * `error` - The error.
+    pub fn fail<T, E>(&self, error: E) -> impl HandlerAction<Agent, Completion = T> + Send + 'static
+    where
+        T: Send + 'static,
+        E: std::error::Error + Send + 'static,
+    {
+        Fail::<T, E>::new(error)
+    }
+
+    /// Attempt to open a new value lane on this agent. Note that the implementation of the underlying agent
+    /// used must support this.
+    ///
+    /// #Arguments
+    ///
+    /// * `name` - The name of the lane.
+    /// * `on_done` - A callback that will create an event handler that will be executed when the request completes.
+    pub fn open_value_lane<OnDone, H>(
+        &self,
+        name: &str,
+        on_done: OnDone,
+    ) -> impl EventHandler<Agent> + Send + 'static
+    where
+        OnDone: FnOnce(Result<(), LaneSpawnError>) -> H + Send + 'static,
+        H: EventHandler<Agent> + Send + 'static,
+    {
+        OpenLane::new(name.to_string(), WarpLaneKind::Value, on_done)
+    }
+
+    /// Attempt to open a new map lane on this agent. Note that the implementation of the underlying agent
+    /// used must support this.
+    ///
+    /// #Arguments
+    ///
+    /// * `name` - The name of the lane.
+    /// * `on_done` - A callback that will create an event handler that will be executed when the request completes.
+    pub fn open_map_lane<OnDone, H>(
+        &self,
+        name: &str,
+        on_done: OnDone,
+    ) -> impl EventHandler<Agent> + Send + 'static
+    where
+        OnDone: FnOnce(Result<(), LaneSpawnError>) -> H + Send + 'static,
+        H: EventHandler<Agent> + Send + 'static,
+    {
+        OpenLane::new(name.to_string(), WarpLaneKind::Map, on_done)
+    }
+
+    /// Create a [`Commander`] to repeatedly send messages to a remote lane. This is more efficient than
+    /// [sending ad hoc messages](Self::send_command), if you need to send many commands to the same lane. Note that
+    /// creating a commander does not guarantee that the remote endpoint is resolvable and any messages sent to lanes
+    /// that do not exist or cannot be reached will be dropped.
+    ///
+    /// # Arguments
+    /// * `host` - The target remote host or [`None`] for an agent in the same plane.
+    /// * `node` - The target node hosting the lane.
+    /// * `lane` - The name of the target lane.
+    pub fn create_commander(
+        &self,
+        host: Option<&str>,
+        node: &str,
+        lane: &str,
+    ) -> impl HandlerAction<Agent, Completion = Commander<Agent>> + 'static {
+        let address = Address::text(host, node, lane);
+        RegisterCommander::new(address)
+    }
+
+    /// Schedule the agent's `on_timer` event to be called at some time in the future. This can be used as an
+    /// alternative to suspending a future where the resulting handler needs to have access to the agent
+    /// lifecycle (suspending futures must have a static lifetime).
+    ///
+    /// # Arguments
+    /// * `duration` - Duration after the current time for the event to trigger. If this is non-positive, the event
+    ///    will be triggered immediately.
+    /// * `id` - The ID to pass to the event handler.
+    pub fn schedule_timer_event(
+        &self,
+        duration: Duration,
+        id: u64,
+    ) -> impl EventHandler<Agent> + Send + 'static {
+        self.schedule_timer_event_at(Instant::now() + duration, id)
+    }
+
+    /// Schedule the agent's `on_timer` event to be called at some time in the future. This can be used as an
+    /// alternative to suspending a future where the resulting handler needs to have access to the agent
+    /// lifecycle (suspending futures must have a static lifetime).
+    ///
+    /// # Arguments
+    /// * `at` - The time at which to trigger the event handler. If this is in the past, the event will be triggered
+    ///   immediately.
+    /// * `id` - The ID to pass to the event handler.
+    pub fn schedule_timer_event_at(
+        &self,
+        at: Instant,
+        id: u64,
+    ) -> impl EventHandler<Agent> + Send + 'static {
+        ScheduleTimerEvent::new(at, id)
+    }
 }
 
+/// Context passed to agent methods used to construct lifecycles for [`JoinValueLane`]s.
 pub struct JoinValueContext<Agent, K, V> {
     _type: PhantomData<fn(&Agent, K, V)>,
 }
@@ -727,11 +1022,12 @@ where
     V::Rec: Send,
 {
     /// Creates a builder to construct a lifecycle for the downlinks of a [`JoinValueLane`].
-    pub fn builder(&self) -> StatelessJoinValueLaneBuilder<Agent, K, V> {
-        StatelessJoinValueLaneBuilder::default()
+    pub fn builder(&self) -> StatelessJoinValueLifecycleBuilder<Agent, K, V> {
+        StatelessJoinValueLifecycleBuilder::default()
     }
 }
 
+/// Context passed to agent methods used to construct lifecycles for [`JoinMapLane`]s.
 pub struct JoinMapContext<Agent, L, K, V> {
     _type: PhantomData<fn(&Agent, L, K, V)>,
 }
@@ -754,7 +1050,7 @@ where
     V::BodyRec: Send,
 {
     /// Creates a builder to construct a lifecycle for the downlinks of a [`JoinMapLane`].
-    pub fn builder(&self) -> StatelessJoinMapLaneBuilder<Agent, L, K, V> {
-        StatelessJoinMapLaneBuilder::default()
+    pub fn builder(&self) -> StatelessJoinMapLifecycleBuilder<Agent, L, K, V> {
+        StatelessJoinMapLifecycleBuilder::default()
     }
 }

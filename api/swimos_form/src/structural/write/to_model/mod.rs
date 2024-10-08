@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,11 +21,11 @@ use crate::structural::write::{
 };
 use std::borrow::Cow;
 use std::convert::Infallible;
-use swimos_model::bigint::{BigInt, BigUint};
 use swimos_model::{Attr, Blob, Item, Text, Value};
+use swimos_model::{BigInt, BigUint};
 
 /// [`StructuralWriter`] that constructs [`Value`] instances representing the
-/// strucuture that is described.
+/// structure that is described.
 #[derive(Default)]
 pub struct ValueInterpreter(Option<RecordBuilder>);
 

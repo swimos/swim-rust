@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,24 +16,23 @@ use std::{num::NonZeroUsize, sync::Arc};
 
 use futures::SinkExt;
 use parking_lot::Mutex;
-use swimos_api::protocol::downlink::{DownlinkNotification, DownlinkNotificationEncoder};
-use swimos_model::{address::Address, Text};
-use swimos_recon::printer::print_recon_compact;
+use swimos_agent_protocol::encoding::downlink::DownlinkNotificationEncoder;
+use swimos_agent_protocol::DownlinkNotification;
+use swimos_api::address::Address;
+use swimos_model::Text;
+use swimos_recon::print_recon_compact;
 use swimos_utilities::{
-    io::byte_channel::{self, ByteWriter},
+    byte_channel::{self, ByteWriter},
     non_zero_usize, trigger,
 };
 use tokio::io::AsyncWriteExt;
 use tokio_util::codec::FramedWrite;
 
-use super::{HostedEventDownlinkFactory, SimpleDownlinkConfig};
+use super::{EventDownlinkFactory, SimpleDownlinkConfig};
 use crate::{
-    agent_model::downlink::handlers::{BoxDownlinkChannel, DownlinkChannelEvent},
-    downlink_lifecycle::{
-        event::on_event::OnConsumeEvent, on_failed::OnFailed, on_linked::OnLinked,
-        on_synced::OnSynced, on_unlinked::OnUnlinked,
-    },
-    event_handler::{BoxEventHandler, HandlerActionExt, SideEffect},
+    agent_model::downlink::{BoxDownlinkChannel, DownlinkChannelEvent, DownlinkChannelFactory},
+    downlink_lifecycle::{OnConsumeEvent, OnFailed, OnLinked, OnSynced, OnUnlinked},
+    event_handler::{HandlerActionExt, LocalBoxEventHandler, SideEffect},
 };
 
 struct FakeAgent;
@@ -53,7 +52,7 @@ struct FakeLifecycle {
 }
 
 impl OnLinked<FakeAgent> for FakeLifecycle {
-    type OnLinkedHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    type OnLinkedHandler<'a> = LocalBoxEventHandler<'a, FakeAgent>
     where
         Self: 'a;
 
@@ -62,12 +61,12 @@ impl OnLinked<FakeAgent> for FakeLifecycle {
         SideEffect::from(move || {
             state.lock().push(TestEvent::Linked);
         })
-        .boxed()
+        .boxed_local()
     }
 }
 
 impl OnUnlinked<FakeAgent> for FakeLifecycle {
-    type OnUnlinkedHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    type OnUnlinkedHandler<'a> = LocalBoxEventHandler<'a, FakeAgent>
     where
         Self: 'a;
 
@@ -76,12 +75,12 @@ impl OnUnlinked<FakeAgent> for FakeLifecycle {
         SideEffect::from(move || {
             state.lock().push(TestEvent::Unlinked);
         })
-        .boxed()
+        .boxed_local()
     }
 }
 
 impl OnFailed<FakeAgent> for FakeLifecycle {
-    type OnFailedHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    type OnFailedHandler<'a> = LocalBoxEventHandler<'a, FakeAgent>
     where
         Self: 'a;
 
@@ -90,12 +89,12 @@ impl OnFailed<FakeAgent> for FakeLifecycle {
         SideEffect::from(move || {
             state.lock().push(TestEvent::Failed);
         })
-        .boxed()
+        .boxed_local()
     }
 }
 
 impl OnSynced<(), FakeAgent> for FakeLifecycle {
-    type OnSyncedHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    type OnSyncedHandler<'a> = LocalBoxEventHandler<'a, FakeAgent>
     where
         Self: 'a;
 
@@ -104,12 +103,12 @@ impl OnSynced<(), FakeAgent> for FakeLifecycle {
         SideEffect::from(move || {
             state.lock().push(TestEvent::Synced);
         })
-        .boxed()
+        .boxed_local()
     }
 }
 
 impl OnConsumeEvent<i32, FakeAgent> for FakeLifecycle {
-    type OnEventHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    type OnEventHandler<'a> = LocalBoxEventHandler<'a, FakeAgent>
     where
         Self: 'a;
 
@@ -118,7 +117,7 @@ impl OnConsumeEvent<i32, FakeAgent> for FakeLifecycle {
         SideEffect::from(move || {
             state.lock().push(TestEvent::Event(value));
         })
-        .boxed()
+        .boxed_local()
     }
 }
 
@@ -133,24 +132,25 @@ struct TestContext {
     stop_tx: Option<trigger::Sender>,
 }
 
-fn make_hosted_input(config: SimpleDownlinkConfig) -> TestContext {
+fn make_hosted_input(context: &FakeAgent, config: SimpleDownlinkConfig) -> TestContext {
     let inner: Events = Default::default();
     let lc = FakeLifecycle {
         inner: inner.clone(),
     };
 
-    let (tx, rx) = byte_channel::byte_channel(BUFFER_SIZE);
+    let (in_tx, in_rx) = byte_channel::byte_channel(BUFFER_SIZE);
+    let (out_tx, _) = byte_channel::byte_channel(BUFFER_SIZE);
     let (stop_tx, stop_rx) = trigger::trigger();
 
     let address = Address::new(None, Text::new("/node"), Text::new("lane"));
 
-    let fac = HostedEventDownlinkFactory::new(address, lc, config, stop_rx, false);
+    let fac = EventDownlinkFactory::new(address, lc, config, stop_rx, false);
 
-    let chan = fac.create(rx);
+    let chan = fac.create(context, out_tx, in_rx);
     TestContext {
         channel: chan,
         events: inner,
-        sender: FramedWrite::new(tx, Default::default()),
+        sender: FramedWrite::new(in_tx, Default::default()),
         stop_tx: Some(stop_tx),
     }
 }
@@ -207,12 +207,13 @@ async fn expect_no_unlink_shutdown(channel: &mut BoxDownlinkChannel<FakeAgent>, 
 
 #[tokio::test]
 async fn event_dl_shutdown_when_input_stops() {
+    let agent = FakeAgent;
     let TestContext {
         mut channel,
         sender,
         stop_tx: _stop_tx,
         events: _events,
-    } = make_hosted_input(SimpleDownlinkConfig::default());
+    } = make_hosted_input(&agent, SimpleDownlinkConfig::default());
 
     let agent = FakeAgent;
 
@@ -225,12 +226,14 @@ async fn event_dl_shutdown_when_input_stops() {
 
 #[tokio::test]
 async fn event_dl_shutdown_on_stop_signal() {
+    let agent = FakeAgent;
+
     let TestContext {
         mut channel,
         sender: _sender,
         stop_tx,
         events: _events,
-    } = make_hosted_input(SimpleDownlinkConfig::default());
+    } = make_hosted_input(&agent, SimpleDownlinkConfig::default());
 
     let agent = FakeAgent;
 
@@ -243,12 +246,14 @@ async fn event_dl_shutdown_on_stop_signal() {
 
 #[tokio::test]
 async fn event_dl_terminate_on_error() {
+    let agent = FakeAgent;
+
     let TestContext {
         mut channel,
         mut sender,
         events,
         stop_tx: _stop_tx,
-    } = make_hosted_input(SimpleDownlinkConfig::default());
+    } = make_hosted_input(&agent, SimpleDownlinkConfig::default());
 
     let agent = FakeAgent;
 
@@ -317,7 +322,9 @@ async fn run_with_expectations(
 
 #[tokio::test]
 async fn event_dl_emit_linked_handler() {
-    let mut context = make_hosted_input(SimpleDownlinkConfig::default());
+    let agent = FakeAgent;
+
+    let mut context = make_hosted_input(&agent, SimpleDownlinkConfig::default());
 
     let agent = FakeAgent;
 
@@ -335,7 +342,9 @@ async fn event_dl_emit_linked_handler() {
 
 #[tokio::test]
 async fn event_dl_emit_synced_handler() {
-    let mut context = make_hosted_input(SimpleDownlinkConfig::default());
+    let agent = FakeAgent;
+
+    let mut context = make_hosted_input(&agent, SimpleDownlinkConfig::default());
 
     let agent = FakeAgent;
 
@@ -357,7 +366,9 @@ async fn event_dl_emit_synced_handler() {
 
 #[tokio::test]
 async fn event_dl_emit_event_handlers() {
-    let mut context = make_hosted_input(SimpleDownlinkConfig::default());
+    let agent = FakeAgent;
+
+    let mut context = make_hosted_input(&agent, SimpleDownlinkConfig::default());
 
     let agent = FakeAgent;
 
@@ -383,11 +394,13 @@ async fn event_dl_emit_event_handlers() {
 
 #[tokio::test]
 async fn event_dl_emit_events_before_synced() {
+    let agent = FakeAgent;
+
     let config = SimpleDownlinkConfig {
         events_when_not_synced: true,
         terminate_on_unlinked: true,
     };
-    let mut context = make_hosted_input(config);
+    let mut context = make_hosted_input(&agent, config);
 
     let agent = FakeAgent;
 
@@ -412,7 +425,9 @@ async fn event_dl_emit_events_before_synced() {
 
 #[tokio::test]
 async fn event_dl_emit_unlinked_handler() {
-    let mut context = make_hosted_input(SimpleDownlinkConfig::default());
+    let agent = FakeAgent;
+
+    let mut context = make_hosted_input(&agent, SimpleDownlinkConfig::default());
 
     let agent = FakeAgent;
 
@@ -438,12 +453,14 @@ async fn event_dl_emit_unlinked_handler() {
 
 #[tokio::test]
 async fn event_dl_revive_unlinked_downlink() {
+    let agent = FakeAgent;
+
     let config = SimpleDownlinkConfig {
         events_when_not_synced: true,
         terminate_on_unlinked: false,
     };
 
-    let mut context = make_hosted_input(config);
+    let mut context = make_hosted_input(&agent, config);
 
     let agent = FakeAgent;
 

@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
 
 use std::num::NonZeroUsize;
 
-use swimos_remote::AttachClient;
+use swimos_messages::remote_protocol::AttachClient;
 use swimos_runtime::agent::LinkRequest;
 use swimos_utilities::trigger;
 use tokio::sync::mpsc;

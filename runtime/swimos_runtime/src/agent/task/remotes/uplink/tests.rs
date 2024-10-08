@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,13 +15,11 @@
 use std::num::NonZeroUsize;
 
 use bytes::{Bytes, BytesMut};
-use swimos_api::{
-    agent::UplinkKind,
-    protocol::map::{MapOperation, RawMapOperation},
-};
+use swimos_agent_protocol::MapOperation;
+use swimos_api::agent::UplinkKind;
 use swimos_model::Text;
 use swimos_utilities::{
-    io::byte_channel::{byte_channel, ByteReader},
+    byte_channel::{byte_channel, ByteReader},
     non_zero_usize,
     trigger::promise,
 };
@@ -552,12 +550,12 @@ fn map_lane_sync_consumes_buffer() {
             let first = queue.pop();
             let second = queue.pop();
             let third = queue.pop();
-            assert!(matches!(first, Some(RawMapOperation::Clear)));
+            assert!(matches!(first, Some(MapOperation::Clear)));
             assert!(
-                matches!(second, Some(RawMapOperation::Update { key, value }) if key.as_ref() == KEY1_STR && value.as_ref() == VAL1)
+                matches!(second, Some(MapOperation::Update { key, value }) if key.as_ref() == KEY1_STR && value.as_ref() == VAL1)
             );
             assert!(
-                matches!(third, Some(RawMapOperation::Update { key, value }) if key.as_ref() == KEY2_STR && value.as_ref() == VAL2)
+                matches!(third, Some(MapOperation::Update { key, value }) if key.as_ref() == KEY2_STR && value.as_ref() == VAL2)
             );
             assert!(queue.pop().is_none());
         }

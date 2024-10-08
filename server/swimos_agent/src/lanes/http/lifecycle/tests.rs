@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,13 +14,15 @@
 
 use bytes::BytesMut;
 use parking_lot::Mutex;
-use swimos_api::agent::{response_channel, AgentConfig};
-use swimos_model::http::{Header, HttpResponse, StandardHeaderName, StatusCode};
-use swimos_recon::printer::print_recon_compact;
-use swimos_utilities::routing::route_uri::RouteUri;
+use swimos_api::{
+    agent::{response_channel, AgentConfig},
+    http::{Header, HttpResponse, StandardHeaderName, StatusCode},
+};
+use swimos_recon::print_recon_compact;
+use swimos_utilities::routing::RouteUri;
 
 use crate::{
-    agent_lifecycle::utility::HandlerContext,
+    agent_lifecycle::HandlerContext,
     event_handler::{ActionContext, HandlerAction, StepResult},
     lanes::http::{
         content_type::recon,
@@ -211,8 +213,8 @@ where
     H: HandlerAction<TestAgent>,
 {
     let mut join_lane_init = HashMap::new();
-    let mut ad_hoc_buffer = BytesMut::new();
-    let mut action_context = dummy_context(&mut join_lane_init, &mut ad_hoc_buffer);
+    let mut command_buffer = BytesMut::new();
+    let mut action_context = dummy_context(&mut join_lane_init, &mut command_buffer);
     let route_uri = make_uri();
     let route_params = HashMap::new();
     let meta = AgentMetadata::new(&route_uri, &route_params, &CONFIG);

@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,7 +15,7 @@
 use std::collections::HashSet;
 
 use mime::Mime;
-use swimos_model::http::{Header, StandardHeaderName};
+use swimos_api::http::{Header, StandardHeaderName};
 use swimos_utilities::format::join;
 
 use super::Headers;

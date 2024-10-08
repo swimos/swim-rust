@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html style="height: 100%; overflow: hidden;">
+  <head>
+    <title>Ripple</title>
+    <meta name="viewport" content="width=device-width, height=device-height, initial-scale=1, maximum-scale=1, user-scalable=0, shrink-to-fit=no, viewport-fit=cover"/>
+  </head>
+  <body style="width: 100%; height: 100%; margin: 0; overflow: auto; background-color: #040e19">
+    <div id="app" style="width: 100%; height: 100%;">
+    </div>
+    <script src="https://cdn.swimos.org/js/3.10.2/swim-system.js"></script>
+    <script src="dist/main/swim-ripple.js"></script>
+    <script>
+
+var app = new swim.HtmlAppView(document.getElementById("app"));
+
+var canvas = app.append("canvas");
+
+var mirror = new swim.MirrorView();
+mirror.captive = true;
+
+var documentUri = swim.Uri.parse(document.location.href);
+var host = documentUri.query().get("host");
+var room = documentUri.fragmentIdentifier() || "wall";
+
+var hostUri = host || "warp://localhost:9001";
+var nodeUri = swim.UriPath.from("mirror", room).toString();
+var nodeRef = swim.client.nodeRef(hostUri, nodeUri);
+var mirrorController = new swim.SwimMirrorViewController(nodeRef);
+mirror.setViewController(mirrorController);
+mirror.captive = true;
+
+canvas.append(mirror);
+
+    </script>
+  </body>
+</html>

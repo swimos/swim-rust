@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,26 +21,26 @@ use futures::{
     future::{ready, BoxFuture},
     FutureExt, StreamExt,
 };
-use swimos_api::protocol::downlink::ValueNotificationDecoder;
-use swimos_api::{
-    downlink::DownlinkKind, error::FrameIoError, protocol::downlink::DownlinkNotification,
-};
-use swimos_form::structural::read::{recognizer::RecognizerReadable, StructuralReadable};
-use swimos_model::{address::Address, Text};
+use swimos_agent_protocol::encoding::downlink::ValueNotificationDecoder;
+use swimos_agent_protocol::DownlinkNotification;
+use swimos_api::{address::Address, agent::DownlinkKind, error::FrameIoError};
+use swimos_form::read::{RecognizerReadable, StructuralReadable};
+use swimos_model::Text;
 use swimos_utilities::{
-    io::byte_channel::{ByteReader, ByteWriter},
+    byte_channel::{ByteReader, ByteWriter},
     trigger,
 };
 use tokio_util::codec::FramedRead;
 use tracing::{debug, error, info, trace};
 
 use crate::{
-    agent_model::downlink::handlers::{
+    agent_model::downlink::{
         BoxDownlinkChannel, DownlinkChannel, DownlinkChannelError, DownlinkChannelEvent,
+        DownlinkChannelFactory,
     },
     config::SimpleDownlinkConfig,
-    downlink_lifecycle::event::EventDownlinkLifecycle,
-    event_handler::{BoxEventHandler, HandlerActionExt},
+    downlink_lifecycle::EventDownlinkLifecycle,
+    event_handler::{HandlerActionExt, LocalBoxEventHandler},
 };
 
 use super::{DlState, DlStateObserver, DlStateTracker};
@@ -48,7 +48,7 @@ use super::{DlState, DlStateObserver, DlStateTracker};
 #[cfg(test)]
 mod tests;
 
-pub struct HostedEventDownlinkFactory<T: RecognizerReadable, LC> {
+pub struct EventDownlinkFactory<T: RecognizerReadable, LC> {
     address: Address<Text>,
     lifecycle: LC,
     config: SimpleDownlinkConfig,
@@ -58,7 +58,7 @@ pub struct HostedEventDownlinkFactory<T: RecognizerReadable, LC> {
     _type: PhantomData<fn() -> T>,
 }
 
-impl<T, LC> HostedEventDownlinkFactory<T, LC>
+impl<T, LC> EventDownlinkFactory<T, LC>
 where
     T: StructuralReadable + Send + 'static,
     T::Rec: Send,
@@ -70,7 +70,7 @@ where
         stop_rx: trigger::Receiver,
         map_events: bool,
     ) -> Self {
-        HostedEventDownlinkFactory {
+        EventDownlinkFactory {
             address,
             lifecycle,
             config,
@@ -81,11 +81,24 @@ where
         }
     }
 
-    pub fn create<Context>(self, receiver: ByteReader) -> BoxDownlinkChannel<Context>
-    where
-        LC: EventDownlinkLifecycle<T, Context> + 'static,
-    {
-        let HostedEventDownlinkFactory {
+    pub fn dl_state(&self) -> &Arc<AtomicU8> {
+        &self.dl_state
+    }
+}
+
+impl<T, LC, Context> DownlinkChannelFactory<Context> for EventDownlinkFactory<T, LC>
+where
+    T: StructuralReadable + Send + 'static,
+    T::Rec: Send,
+    LC: EventDownlinkLifecycle<T, Context> + 'static,
+{
+    fn create(
+        self,
+        _context: &Context,
+        _: ByteWriter,
+        receiver: ByteReader,
+    ) -> BoxDownlinkChannel<Context> {
+        let EventDownlinkFactory {
             address,
             lifecycle,
             config,
@@ -108,8 +121,21 @@ where
         Box::new(chan)
     }
 
-    pub fn dl_state(&self) -> &Arc<AtomicU8> {
-        &self.dl_state
+    fn create_box(
+        self: Box<Self>,
+        context: &Context,
+        tx: ByteWriter,
+        rx: ByteReader,
+    ) -> BoxDownlinkChannel<Context> {
+        (*self).create(context, tx, rx)
+    }
+
+    fn kind(&self) -> DownlinkKind {
+        if self.map_events {
+            DownlinkKind::MapEvent
+        } else {
+            DownlinkKind::Event
+        }
     }
 }
 
@@ -231,7 +257,7 @@ where
         self.select_next().boxed()
     }
 
-    fn next_event(&mut self, _context: &Context) -> Option<BoxEventHandler<'_, Context>> {
+    fn next_event(&mut self, _context: &Context) -> Option<LocalBoxEventHandler<'_, Context>> {
         let HostedEventDownlink {
             address,
             receiver,
@@ -252,17 +278,17 @@ where
                     if dl_state.get() == DlState::Unlinked {
                         dl_state.set(DlState::Linked);
                     }
-                    Some(lifecycle.on_linked().boxed())
+                    Some(lifecycle.on_linked().boxed_local())
                 }
                 Ok(DownlinkNotification::Synced) => {
                     debug!(address = %address, "Downlink synced.");
                     dl_state.set(DlState::Synced);
-                    Some(lifecycle.on_synced(&()).boxed())
+                    Some(lifecycle.on_synced(&()).boxed_local())
                 }
                 Ok(DownlinkNotification::Event { body }) => {
                     trace!(address = %address, "Event received for downlink.");
                     let handler = if dl_state.get() == DlState::Synced || *events_when_not_synced {
-                        let handler = lifecycle.on_event(body).boxed();
+                        let handler = lifecycle.on_event(body).boxed_local();
                         Some(handler)
                     } else {
                         None
@@ -277,7 +303,7 @@ where
                     } else {
                         dl_state.set(DlState::Unlinked);
                     }
-                    Some(lifecycle.on_unlinked().boxed())
+                    Some(lifecycle.on_unlinked().boxed_local())
                 }
                 Err(_) => {
                     debug!(address = %address, "Downlink failed.");
@@ -287,7 +313,7 @@ where
                     } else {
                         dl_state.set(DlState::Unlinked);
                     }
-                    Some(lifecycle.on_failed().boxed())
+                    Some(lifecycle.on_failed().boxed_local())
                 }
             }
         } else {
@@ -355,5 +381,10 @@ impl EventDownlinkHandle {
     /// True if the downlink is running and linked.
     pub fn is_linked(&self) -> bool {
         matches!(self.observer.get(), DlState::Linked | DlState::Synced)
+    }
+
+    /// Consumes this handle and returns the stop handle, if it exists.
+    pub fn into_stop_rx(self) -> Option<trigger::Sender> {
+        self.stop_tx
     }
 }

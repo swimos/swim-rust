@@ -1,15 +1,17 @@
 [package]
 name = "tutorial-app"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
+publish = false
 
 [dependencies]
-swimos = { path = "../../swimos", features = ["server", "agent"] }
+swimos = { workspace = true, features = ["server", "agent"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal"] }
 example-util = { path = "../example_util" }
 rand = { workspace = true }
 tutorial-app-model = { path = "./model" }
-hyper = { workspace = true, features = ["server", "tcp", "http1"] }
-hyper-staticfile = "0.9"
+hyper = { workspace = true, features = ["server", "http1"] }
+hyper-staticfile = { workspace = true }
 http = { workspace = true }
 futures = { workspace = true }
+hyper-util = { workspace = true, features = ["server-graceful", "http1"] }

@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -22,25 +22,27 @@ use std::{
 };
 
 use bytes::BytesMut;
-use futures::stream::FuturesUnordered;
-use swimos_api::{agent::AgentConfig, downlink::DownlinkKind};
-use swimos_model::address::Address;
-use swimos_utilities::routing::route_uri::RouteUri;
+use swimos_api::{
+    address::Address,
+    agent::{AgentConfig, DownlinkKind},
+};
+use swimos_utilities::routing::RouteUri;
 
 use crate::{
     event_handler::{
         ActionContext, BoxJoinLaneInit, EventHandlerError, HandlerAction, Modification, StepResult,
     },
     item::{AgentItem, MapItem},
-    lanes::{
-        join::test_util::{TestDlContextInner, TestDownlinkContext},
-        join_value::{
-            default_lifecycle::DefaultJoinValueLifecycle, AddDownlinkAction, JoinValueLaneGet,
-            JoinValueLaneGetMap,
-        },
+    lanes::join_value::{
+        default_lifecycle::DefaultJoinValueLifecycle, AddDownlinkAction, JoinValueLaneGet,
+        JoinValueLaneGetMap, JoinValueLaneWithEntry,
     },
     meta::AgentMetadata,
-    test_context::{dummy_context, run_event_handlers, run_with_futures},
+    test_context::{dummy_context, run_event_handlers, run_with_futures, TestSpawner},
+};
+use crate::{
+    lanes::join_value::JoinValueRemoveDownlink,
+    test_util::{TestDlContextInner, TestDownlinkContext},
 };
 
 use super::{JoinValueAddDownlink, JoinValueLane, LifecycleInitializer};
@@ -189,6 +191,55 @@ fn join_value_lane_get_event_handler() {
 }
 
 #[test]
+fn join_value_lane_with_entry_event_handler() {
+    let uri = make_uri();
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+    let agent = TestAgent::with_init();
+
+    let mut handler =
+        JoinValueLaneWithEntry::new(TestAgent::LANE, K1, |v: Option<&str>| v.map(str::to_owned));
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    check_result(result, false, false, Some(Some(V1.to_string())));
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    assert!(matches!(
+        result,
+        StepResult::Fail(EventHandlerError::SteppedAfterComplete)
+    ));
+
+    let mut handler = JoinValueLaneWithEntry::new(TestAgent::LANE, ABSENT, |v: Option<&str>| {
+        v.map(str::to_owned)
+    });
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    check_result(result, false, false, Some(None));
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    assert!(matches!(
+        result,
+        StepResult::Fail(EventHandlerError::SteppedAfterComplete)
+    ));
+}
+
+#[test]
 fn join_value_lane_get_map_event_handler() {
     let uri = make_uri();
     let route_params = HashMap::new();
@@ -237,12 +288,17 @@ async fn join_value_lane_add_downlinks_event_handler() {
     );
 
     let context = TestDownlinkContext::default();
-    let spawner = FuturesUnordered::new();
+    let spawner = TestSpawner::<TestAgent>::default();
     let mut inits = HashMap::new();
-    let mut ad_hoc_buffer = BytesMut::new();
+    let mut command_buffer = BytesMut::new();
 
-    let mut action_context =
-        ActionContext::new(&spawner, &context, &context, &mut inits, &mut ad_hoc_buffer);
+    let mut action_context = ActionContext::new(
+        &spawner,
+        &context,
+        &context,
+        &mut inits,
+        &mut command_buffer,
+    );
     let result = handler.step(&mut action_context, meta, &agent);
     check_result(result, false, false, Some(()));
 
@@ -254,11 +310,10 @@ async fn join_value_lane_add_downlinks_event_handler() {
 
     run_event_handlers(
         &context,
-        &context,
         &agent,
         meta,
         &mut inits,
-        &mut ad_hoc_buffer,
+        &mut command_buffer,
         spawner,
     )
     .await;
@@ -267,9 +322,11 @@ async fn join_value_lane_add_downlinks_event_handler() {
     let TestDlContextInner {
         downlink_channels,
         downlinks,
+        requests,
     } = &*guard;
     assert_eq!(downlink_channels.len(), 1);
     assert!(downlink_channels.contains_key(&address));
+    assert!(requests.is_empty());
     match downlinks.as_slice() {
         [channel] => {
             assert_eq!(channel.kind(), DownlinkKind::Event);
@@ -307,26 +364,85 @@ async fn open_downlink_from_registered() {
 
     let context = TestDownlinkContext::default();
     let mut inits = HashMap::new();
-    let mut ad_hoc_buffer = BytesMut::new();
+    let mut command_buffer = BytesMut::new();
 
     let count = Arc::new(AtomicUsize::new(0));
 
-    let spawner = FuturesUnordered::new();
-    let mut action_context =
-        ActionContext::new(&spawner, &context, &context, &mut inits, &mut ad_hoc_buffer);
+    let spawner = TestSpawner::<TestAgent>::default();
+    let mut action_context = ActionContext::new(
+        &spawner,
+        &context,
+        &context,
+        &mut inits,
+        &mut command_buffer,
+    );
     register_lifecycle(&mut action_context, &agent, count.clone());
     assert!(spawner.is_empty());
 
     run_with_futures(
         &context,
-        &context,
         &agent,
         meta,
         &mut inits,
-        &mut ad_hoc_buffer,
+        &mut command_buffer,
         handler,
     )
     .await;
 
     assert_eq!(count.load(Ordering::Relaxed), 1);
+}
+
+#[tokio::test]
+async fn stop_downlink() {
+    let uri = make_uri();
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+    let agent = TestAgent::with_init();
+
+    let address = Address::text(None, REMOTE_NODE, REMOTE_LANE);
+
+    let handler = JoinValueAddDownlink::new(TestAgent::LANE, 12, address.clone());
+
+    let context = TestDownlinkContext::default();
+    let mut inits = HashMap::new();
+    let mut command_buffer = BytesMut::new();
+
+    let count = Arc::new(AtomicUsize::new(0));
+
+    let spawner = TestSpawner::<TestAgent>::default();
+    let mut action_context = ActionContext::new(
+        &spawner,
+        &context,
+        &context,
+        &mut inits,
+        &mut command_buffer,
+    );
+    register_lifecycle(&mut action_context, &agent, count.clone());
+    assert!(spawner.is_empty());
+
+    run_with_futures(
+        &context,
+        &agent,
+        meta,
+        &mut inits,
+        &mut command_buffer,
+        handler,
+    )
+    .await;
+
+    assert_eq!(count.load(Ordering::Relaxed), 1);
+
+    agent.lane.inner.update(12, "value".to_string());
+
+    let mut stop_handler = JoinValueRemoveDownlink::new(TestAgent::LANE, 12);
+    let result = stop_handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    check_result(result, false, false, Some(()));
+
+    let guard = agent.lane.keys.borrow();
+    assert!(guard.is_empty());
+    assert!(agent.lane.inner.get(&12, |value| value.is_none()));
 }

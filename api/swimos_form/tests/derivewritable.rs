@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,12 +13,12 @@
 // limitations under the License.
 
 use std::borrow::Cow;
-use swimos_form::structural::write::{
+use swimos_form::write::{
     BodyWriter, HeaderWriter, Label, PrimitiveWriter, RecordBodyKind, StructuralWritable,
     StructuralWriter,
 };
-use swimos_model::bigint::{BigInt, BigUint};
 use swimos_model::{Attr, Item, Value};
+use swimos_model::{BigInt, BigUint};
 
 #[derive(Default, Debug, PartialEq, Eq)]
 struct Validator {

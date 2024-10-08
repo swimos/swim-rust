@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,31 +15,29 @@
 #[cfg(test)]
 mod tests;
 
-use crate::task::AgentMeta;
+use crate::{
+    forest::{UriForest, UriPart},
+    task::AgentMeta,
+};
 use futures::future::{BoxFuture, Either};
 use futures::stream::select;
 use futures::{FutureExt, SinkExt, StreamExt, TryFutureExt};
 use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::sync::Arc;
-use swimos_api::agent::{Agent, AgentConfig, AgentContext, AgentInitResult};
+use swimos_agent_protocol::encoding::lane::{MapLaneResponseEncoder, RawValueLaneRequestDecoder};
+use swimos_agent_protocol::{LaneRequest, LaneResponse, MapOperation};
+use swimos_api::agent::{Agent, AgentConfig, AgentContext, AgentInitResult, WarpLaneKind};
 use swimos_api::error::{AgentTaskError, FrameIoError};
-use swimos_api::lane::WarpLaneKind;
-use swimos_api::protocol::agent::{
-    LaneRequest, LaneRequestDecoder, LaneResponse, LaneResponseEncoder,
-};
-use swimos_api::protocol::map::{MapOperation, MapOperationEncoder};
-use swimos_api::protocol::WithLengthBytesCodec;
-use swimos_form::structural::read::event::ReadEvent;
-use swimos_form::structural::read::recognizer::{Recognizer, RecognizerReadable};
-use swimos_form::structural::read::ReadError;
-use swimos_form::structural::write::{StructuralWritable, StructuralWriter};
+use swimos_form::read::{ReadError, ReadEvent, Recognizer, RecognizerReadable};
+use swimos_form::write::{StructuralWritable, StructuralWriter};
 use swimos_form::Form;
 use swimos_model::Text;
-use swimos_runtime::downlink::Io;
-use swimos_utilities::routing::route_uri::RouteUri;
 use swimos_utilities::trigger;
-use swimos_utilities::uri_forest::{UriForest, UriPart};
+use swimos_utilities::{
+    byte_channel::{ByteReader, ByteWriter},
+    routing::RouteUri,
+};
 use tokio_util::codec::{FramedRead, FramedWrite};
 
 pub struct MetaMeshAgent {
@@ -209,6 +207,8 @@ impl RecognizerReadable for NodeInfo {
     }
 }
 
+type Io = (ByteWriter, ByteReader);
+
 async fn run_task(
     shutdown_rx: trigger::Receiver,
     agents: Arc<RwLock<UriForest<AgentMeta>>>,
@@ -219,18 +219,12 @@ async fn run_task(
     let (nodes_tx, nodes_rx) = nodes_io;
     let (nodes_count_tx, nodes_count_rx) = nodes_count_io;
 
-    let nodes_input = FramedRead::new(nodes_rx, LaneRequestDecoder::new(WithLengthBytesCodec));
-    let mut nodes_output =
-        FramedWrite::new(nodes_tx, LaneResponseEncoder::new(MapOperationEncoder));
+    let nodes_input = FramedRead::new(nodes_rx, RawValueLaneRequestDecoder::default());
+    let mut nodes_output = FramedWrite::new(nodes_tx, MapLaneResponseEncoder::default());
 
-    let nodes_count_input = FramedRead::new(
-        nodes_count_rx,
-        LaneRequestDecoder::new(WithLengthBytesCodec),
-    );
-    let mut nodes_count_output = FramedWrite::new(
-        nodes_count_tx,
-        LaneResponseEncoder::new(MapOperationEncoder),
-    );
+    let nodes_count_input = FramedRead::new(nodes_count_rx, RawValueLaneRequestDecoder::default());
+    let mut nodes_count_output =
+        FramedWrite::new(nodes_count_tx, MapLaneResponseEncoder::default());
 
     let mut request_stream = select(
         nodes_input.map(Either::Left),

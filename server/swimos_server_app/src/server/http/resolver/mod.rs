@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -23,8 +23,8 @@ use std::{
 
 use parking_lot::RwLock;
 use swimos_api::agent::HttpLaneRequest;
+use swimos_messages::remote_protocol::{AgentResolutionError, FindNode, NodeConnectionRequest};
 use swimos_model::Text;
-use swimos_remote::{AgentResolutionError, FindNode, NodeConnectionRequest};
 use swimos_utilities::{time::AtomicInstant, trigger};
 use tokio::{
     sync::{mpsc, oneshot},

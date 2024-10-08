@@ -1,4 +1,4 @@
-// Copyright 2015-2022 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,20 +12,55 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::hasher::calculate_hash;
-use crate::parser::{ParseError, ReconStr, Span};
+use crate::compare_recon_values;
+use crate::hasher::recon_hash;
+use crate::recon_parser::{parse_recognize, ParseError};
 use std::collections::hash_map::DefaultHasher;
-use std::hash::Hasher;
+use std::hash::{Hash, Hasher};
 use swimos_model::Value;
 
+/// A wrapper around a Recon string that supports equality comparison and hashing
+/// based on the semantic equality of the Recon and not the actual string representation.
+///
+/// # Examples
+///
+/// ```
+/// use swimos_recon::parser::ReconStr;
+/// let first = ReconStr::new("@attr(1,2)");
+/// let second = ReconStr::new("@attr({1,2})");
+///
+/// assert_eq!(first, second);
+/// ```
+#[derive(Debug, Clone, Copy)]
+pub struct ReconStr<'a>(&'a str);
+
+impl<'a> ReconStr<'a> {
+    pub fn new(str: &'a str) -> Self {
+        ReconStr(str)
+    }
+}
+
+impl<'a> Hash for ReconStr<'a> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        recon_hash(self.0, state)
+    }
+}
+
+impl<'a> PartialEq<Self> for ReconStr<'a> {
+    fn eq(&self, other: &Self) -> bool {
+        compare_recon_values(self.0, other.0)
+    }
+}
+
+impl<'a> Eq for ReconStr<'a> {}
+
 fn value_from_string(rep: &str) -> Result<Value, ParseError> {
-    let span = Span::new(rep);
-    crate::parser::parse_recognize(span, false)
+    parse_recognize(rep, false)
 }
 
 fn calc_recon_hash(recon: &str) -> u64 {
     let mut hasher = DefaultHasher::new();
-    calculate_hash(recon, &mut hasher);
+    recon_hash(recon, &mut hasher);
     hasher.finish()
 }
 

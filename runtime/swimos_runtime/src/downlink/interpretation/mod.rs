@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,7 +15,8 @@
 use std::convert::Infallible;
 
 use bytes::{BufMut, Bytes, BytesMut};
-use swimos_api::protocol::map::{extract_header, MapMessageEncoder, RawMapOperationEncoder};
+use swimos_agent_protocol::encoding::map::RawMapMessageEncoder;
+use swimos_agent_protocol::peeling::extract_header;
 use swimos_recon::parser::MessageExtractError;
 use tokio_util::codec::Encoder;
 
@@ -71,7 +72,7 @@ pub fn value_interpretation() -> impl DownlinkInterpretation<Error = Infallible>
 /// from the event.
 #[derive(Debug, Default)]
 pub struct MapInterpretation {
-    encoder: MapMessageEncoder<RawMapOperationEncoder>,
+    encoder: RawMapMessageEncoder,
 }
 
 impl DownlinkInterpretation for MapInterpretation {
@@ -93,6 +94,8 @@ impl DownlinkInterpretation for MapInterpretation {
     }
 }
 
+/// Interpretation for map downlinks that does not interpret the events at all and passes through
+/// the frame unmodified.
 pub struct NoInterpretation;
 impl DownlinkInterpretation for NoInterpretation {
     type Error = Infallible;

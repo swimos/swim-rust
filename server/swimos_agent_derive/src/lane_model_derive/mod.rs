@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
 
 use proc_macro2::TokenStream;
 use quote::{quote, ToTokens, TokenStreamExt};
-use swimos_utilities::errors::{validation::Validation, Errors};
+use swimos_utilities::errors::{Errors, Validation};
 use syn::{parse_quote, DeriveInput, Ident};
 
 mod attributes;

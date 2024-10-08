@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,7 +15,7 @@
 use std::{collections::HashMap, convert::identity};
 
 use swimos::agent::{
-    agent_lifecycle::utility::{HandlerContext, JoinValueContext},
+    agent_lifecycle::{HandlerContext, JoinValueContext},
     event_handler::{EventHandler, HandlerActionExt},
     lanes::{
         join_value::lifecycle::JoinValueLaneLifecycle, CommandLane, JoinValueLane, MapLane,
@@ -30,8 +30,8 @@ use crate::model::{agency::Agency, counts::Count};
 use super::join_value_logging_lifecycle;
 
 /// An agent with country level aggregate information.
-#[derive(AgentLaneModel)]
 #[projections]
+#[derive(AgentLaneModel)]
 #[agent(transient, convention = "camel")]
 pub struct CountryAgent {
     // Count of the number of vehicles within the country.

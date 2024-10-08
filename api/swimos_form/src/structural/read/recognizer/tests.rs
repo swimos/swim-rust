@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,9 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::collections::HashMap;
+
+use tests::impls::VecRecognizer;
+
 use crate::structural::read::event::{NumericValue, ReadEvent};
 use crate::structural::read::recognizer::primitive::I32Recognizer;
-use crate::structural::read::recognizer::{Recognizer, VecRecognizer};
+use crate::structural::read::recognizer::Recognizer;
 use crate::structural::read::ReadError;
 
 fn run_recognizer<R: Recognizer>(events: Vec<ReadEvent<'_>>, mut rec: R) -> R::Target {

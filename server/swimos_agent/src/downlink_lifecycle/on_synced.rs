@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,10 +14,10 @@
 
 use std::borrow::Borrow;
 
-use swimos_api::handlers::{BorrowHandler, FnHandler, NoHandler};
+use swimos_utilities::handlers::{BorrowHandler, FnHandler, NoHandler};
 
 use crate::{
-    agent_lifecycle::utility::HandlerContext,
+    agent_lifecycle::HandlerContext,
     event_handler::{EventFn, EventHandler, UnitHandler},
 };
 
@@ -29,7 +29,7 @@ pub trait OnSynced<T, Context>: Send {
     where
         Self: 'a;
 
-    /// #Arguments
+    /// # Arguments
     /// * `value` - The synced value.
     fn on_synced<'a>(&'a self, value: &T) -> Self::OnSyncedHandler<'a>;
 }
@@ -42,7 +42,7 @@ pub trait OnSyncedShared<T, Context, Shared>: Send {
         Self: 'a,
         Shared: 'a;
 
-    /// #Arguments
+    /// # Arguments
     /// * `shared` - The shared state.
     /// * `handler_context` - Utility for constructing event handlers.
     /// * `value` - The synced value.

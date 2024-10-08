@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -46,7 +46,7 @@ where
     /// The high point must be strictly higher than the low point, in all dimensions.
     ///
     /// # Macro:
-    /// Rectangles that use [`Point2D`](struct.Point2D.html) or [`Point3D`](struct.Point3D.html) can also be crated using the [`rect`](../macro.rect.html) macro,
+    /// Rectangles that use [`Point2D`](struct.Point2D.html) or [`Point3D`](struct.Point3D.html) can also be created using the [`rect`](../macro.rect.html) macro,
     /// subject to the same restrictions described above.
     /// # Examples:
     /// ```

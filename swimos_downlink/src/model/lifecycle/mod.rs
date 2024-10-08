@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -24,7 +24,7 @@ pub use on_set::{OnSet, OnSetShared};
 pub use on_synced::{OnSynced, OnSyncedShared};
 pub use on_unlinked::{OnUnlinked, OnUnlinkedShared};
 pub use on_update::{OnUpdate, OnUpdateShared};
-use swimos_api::handlers::{BlockingHandler, FnMutHandler, NoHandler, WithShared};
+use swimos_utilities::handlers::{BlockingHandler, FnMutHandler, NoHandler, WithShared};
 
 mod handler_fn;
 mod on_clear;

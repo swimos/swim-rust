@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,14 +15,16 @@
 use bytes::{Bytes, BytesMut};
 use mime::Mime;
 use std::marker::PhantomData;
-use swimos_api::agent::{HttpLaneResponse, HttpResponseSender};
-use swimos_api::handlers::{FnHandler, NoHandler};
-use swimos_model::http::{Header, HttpResponse, StatusCode, Uri, Version};
+use swimos_api::{
+    agent::{HttpResponseSender, RawHttpLaneResponse},
+    http::{Header, HttpResponse, StatusCode, Uri, Version},
+};
+use swimos_utilities::handlers::{FnHandler, NoHandler};
 use tracing::debug;
 
 use crate::event_handler::EventHandlerError;
 use crate::{
-    agent_lifecycle::utility::HandlerContext,
+    agent_lifecycle::HandlerContext,
     event_handler::{ActionContext, HandlerAction, StepResult},
     meta::AgentMetadata,
 };
@@ -50,7 +52,7 @@ mod tests;
 
 /// Trait for the lifecycle of an HTTP lane.
 ///
-/// #Type Parameters
+/// # Type Parameters
 /// * `Get` - The type of the payloads of responses to GET requests to the lane.
 /// * `Post` - The type of the payloads of incoming POST requests.
 /// * `Put` - The type of the payloads of incoming PUT requests.
@@ -68,7 +70,7 @@ impl<Context, Get, Post, Put, LC> HttpLaneLifecycle<Get, Post, Put, Context> for
 /// Trait for the lifecycle of an HTTP lane where the lifecycle has access to some shared state (shared
 /// with all other lifecycles in the agent).
 ///
-/// #Type Parameters
+/// # Type Parameters
 /// * `Get` - The type of the payloads of responses to GET requests to the lane.
 /// * `Post` - The type of the payloads of incoming POST requests.
 /// * `Put` - The type of the payloads of incoming PUT requests.
@@ -136,7 +138,7 @@ type SharedHttpLifecycleType<Context, Shared, Get, Post, Put> =
 
 /// A lifecycle for an HTTP lane with some shared state (shard with other lifecycles in the same agent).
 ///
-/// #Type Parameters
+/// # Type Parameters
 /// * `Context` - The context for the event handlers (providing access to the agent lanes).
 /// * `Shared` - The shared state to which the lifecycle has access.
 /// * `Get` - The type of the payloads of responses to GET requests to the lane.
@@ -550,8 +552,8 @@ where
     }
 }
 
-fn not_supported() -> HttpLaneResponse {
-    HttpLaneResponse {
+fn not_supported() -> RawHttpLaneResponse {
+    RawHttpLaneResponse {
         status_code: StatusCode::METHOD_NOT_ALLOWED,
         version: Version::HTTP_1_1,
         headers: vec![],
@@ -563,7 +565,7 @@ fn response_to_bytes<T, Codec>(
     codec: &Codec,
     content_type: Option<&Mime>,
     response: HttpResponse<T>,
-) -> HttpLaneResponse
+) -> RawHttpLaneResponse
 where
     Codec: HttpLaneCodec<T>,
 {
@@ -594,8 +596,8 @@ where
     response
 }
 
-fn server_error() -> HttpLaneResponse {
-    HttpLaneResponse {
+fn server_error() -> RawHttpLaneResponse {
+    RawHttpLaneResponse {
         status_code: StatusCode::INTERNAL_SERVER_ERROR,
         version: Version::HTTP_1_1,
         headers: vec![],
@@ -603,8 +605,8 @@ fn server_error() -> HttpLaneResponse {
     }
 }
 
-fn bad_content_type() -> HttpLaneResponse {
-    HttpLaneResponse {
+fn bad_content_type() -> RawHttpLaneResponse {
+    RawHttpLaneResponse {
         status_code: StatusCode::UNSUPPORTED_MEDIA_TYPE,
         version: Version::HTTP_1_1,
         headers: vec![],
@@ -612,7 +614,7 @@ fn bad_content_type() -> HttpLaneResponse {
     }
 }
 
-fn empty_response_to_bytes(response: HttpResponse<()>) -> HttpLaneResponse {
+fn empty_response_to_bytes(response: HttpResponse<()>) -> RawHttpLaneResponse {
     response.map(|_| Bytes::new())
 }
 
@@ -620,7 +622,7 @@ fn discard_to_bytes<T, Codec>(
     codec: &Codec,
     content_type: Option<&Mime>,
     response: HttpResponse<T>,
-) -> HttpLaneResponse
+) -> RawHttpLaneResponse
 where
     Codec: HttpLaneCodec<T>,
 {

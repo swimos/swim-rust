@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,11 +18,9 @@ use std::{
 };
 
 use bytes::{BufMut, BytesMut};
-use swimos_api::protocol::map::{MapOperation, RawMapOperation, RawMapOperationMut};
+use swimos_agent_protocol::MapOperation;
 
-use crate::error::InvalidKey;
-
-use super::key::ReconKey;
+use super::{key::ReconKey, InvalidKey, RawMapOperation, RawMapOperationMut};
 
 #[cfg(test)]
 mod tests;

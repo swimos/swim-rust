@@ -1,15 +1,17 @@
 [package]
 name = "console"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
+publish = false
 
 [dependencies]
-swimos_utilities = { path = "../../swimos_utilities", features = ["trigger"] }
-swimos_api = { path = "../../api/swimos_api" }
-swimos_model = { path = "../../api/swimos_model" }
-swimos_form = { path = "../../api/swimos_form" }
-swimos_recon = { path = "../../api/formats/swimos_recon" }
-swimos_messages = { path = "../../runtime/swimos_messages" }
+swimos_utilities = { workspace = true, features = ["trigger"] }
+swimos_api = { workspace = true }
+swimos_agent_protocol = { workspace = true }
+swimos_model = { workspace = true }
+swimos_form = { workspace = true }
+swimos_recon = { workspace = true }
+swimos_messages = { workspace = true }
 futures = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal", "time"] }
 parking_lot = { workspace = true }
@@ -19,10 +21,12 @@ bytes = { workspace = true }
 console-views = { path = "console_views" }
 http = { workspace = true }
 rand = { workspace = true }
-duration-str = "0.5"
+duration-str = { workspace = true }
+time = { workspace = true }
+thiserror = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
-cursive = { version = "0.20", default-features = false, features = ["crossterm-backend"] }
+cursive = { workspace = true, features = ["crossterm-backend"] }
 
 [target.'cfg(unix)'.dependencies]
-cursive = { version = "0.20", default-features = false, features = ["termion-backend"] }
+cursive = { workspace = true, features = ["termion-backend"] }

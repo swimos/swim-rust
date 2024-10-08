@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,7 +15,7 @@
 use std::collections::{BTreeMap, HashMap};
 use std::hash::Hash;
 
-/// Trait for types with an associative binary operator. Implementors are responsible for ensuring
+/// Trait for types with an associative binary operator. Implementers are responsible for ensuring
 /// that the operation is associative.
 pub trait Semigroup: Sized {
     fn op(mut left: Self, right: Self) -> Self {

@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,21 +16,20 @@ use std::{collections::HashMap, time::Duration};
 
 use futures::{future::BoxFuture, Future, FutureExt};
 use swimos_api::{
-    agent::{Agent, AgentConfig, AgentContext, AgentInitResult, LaneConfig},
+    agent::{Agent, AgentConfig, AgentContext, AgentInitResult, LaneConfig, WarpLaneKind},
     error::{AgentInitError, AgentTaskError},
-    lane::WarpLaneKind,
-    store::StoreDisabled,
+    persistence::StoreDisabled,
 };
-use swimos_form::structural::read::ReadError;
+use swimos_form::read::ReadError;
 use swimos_model::Text;
 use swimos_utilities::{
-    io::byte_channel::{ByteReader, ByteWriter},
-    routing::route_uri::RouteUri,
+    byte_channel::{ByteReader, ByteWriter},
+    routing::RouteUri,
     trigger,
 };
 use tokio::sync::mpsc;
 
-use crate::agent::{AgentExecError, AgentRoute, AgentRouteChannels};
+use crate::agent::{AgentExecError, AgentRouteChannels, AgentRouteDescriptor};
 
 use super::AgentRouteTask;
 
@@ -124,7 +123,7 @@ where
 async fn test_agent_failure() {
     with_timeout(async {
         let agent = TestAgent::Running;
-        let identity = AgentRoute {
+        let identity = AgentRouteDescriptor {
             identity: Uuid::from_u128(1),
             route: "/node".parse().unwrap(),
             route_params: HashMap::new(),
@@ -157,7 +156,7 @@ async fn test_agent_failure() {
 async fn test_agent_failure_with_store() {
     with_timeout(async {
         let agent = TestAgent::Running;
-        let identity = AgentRoute {
+        let identity = AgentRouteDescriptor {
             identity: Uuid::from_u128(1),
             route: "/node".parse().unwrap(),
             route_params: HashMap::new(),
@@ -192,7 +191,7 @@ async fn test_agent_failure_with_store() {
 async fn test_agent_init_failure() {
     with_timeout(async {
         let agent = TestAgent::Init;
-        let identity = AgentRoute {
+        let identity = AgentRouteDescriptor {
             identity: Uuid::from_u128(1),
             route: "/node".parse().unwrap(),
             route_params: HashMap::new(),

@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,9 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//! # Ratchet Hyper Integration
+//!
+//! An adapter to allow upgrading a Hyper HTTP connection to a websocket connection, using
+//! Ratchet.
+
 mod websocket;
 
 pub use websocket::{
-    fail_upgrade, negotiate_upgrade, upgrade, Negotiated, NoUnwrap, SockUnwrap, UpgradeError,
-    UpgradeFuture,
+    fail_upgrade, negotiate_upgrade, upgrade, NoUnwrap, SockUnwrap, Upgrade, UpgradeFuture,
+    UpgradeStatus,
 };

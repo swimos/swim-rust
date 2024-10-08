@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -661,7 +661,7 @@ fn extend_text_with_strings() {
 
 #[test]
 fn extend_text_with_strings_by_ref() {
-    let strs = vec![
+    let strs = [
         "the ".to_string(),
         "cat ".to_string(),
         "sat ".to_string(),

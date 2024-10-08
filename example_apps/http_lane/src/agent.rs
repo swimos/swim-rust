@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use swimos::agent::{
-    agent_lifecycle::utility::HandlerContext,
+    agent_lifecycle::HandlerContext,
     event_handler::{EventHandler, HandlerAction, HandlerActionExt},
     lanes::{
         http::{HttpRequestContext, Response, UnitResponse},
@@ -22,8 +22,8 @@ use swimos::agent::{
     lifecycle, projections, AgentLaneModel,
 };
 
-#[derive(AgentLaneModel)]
 #[projections]
+#[derive(AgentLaneModel)]
 pub struct ExampleAgent {
     value_lane: ValueLane<i32>,
     http_lane: SimpleHttpLane<i32>,

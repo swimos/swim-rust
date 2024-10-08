@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,10 +13,10 @@
 // limitations under the License.
 
 use crate::protocol::{
-    AgentMessageDecoder, BytesResponseMessage, ClientMessageDecoder, MessageDecodeError, Path,
-    RawRequestMessage, RawRequestMessageEncoder, RawResponseMessageDecoder, RequestMessage,
-    ResponseMessage, ResponseMessageEncoder, COMMAND, EVENT, HEADER_INIT_LEN, LINK, LINKED,
-    OP_MASK, OP_SHIFT, SYNC, SYNCED, UNLINK, UNLINKED,
+    BytesResponseMessage, MessageDecodeError, RawRequestMessage, RawRequestMessageEncoder,
+    RawResponseMessageDecoder, RequestMessage, RequestMessageDecoder, ResponseMessage,
+    ResponseMessageEncoder, COMMAND, EVENT, HEADER_INIT_LEN, LINK, LINKED, OP_MASK, OP_SHIFT, SYNC,
+    SYNCED, UNLINK, UNLINKED,
 };
 use bytes::{Buf, Bytes, BytesMut};
 use futures::future::join;
@@ -25,12 +25,14 @@ use std::fmt::Debug;
 use std::fmt::Write;
 use std::io::ErrorKind;
 use std::num::NonZeroUsize;
-use swimos_form::structural::read::recognizer::RecognizerReadable;
-use swimos_form::structural::write::StructuralWritable;
+use swimos_api::address::RelativeAddress;
+use swimos_form::read::RecognizerReadable;
+use swimos_form::write::StructuralWritable;
 use swimos_form::Form;
-use swimos_model::{BytesStr, Text};
-use swimos_recon::printer::print_recon_compact;
-use swimos_utilities::io::byte_channel;
+use swimos_model::Text;
+use swimos_recon::print_recon_compact;
+use swimos_utilities::byte_channel;
+use swimos_utilities::encoding::BytesStr;
 use swimos_utilities::non_zero_usize;
 use tokio_util::codec::{Decoder, Encoder, FramedRead, FramedWrite};
 use uuid::Uuid;
@@ -47,7 +49,7 @@ fn encode_link_frame() {
     let id = make_addr();
     let node = "my_node";
     let lane = "lane";
-    let path = Path::new(node, lane);
+    let path = RelativeAddress::new(node, lane);
     let frame = RawRequestMessage::link(id, path);
     let mut encoder = RawRequestMessageEncoder;
     let mut buffer = BytesMut::new();
@@ -76,7 +78,7 @@ fn encode_sync_frame() {
     let id = make_addr();
     let node = "my_node";
     let lane = "lane";
-    let path = Path::new(node, lane);
+    let path = RelativeAddress::new(node, lane);
     let frame = RawRequestMessage::sync(id, path);
     let mut encoder = RawRequestMessageEncoder;
     let mut buffer = BytesMut::new();
@@ -105,7 +107,7 @@ fn encode_unlink_frame() {
     let id = make_addr();
     let node = "my_node";
     let lane = "lane";
-    let path = Path::new(node, lane);
+    let path = RelativeAddress::new(node, lane);
     let frame = RawRequestMessage::unlink(id, path);
     let mut encoder = RawRequestMessageEncoder;
     let mut buffer = BytesMut::new();
@@ -134,7 +136,7 @@ fn encode_command_frame() {
     let id = make_addr();
     let node = "my_node";
     let lane = "lane";
-    let path = Path::new(node, lane);
+    let path = RelativeAddress::new(node, lane);
     let body = "@Example { first: 1, second: 2 }";
     let frame = RawRequestMessage::command(id, path, body.as_bytes());
 
@@ -196,17 +198,6 @@ fn check_result_rawresponse(
     }
 }
 
-fn check_result_response<P: Eq + Debug, T: Eq + Debug>(
-    result: Result<Option<ResponseMessage<P, T, Bytes>>, MessageDecodeError>,
-    expected: ResponseMessage<P, T, Bytes>,
-) {
-    match result {
-        Ok(Some(msg)) => assert_eq!(msg, expected),
-        Ok(_) => panic!("Incomplete."),
-        Err(e) => panic!("Failed: {}", e),
-    }
-}
-
 fn round_trip<P, T>(
     frame: RequestMessage<P, &[u8]>,
 ) -> Result<Option<RequestMessage<Text, T>>, MessageDecodeError>
@@ -214,7 +205,7 @@ where
     P: AsRef<str>,
     T: RecognizerReadable + Debug,
 {
-    let mut decoder = AgentMessageDecoder::<T, _>::new(T::make_recognizer());
+    let mut decoder = RequestMessageDecoder::<T, _>::new(T::make_recognizer());
     let mut encoder = RawRequestMessageEncoder;
 
     let mut buffer = BytesMut::new();
@@ -251,41 +242,18 @@ where
     result
 }
 
-fn round_trip_response<P, T, U>(
-    frame: ResponseMessage<P, T, U>,
-) -> Result<Option<ResponseMessage<Text, T, Bytes>>, MessageDecodeError>
-where
-    P: AsRef<str>,
-    U: AsRef<[u8]>,
-    T: StructuralWritable + RecognizerReadable,
-{
-    let mut decoder = ClientMessageDecoder::<T, _>::new(T::make_recognizer());
-    let mut encoder = ResponseMessageEncoder;
-
-    let mut buffer = BytesMut::new();
-    assert!(encoder.encode(frame, &mut buffer).is_ok());
-
-    let result = decoder.decode(&mut buffer);
-
-    if result.is_ok() {
-        assert!(buffer.is_empty());
-    }
-
-    result
-}
-
 #[test]
 fn decode_link_frame() {
     let id = make_addr();
     let node = "my_node";
     let lane = "lane";
 
-    let frame = RawRequestMessage::link(id, Path::new(node, lane));
+    let frame = RawRequestMessage::link(id, RelativeAddress::new(node, lane));
     let result = round_trip::<&str, Example>(frame);
 
     check_result(
         result,
-        RequestMessage::link(id, Path::new(Text::new(node), Text::new(lane))),
+        RequestMessage::link(id, RelativeAddress::new(Text::new(node), Text::new(lane))),
     );
 }
 
@@ -295,12 +263,12 @@ fn decode_sync_frame() {
     let node = "my_node";
     let lane = "lane";
 
-    let frame = RawRequestMessage::sync(id, Path::new(node, lane));
+    let frame = RawRequestMessage::sync(id, RelativeAddress::new(node, lane));
     let result = round_trip::<_, Example>(frame);
 
     check_result(
         result,
-        RequestMessage::sync(id, Path::new(Text::new(node), Text::new(lane))),
+        RequestMessage::sync(id, RelativeAddress::new(Text::new(node), Text::new(lane))),
     );
 }
 
@@ -310,12 +278,12 @@ fn decode_unlink_frame() {
     let node = "my_node";
     let lane = "lane";
 
-    let frame = RawRequestMessage::unlink(id, Path::new(node, lane));
+    let frame = RawRequestMessage::unlink(id, RelativeAddress::new(node, lane));
     let result = round_trip::<_, Example>(frame);
 
     check_result(
         result,
-        RequestMessage::unlink(id, Path::new(Text::new(node), Text::new(lane))),
+        RequestMessage::unlink(id, RelativeAddress::new(Text::new(node), Text::new(lane))),
     );
 }
 
@@ -331,13 +299,18 @@ fn decode_command_frame() {
     };
     let as_text = print_recon_compact(&record).to_string();
 
-    let frame = RawRequestMessage::command(id, Path::new(node, lane), as_text.as_bytes());
+    let frame =
+        RawRequestMessage::command(id, RelativeAddress::new(node, lane), as_text.as_bytes());
 
     let result = round_trip::<_, Example>(frame);
 
     check_result(
         result,
-        RequestMessage::command(id, Path::new(Text::new(node), Text::new(lane)), record),
+        RequestMessage::command(
+            id,
+            RelativeAddress::new(Text::new(node), Text::new(lane)),
+            record,
+        ),
     );
 }
 
@@ -352,7 +325,7 @@ async fn multiple_frames() {
     let (tx, rx) = byte_channel::byte_channel(CHANNEL_SIZE);
 
     let mut framed_write = FramedWrite::new(tx, RawRequestMessageEncoder);
-    let decoder = AgentMessageDecoder::<Example, _>::new(Example::make_recognizer());
+    let decoder = RequestMessageDecoder::<Example, _>::new(Example::make_recognizer());
 
     let mut framed_read = FramedRead::new(rx, decoder);
 
@@ -370,10 +343,10 @@ async fn multiple_frames() {
     let str2 = print_recon_compact(&record2).to_string();
 
     let frames = vec![
-        RawRequestMessage::sync(id, Path::new(node, lane)),
-        RawRequestMessage::command(id, Path::new(node, lane), str1.as_bytes()),
-        RawRequestMessage::command(id, Path::new(node, lane), str2.as_bytes()),
-        RawRequestMessage::unlink(id, Path::new(node, lane)),
+        RawRequestMessage::sync(id, RelativeAddress::new(node, lane)),
+        RawRequestMessage::command(id, RelativeAddress::new(node, lane), str1.as_bytes()),
+        RawRequestMessage::command(id, RelativeAddress::new(node, lane), str2.as_bytes()),
+        RawRequestMessage::unlink(id, RelativeAddress::new(node, lane)),
     ];
 
     let send_task = async move {
@@ -404,10 +377,10 @@ async fn multiple_frames() {
     let (_, result) = join(send_task, recv_task).await;
 
     let expected = vec![
-        RequestMessage::sync(id, Path::text(node, lane)),
-        RequestMessage::command(id, Path::text(node, lane), record1),
-        RequestMessage::command(id, Path::text(node, lane), record2),
-        RequestMessage::unlink(id, Path::text(node, lane)),
+        RequestMessage::sync(id, RelativeAddress::text(node, lane)),
+        RequestMessage::command(id, RelativeAddress::text(node, lane), record1),
+        RequestMessage::command(id, RelativeAddress::text(node, lane), record2),
+        RequestMessage::unlink(id, RelativeAddress::text(node, lane)),
     ];
 
     assert!(result.is_ok());
@@ -419,7 +392,7 @@ fn encode_linked_frame() {
     let id = make_addr();
     let node = "my_node";
     let lane = "lane";
-    let path = Path::new(node, lane);
+    let path = RelativeAddress::new(node, lane);
     let frame = ResponseMessage::<_, Example, Bytes>::linked(id, path);
     let mut encoder = ResponseMessageEncoder;
     let mut buffer = BytesMut::new();
@@ -448,7 +421,7 @@ fn encode_synced_frame() {
     let id = make_addr();
     let node = "my_node";
     let lane = "lane";
-    let path = Path::new(node, lane);
+    let path = RelativeAddress::new(node, lane);
     let frame = ResponseMessage::<_, Example, Bytes>::synced(id, path);
     let mut encoder = ResponseMessageEncoder;
     let mut buffer = BytesMut::new();
@@ -477,7 +450,7 @@ fn encode_unlinked_frame() {
     let id = make_addr();
     let node = "my_node";
     let lane = "lane";
-    let path = Path::new(node, lane);
+    let path = RelativeAddress::new(node, lane);
     let frame = ResponseMessage::<_, Example, Bytes>::unlinked(id, path, None);
     let mut encoder = ResponseMessageEncoder;
     let mut buffer = BytesMut::new();
@@ -506,7 +479,7 @@ fn encode_unlinked_frame_with_body() {
     let id = make_addr();
     let node = "my_node";
     let lane = "lane";
-    let path = Path::new(node, lane);
+    let path = RelativeAddress::new(node, lane);
 
     let body = "Gone";
 
@@ -545,7 +518,7 @@ fn encode_event_frame() {
     let id = make_addr();
     let node = "my_node";
     let lane = "lane";
-    let path = Path::new(node, lane);
+    let path = RelativeAddress::new(node, lane);
     let body = Example {
         first: 0,
         second: 0,
@@ -583,8 +556,8 @@ fn encode_event_frame() {
     assert_eq!(buffer.as_ref(), expected_body.as_bytes());
 }
 
-fn bytes_path(node: &str, lane: &str) -> Path<BytesStr> {
-    Path::new(BytesStr::from(node), BytesStr::from(lane))
+fn bytes_path(node: &str, lane: &str) -> RelativeAddress<BytesStr> {
+    RelativeAddress::new(BytesStr::from(node), BytesStr::from(lane))
 }
 
 #[test]
@@ -608,7 +581,7 @@ fn decode_synced_frame() {
     let node = "my_node";
     let lane = "lane";
 
-    let frame = ResponseMessage::<_, Example, Bytes>::synced(id, Path::new(node, lane));
+    let frame = ResponseMessage::<_, Example, Bytes>::synced(id, RelativeAddress::new(node, lane));
     let result = round_trip_rawresponse::<_, Example>(frame);
 
     check_result_rawresponse(
@@ -623,7 +596,8 @@ fn decode_unlinked_frame() {
     let node = "my_node";
     let lane = "lane";
 
-    let frame = ResponseMessage::<_, Example, Bytes>::unlinked(id, Path::new(node, lane), None);
+    let frame =
+        ResponseMessage::<_, Example, Bytes>::unlinked(id, RelativeAddress::new(node, lane), None);
     let result = round_trip_rawresponse::<_, Example>(frame);
 
     check_result_rawresponse(
@@ -648,7 +622,7 @@ fn decode_event_frame() {
 
     let frame = ResponseMessage::<_, Example, Bytes>::event(
         id,
-        Path::new(node, lane),
+        RelativeAddress::new(node, lane),
         Example {
             first: 1,
             second: 2,
@@ -659,95 +633,6 @@ fn decode_event_frame() {
     check_result_rawresponse(
         result,
         BytesResponseMessage::event(id, bytes_path(node, lane), expected_body.freeze()),
-    );
-}
-
-#[test]
-fn decode_client_linked_frame() {
-    let id = make_addr();
-    let node = "my_node";
-    let lane = "lane";
-
-    let frame = ResponseMessage::<_, Example, Bytes>::linked(id, Path::new(node, lane));
-    let result = round_trip_response(frame);
-
-    check_result_response(
-        result,
-        ResponseMessage::<_, Example, Bytes>::linked(id, Path::text(node, lane)),
-    );
-}
-
-#[test]
-fn decode_client_synced_frame() {
-    let id = make_addr();
-    let node = "my_node";
-    let lane = "lane";
-
-    let frame = ResponseMessage::<_, Example, Bytes>::synced(id, Path::new(node, lane));
-    let result = round_trip_response(frame);
-
-    check_result_response(
-        result,
-        ResponseMessage::<_, Example, Bytes>::synced(id, Path::text(node, lane)),
-    );
-}
-
-#[test]
-fn decode_client_unlinked_frame() {
-    let id = make_addr();
-    let node = "my_node";
-    let lane = "lane";
-
-    let frame = ResponseMessage::<_, Example, Bytes>::unlinked(id, Path::new(node, lane), None);
-    let result = round_trip_response(frame);
-
-    check_result_response(
-        result,
-        ResponseMessage::<_, Example, Bytes>::unlinked(id, Path::text(node, lane), None),
-    );
-}
-
-#[test]
-fn decode_client_unlinked_frame_with_body() {
-    let id = make_addr();
-    let node = "my_node";
-    let lane = "lane";
-    let body = "Gone";
-
-    let frame = ResponseMessage::<_, Example, _>::unlinked(
-        id,
-        Path::new(node, lane),
-        Some(body.as_bytes()),
-    );
-    let result = round_trip_response(frame);
-
-    let expected_body = Bytes::copy_from_slice(body.as_bytes());
-    check_result_response(
-        result,
-        ResponseMessage::<_, Example, Bytes>::unlinked(
-            id,
-            Path::text(node, lane),
-            Some(expected_body),
-        ),
-    );
-}
-
-#[test]
-fn decode_client_event_frame() {
-    let id = make_addr();
-    let node = "my_node";
-    let lane = "lane";
-    let body = Example {
-        first: 1,
-        second: 2,
-    };
-
-    let frame = ResponseMessage::<_, Example, Bytes>::event(id, Path::new(node, lane), body);
-    let result = round_trip_response(frame);
-
-    check_result_response(
-        result,
-        ResponseMessage::<_, Example, Bytes>::event(id, Path::text(node, lane), body),
     );
 }
 
@@ -770,12 +655,18 @@ fn decode_command_frame_twice() {
     let first_as_text = print_recon_compact(&first).to_string();
     let second_as_text = print_recon_compact(&second).to_string();
 
-    let first_frame =
-        RawRequestMessage::command(id, Path::new(node, lane), first_as_text.as_bytes());
-    let second_frame =
-        RawRequestMessage::command(id, Path::new(node, lane), second_as_text.as_bytes());
+    let first_frame = RawRequestMessage::command(
+        id,
+        RelativeAddress::new(node, lane),
+        first_as_text.as_bytes(),
+    );
+    let second_frame = RawRequestMessage::command(
+        id,
+        RelativeAddress::new(node, lane),
+        second_as_text.as_bytes(),
+    );
 
-    let mut decoder = AgentMessageDecoder::<Example2, _>::new(Example2::make_recognizer());
+    let mut decoder = RequestMessageDecoder::<Example2, _>::new(Example2::make_recognizer());
     let mut encoder = RawRequestMessageEncoder;
 
     let mut buffer = BytesMut::new();
@@ -787,11 +678,11 @@ fn decode_command_frame_twice() {
 
     check_result(
         first_result,
-        RequestMessage::command(id, Path::text(node, lane), first),
+        RequestMessage::command(id, RelativeAddress::text(node, lane), first),
     );
 
     check_result(
         second_result,
-        RequestMessage::command(id, Path::text(node, lane), second),
+        RequestMessage::command(id, RelativeAddress::text(node, lane), second),
     );
 }

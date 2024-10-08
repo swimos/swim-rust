@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
 
 use futures::future::{ready, Ready};
 use std::future::Future;
-use swimos_api::handlers::{BlockingHandler, FnMutHandler, NoHandler, WithShared};
+use swimos_utilities::handlers::{BlockingHandler, FnMutHandler, NoHandler, WithShared};
 
 use super::{EventFn, SharedEventFn};
 

@@ -1,4 +1,4 @@
-// Copyright 2015-2022 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::parser::Span;
+use crate::recon_parser::{record::ParseIterator, Span};
 use smallvec::SmallVec;
 use std::iter::Peekable;
-use swimos_form::structural::read::event::ReadEvent;
+use swimos_form::read::ReadEvent;
 
 #[cfg(test)]
 mod tests;
@@ -24,10 +24,10 @@ mod tests;
 ///
 /// * `first` - The first recon value.
 /// * `second` - The second recon value.
-pub fn compare_values(first: &str, second: &str) -> bool {
+pub fn compare_recon_values(first: &str, second: &str) -> bool {
     match incremental_compare(
-        &mut crate::parser::ParseIterator::new(Span::new(first), false).peekable(),
-        &mut crate::parser::ParseIterator::new(Span::new(second), false).peekable(),
+        &mut ParseIterator::new(Span::new(first), false).peekable(),
+        &mut ParseIterator::new(Span::new(second), false).peekable(),
     ) {
         Some(eq) => eq,
         None => first == second,

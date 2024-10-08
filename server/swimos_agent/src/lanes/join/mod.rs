@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,13 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swimos_model::address::Address;
+use swimos_api::address::Address;
 
-use crate::{agent_lifecycle::utility::HandlerContext, event_handler::HandlerAction};
+use crate::{agent_lifecycle::HandlerContext, event_handler::HandlerAction};
 
 pub mod map;
-#[cfg(test)]
-mod test_util;
 pub mod value;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -27,11 +25,15 @@ enum DownlinkStatus {
     Linked,
 }
 
+/// The response type for join lane lifecycle events to handle closed downlinks.
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
 pub enum LinkClosedResponse {
+    /// Attempt to reinstate the link.
     Retry,
+    /// Abandon the link but leave any associated keys in the lane's map.
     #[default]
     Abandon,
+    /// Abandon the link and delete any associated keys in the map.
     Delete,
 }
 
@@ -65,8 +67,11 @@ where
     }
 }
 
+/// Enumeration of the varieties of join lanes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum JoinLaneKind {
+    /// Indicates a [join value lane](super::JoinValueLane).
     Value,
+    /// Indicates a [join map lane](super::JoinMapLane).
     Map,
 }

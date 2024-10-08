@@ -1,0 +1,14 @@
+[package]
+name = "swimos_meta"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+description = "SwimOS Metadata API"
+license.workspace = true
+repository = "https://github.com/swimos/swim-rust/tree/main/api/swimos_meta"
+homepage.workspace = true
+
+[dependencies]
+swimos_model = { workspace = true }
+swimos_form = { workspace = true }
+swimos_api = { workspace = true }

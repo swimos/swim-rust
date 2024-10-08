@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -22,16 +22,16 @@ use crate::structural::model::field::{
 };
 use crate::structural::model::StructLike;
 use crate::SynValidation;
-use macro_utilities::attr_names::FORM_NAME;
-use macro_utilities::attributes::consume_attributes;
-use macro_utilities::CompoundTypeKind;
-use macro_utilities::FieldKind;
 use proc_macro2::TokenStream;
 use quote::ToTokens;
 use std::collections::HashSet;
 use std::ops::Add;
-use swimos_utilities::errors::validation::{validate2, Validation, ValidationItExt};
+use swimos_macro_utilities::attr_names::FORM_NAME;
+use swimos_macro_utilities::attributes::consume_attributes;
+use swimos_macro_utilities::CompoundTypeKind;
+use swimos_macro_utilities::FieldKind;
 use swimos_utilities::errors::Errors;
+use swimos_utilities::errors::{validate2, Validation, ValidationItExt};
 use swimos_utilities::format::comma_sep;
 use syn::{Attribute, Fields, Ident};
 

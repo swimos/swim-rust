@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,17 +13,19 @@
 // limitations under the License.
 
 use crate::SynValidation;
-use macro_utilities::attr_names::{
-    ATTR_PATH, BODY_PATH, CONV_NAME, FORM_PATH, HEADER_BODY_PATH, HEADER_PATH, NAME_NAME,
-    SCHEMA_NAME, SKIP_PATH, SLOT_PATH, TAG_PATH,
-};
-use macro_utilities::attributes::NestedMetaConsumer;
-use macro_utilities::{FieldKind, NameTransform, NameTransformConsumer, Symbol, Transformation};
 use proc_macro2::TokenStream;
 use quote::{ToTokens, TokenStreamExt};
 use std::borrow::Cow;
 use std::ops::Add;
-use swimos_utilities::errors::validation::Validation;
+use swimos_macro_utilities::attr_names::{
+    ATTR_PATH, BODY_PATH, CONV_NAME, FORM_PATH, HEADER_BODY_PATH, HEADER_PATH, NAME_NAME,
+    SCHEMA_NAME, SKIP_PATH, SLOT_PATH, TAG_PATH,
+};
+use swimos_macro_utilities::attributes::NestedMetaConsumer;
+use swimos_macro_utilities::{
+    FieldKind, NameTransform, NameTransformConsumer, Symbol, Transformation,
+};
+use swimos_utilities::errors::Validation;
 use syn::{Field, Ident, Meta, NestedMeta, Type};
 
 /// Describes how to extract a field from a struct.

@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,5 +17,4 @@ pub mod coproduct;
 /// A representation of the header of a Recon record as a heterogeneous list. This is used in
 /// the derive macro for [`crate::structural::write::StructuralWritable`] and should not
 /// generally be used in hand written code.
-#[doc(hidden)]
 pub mod header;

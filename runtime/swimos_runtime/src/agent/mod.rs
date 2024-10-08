@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,25 +17,24 @@ use futures::{
     FutureExt,
 };
 use swimos_api::{
+    address::RelativeAddress,
     agent::{
-        Agent, AgentConfig, AgentContext, HttpLaneRequest, HttpLaneRequestChannel, LaneConfig,
+        Agent, AgentConfig, AgentContext, DownlinkKind, HttpLaneRequest, HttpLaneRequestChannel,
+        LaneConfig, LaneKind, StoreKind, WarpLaneKind,
     },
-    downlink::DownlinkKind,
     error::{
-        AgentInitError, AgentRuntimeError, AgentTaskError, DownlinkRuntimeError, OpenStoreError,
-        StoreError,
+        AgentInitError, AgentRuntimeError, AgentTaskError, DownlinkFailureReason,
+        DownlinkRuntimeError, OpenStoreError, StoreError,
     },
-    lane::WarpLaneKind,
-    meta::lane::LaneKind,
-    net::SchemeHostPort,
-    store::{NodePersistence, StoreKind},
+    persistence::NodePersistence,
 };
-use swimos_model::{address::RelativeAddress, Text};
+use swimos_model::Text;
+use swimos_remote::SchemeHostPort;
 use swimos_utilities::{
-    future::retryable::RetryStrategy,
-    io::byte_channel::{ByteReader, ByteWriter},
+    byte_channel::{ByteReader, ByteWriter},
+    future::RetryStrategy,
     non_zero_usize,
-    routing::route_uri::RouteUri,
+    routing::RouteUri,
     trigger::{self, promise},
 };
 use thiserror::Error;
@@ -50,17 +49,19 @@ use std::{
     time::Duration,
 };
 
-use crate::downlink::DownlinkOptions;
+use crate::{downlink::DownlinkOptions, Io};
 
 use self::{
     reporting::{UplinkReportReader, UplinkReporter},
     store::{StoreInitError, StorePersistence},
     task::{
-        AdHocChannelRequest, AgentInitTask, AgentRuntimeTask, HttpLaneRuntimeSpec, InitTaskConfig,
-        LaneRuntimeSpec, LinksTaskConfig, NodeDescriptor, StoreRuntimeSpec,
+        AgentInitTask, AgentRuntimeTask, CommandChannelRequest, HttpLaneRuntimeSpec,
+        InitTaskConfig, LaneRuntimeSpec, LinksTaskConfig, NodeDescriptor, StoreRuntimeSpec,
     },
 };
 
+/// Describes the metrics the agent runtime task reports as it runs. These are subscribed to by the
+/// introspection API to report on the internal state of server application.
 pub mod reporting;
 mod store;
 mod task;
@@ -70,26 +71,40 @@ mod tests;
 use task::AgentRuntimeRequest;
 use tracing::{error, info_span, Instrument};
 
+/// A message type that can be sent to the agent runtime to request a link to one of its lanes.
 #[derive(Debug)]
 pub enum LinkRequest {
+    /// A request to open a downlink to one of the lanes.
     Downlink(DownlinkRequest),
+    /// A request to open a one way connection to send commands to a lane.
     Commander(CommanderRequest),
 }
 
+/// A description of an endpoint to which commands can be sent.
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum CommanderKey {
+    /// An endpoint on an explicit remote host.
     Remote(SchemeHostPort),
+    /// An endpoint that is locally resolved.
     Local(RelativeAddress<Text>),
 }
 
+/// A request to the runtime to open a channel to send commands to a remote lane.
 #[derive(Debug)]
 pub struct CommanderRequest {
+    /// The ID of the agent making the request.
     pub agent_id: Uuid,
+    /// The target end point for the channel.
     pub key: CommanderKey,
+    /// A promise to be satisfied with the channel.
     pub promise: oneshot::Sender<Result<ByteWriter, DownlinkRuntimeError>>,
 }
 
 impl CommanderRequest {
+    /// # Arguments
+    /// * `agent_id` - The ID of the agent making the request.
+    /// * `key` - The target end point for the channel.
+    /// * `promise` - A promise to be satisfied with the channel.
     pub fn new(
         agent_id: Uuid,
         key: CommanderKey,
@@ -103,31 +118,29 @@ impl CommanderRequest {
     }
 }
 
+/// A request to the runtime to open a downlink to a lane on another agent.
 #[derive(Debug)]
 pub struct DownlinkRequest {
+    /// An explicit host for the agent, if defined.
     pub remote: Option<SchemeHostPort>,
+    /// The node URI and name of the lane.
     pub address: RelativeAddress<Text>,
+    /// The kind of the downlink to open.
     pub kind: DownlinkKind,
+    /// Configuration parameters for the downlink.
     pub options: DownlinkOptions,
+    /// A promise to be satisfied with a channel to the downlink.
     pub promise: oneshot::Sender<Result<Io, DownlinkRuntimeError>>,
 }
 
 impl DownlinkRequest {
-    pub fn replace_promise(
-        &self,
-        replacement: oneshot::Sender<Result<Io, DownlinkRuntimeError>>,
-    ) -> Self {
-        DownlinkRequest {
-            remote: self.remote.clone(),
-            address: self.address.clone(),
-            kind: self.kind,
-            options: self.options,
-            promise: replacement,
-        }
-    }
-}
-
-impl DownlinkRequest {
+    /// # Arguments
+    ///
+    /// * `remote` - An explicit host for the agent, if defined.
+    /// * `address` - The containing node URI a and name of the lane to link to.
+    /// * `kind` - The kind of the downlink to open.
+    /// * `options` - Configuration parameters for the downlink.
+    /// * `promise` - A promise to be satisfied with a channel to the downlink.
     pub fn new(
         remote: Option<SchemeHostPort>,
         address: RelativeAddress<Text>,
@@ -141,6 +154,21 @@ impl DownlinkRequest {
             kind,
             options,
             promise,
+        }
+    }
+}
+
+impl DownlinkRequest {
+    fn replace_promise(
+        &self,
+        replacement: oneshot::Sender<Result<Io, DownlinkRuntimeError>>,
+    ) -> Self {
+        DownlinkRequest {
+            remote: self.remote.clone(),
+            address: self.address.clone(),
+            kind: self.kind,
+            options: self.options,
+            promise: replacement,
         }
     }
 }
@@ -159,12 +187,12 @@ impl AgentRuntimeContext {
 }
 
 impl AgentContext for AgentRuntimeContext {
-    fn ad_hoc_commands(&self) -> BoxFuture<'static, Result<ByteWriter, DownlinkRuntimeError>> {
+    fn command_channel(&self) -> BoxFuture<'static, Result<ByteWriter, DownlinkRuntimeError>> {
         let sender = self.tx.clone();
         async move {
             let (tx, rx) = oneshot::channel();
             sender
-                .send(AgentRuntimeRequest::AdHoc(AdHocChannelRequest::new(tx)))
+                .send(AgentRuntimeRequest::Command(CommandChannelRequest::new(tx)))
                 .await?;
             rx.await?
         }
@@ -208,7 +236,7 @@ impl AgentContext for AgentRuntimeContext {
                 Ok(r) => r,
                 Err(_) => {
                     return Err(DownlinkRuntimeError::DownlinkConnectionFailed(
-                        swimos_api::error::DownlinkFailureReason::InvalidUrl,
+                        DownlinkFailureReason::InvalidUrl,
                     ))
                 }
             };
@@ -266,9 +294,6 @@ impl AgentContext for AgentRuntimeContext {
         .boxed()
     }
 }
-
-/// Ends of two independent channels (for example the input and output channels of an agent).
-type Io = (ByteWriter, ByteReader);
 
 /// Reasons that a remote connected to an agent runtime task could be disconnected.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -339,19 +364,23 @@ pub enum AgentAttachmentRequest {
 
 /// A request from an agent to register a new lane for metadata reporting.
 pub struct UplinkReporterRegistration {
+    /// The ID of the agent making the request.
     pub agent_id: Uuid,
+    /// The name of the lane.
     pub lane_name: Text,
+    /// The kind of the lane.
     pub kind: LaneKind,
+    /// Receiver for the uplink statistics.
     pub reader: UplinkReportReader,
 }
 
 impl UplinkReporterRegistration {
-    pub fn new(
-        agent_id: Uuid,
-        lane_name: Text,
-        kind: LaneKind,
-        reader: UplinkReportReader,
-    ) -> Self {
+    /// # Arguments
+    /// * `agent_id` - The ID of the agent making the request.
+    /// * `lane_name` - The name of the lane.
+    /// * `kind` - The kind of the lane.
+    /// * `reader` - Receiver for the uplink statistics.
+    fn new(agent_id: Uuid, lane_name: Text, kind: LaneKind, reader: UplinkReportReader) -> Self {
         UplinkReporterRegistration {
             agent_id,
             lane_name,
@@ -371,7 +400,7 @@ pub struct NodeReporting {
 }
 
 impl NodeReporting {
-    /// #Arguments
+    /// # Arguments
     /// * `agent_id` - The unique ID of the agent that will hold this context.
     /// * `aggregate_reporter` - Used to report the aggregated values for all lanes.
     /// * `lane_registrations` - Used by the agent to register a new lane for reporting.
@@ -416,16 +445,13 @@ impl NodeReporting {
 }
 
 impl AgentAttachmentRequest {
-    pub fn downlink(id: Uuid, io: Io, completion: promise::Sender<DisconnectionReason>) -> Self {
-        AgentAttachmentRequest::TwoWay {
-            id,
-            io,
-            completion,
-            on_attached: None,
-        }
-    }
-
-    /// Constructs a request with a trigger that will be called when the registration completes.
+    /// Constructs a downlink request with a trigger that will be called when the request is completed.
+    ///
+    /// # Arguments
+    /// * `id` - The ID of the remote endpoint requesting the downlink.
+    /// * `io` - The bidirectional channel.
+    /// * `completion` - Called for when the downlink closes.
+    /// * `on_attached` - Called when the request is completed.
     pub fn with_confirmation(
         id: Uuid,
         io: Io,
@@ -440,6 +466,13 @@ impl AgentAttachmentRequest {
         }
     }
 
+    /// Constructs a request to open a one way channel to send commands to the agent.
+    ///
+    /// # Arguments
+    /// * `id` - The ID of the remote endpoint requesting the channel.
+    /// * `io` - The reader to receive the commands.
+    /// * `on_attached` - Called when the channel is established.
+    ///
     pub fn commander(id: Uuid, io: ByteReader, on_attached: trigger::Sender) -> Self {
         AgentAttachmentRequest::OneWay {
             id,
@@ -466,12 +499,12 @@ pub struct AgentRuntimeConfig {
     pub shutdown_timeout: Duration,
     /// If initializing an item from the store takes longer than this, the agent will fail.
     pub item_init_timeout: Duration,
-    /// Timeout for outgoing channels to send ad hoc commands.
-    pub ad_hoc_output_timeout: Duration,
-    /// Retry strategy for opening outgoing channels for ad hoc commands.
-    pub ad_hoc_output_retry: RetryStrategy,
-    /// The size of the buffer used by the agent to send ad hoc commands to the runtime.
-    pub ad_hoc_buffer_size: NonZeroUsize,
+    /// Timeout for outgoing channels to send commands.
+    pub command_output_timeout: Duration,
+    /// Retry strategy for opening outgoing channels for commands.
+    pub command_output_retry: RetryStrategy,
+    /// The size of the buffer used by the agent to send commands to the runtime.
+    pub command_msg_buffer: NonZeroUsize,
     /// The size of the channel used by the agent to pass requests to an HTTP lane.
     pub lane_http_request_channel_size: NonZeroUsize,
 }
@@ -490,9 +523,9 @@ impl Default for AgentRuntimeConfig {
             prune_remote_delay: DEFAULT_TIMEOUT,
             shutdown_timeout: DEFAULT_TIMEOUT,
             item_init_timeout: DEFAULT_INIT_TIMEOUT,
-            ad_hoc_output_timeout: DEFAULT_TIMEOUT,
-            ad_hoc_output_retry: RetryStrategy::none(),
-            ad_hoc_buffer_size: DEFAULT_BUFFER_SIZE,
+            command_output_timeout: DEFAULT_TIMEOUT,
+            command_output_retry: RetryStrategy::none(),
+            command_msg_buffer: DEFAULT_BUFFER_SIZE,
             lane_http_request_channel_size: DEFAULT_CHANNEL_SIZE,
         }
     }
@@ -523,18 +556,24 @@ pub enum AgentExecError {
     PersistenceFailure(#[from] StoreError),
 }
 
-pub struct AgentRoute {
+/// Descriptor of an agent route.
+pub struct AgentRouteDescriptor {
+    /// The unique ID of the agent instance.
     pub identity: Uuid,
+    /// The route URI of the instance.
     pub route: RouteUri,
+    /// Parameters extracted from the route URI of the instance.
     pub route_params: HashMap<String, String>,
 }
 
+/// All configuration parameters associated with an agent instance.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct CombinedAgentConfig {
     pub agent_config: AgentConfig,
     pub runtime_config: AgentRuntimeConfig,
 }
 
+/// Channels used by an agent instance to communicate with the runtime.
 pub struct AgentRouteChannels {
     attachment_rx: mpsc::Receiver<AgentAttachmentRequest>,
     http_rx: mpsc::Receiver<HttpLaneRequest>,
@@ -542,7 +581,7 @@ pub struct AgentRouteChannels {
 }
 
 impl AgentRouteChannels {
-    /// #Arguments
+    /// # Arguments
     /// * `attachment_rx` - Channel for making requests to attach remotes to the agent task.
     /// * `http_rx` - Channel for routing HTTP requests to the agent.
     /// * `link_tx` - Channel to request external links from the runtime.
@@ -559,6 +598,8 @@ impl AgentRouteChannels {
     }
 }
 
+/// The agent runtime task. This mediates between the user defined agent state and event handlers
+/// and the other entities within the Swim server application.
 pub struct AgentRouteTask<'a, A> {
     agent: &'a A,
     identity: Uuid,
@@ -576,7 +617,7 @@ pub struct AgentRouteTask<'a, A> {
 impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
     /// Run an agent.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `agent` - The agent instance.
     /// * `identity` - Routing identify of the agent instance.
     /// * `channels` - Channels over which the runtime communicates with the agent.
@@ -585,7 +626,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
     /// * `reporting` - Uplink metrics reporters.
     pub fn new(
         agent: &'a A,
-        identity: AgentRoute,
+        identity: AgentRouteDescriptor,
         channels: AgentRouteChannels,
         stopping: trigger::Receiver,
         config: CombinedAgentConfig,
@@ -606,6 +647,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
         }
     }
 
+    /// Run the agent task without persistence.
     pub fn run_agent(self) -> impl Future<Output = Result<(), AgentExecError>> + Send + 'static {
         let AgentRouteTask {
             agent,
@@ -624,10 +666,10 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
         let (runtime_tx, runtime_rx) = mpsc::channel(runtime_config.attachment_queue_size.get());
         let (init_tx, init_rx) = trigger::trigger();
 
-        let ad_hoc_config = LinksTaskConfig {
-            buffer_size: runtime_config.ad_hoc_buffer_size,
-            retry_strategy: runtime_config.ad_hoc_output_retry,
-            timeout_delay: runtime_config.ad_hoc_output_timeout,
+        let cmd_config = LinksTaskConfig {
+            buffer_size: runtime_config.command_msg_buffer,
+            retry_strategy: runtime_config.command_output_retry,
+            timeout_delay: runtime_config.command_output_timeout,
         };
 
         let runtime_init_task = AgentInitTask::new(
@@ -636,9 +678,9 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
             link_tx,
             init_rx,
             InitTaskConfig {
-                ad_hoc_queue_size: runtime_config.attachment_queue_size,
+                command_queue_size: runtime_config.attachment_queue_size,
                 item_init_timeout: runtime_config.item_init_timeout,
-                external_links: ad_hoc_config,
+                external_links: cmd_config,
                 http_lane_channel_size: runtime_config.lane_http_request_channel_size,
             },
             reporting,
@@ -676,6 +718,10 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
         }
     }
 
+    /// Run the agent task with persistence support.
+    ///
+    /// # Arguments
+    /// * `store_fut` - A future that will resolve to the persistence implementation.
     pub fn run_agent_with_store<Store, Fut>(
         self,
         store_fut: Fut,
@@ -709,10 +755,10 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
                 info_span!("Agent initialization task.", id = %identity, route = %node_uri),
             );
 
-        let ad_hoc_config = LinksTaskConfig {
-            buffer_size: runtime_config.ad_hoc_buffer_size,
-            retry_strategy: runtime_config.ad_hoc_output_retry,
-            timeout_delay: runtime_config.ad_hoc_output_timeout,
+        let cmd_config = LinksTaskConfig {
+            buffer_size: runtime_config.command_msg_buffer,
+            retry_strategy: runtime_config.command_output_retry,
+            timeout_delay: runtime_config.command_output_timeout,
         };
 
         async move {
@@ -723,9 +769,9 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
                 link_tx.clone(),
                 init_rx,
                 InitTaskConfig {
-                    ad_hoc_queue_size: runtime_config.attachment_queue_size,
+                    command_queue_size: runtime_config.attachment_queue_size,
                     item_init_timeout: runtime_config.item_init_timeout,
-                    external_links: ad_hoc_config,
+                    external_links: cmd_config,
                     http_lane_channel_size: runtime_config.lane_http_request_channel_size,
                 },
                 reporting,

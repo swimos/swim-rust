@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,10 +14,10 @@
 
 use std::collections::HashMap;
 
-use swimos_api::handlers::{FnHandler, NoHandler};
+use swimos_utilities::handlers::{FnHandler, NoHandler};
 
 use crate::{
-    agent_lifecycle::utility::HandlerContext,
+    agent_lifecycle::HandlerContext,
     event_handler::{EventHandler, TakeFn, UnitHandler},
 };
 
@@ -27,7 +27,7 @@ pub trait OnClear<K, V, Context>: Send {
     where
         Self: 'a;
 
-    /// #Arguments
+    /// # Arguments
     /// * `before` - The contents of the map before it was cleared.
     fn on_clear(&self, before: HashMap<K, V>) -> Self::OnClearHandler<'_>;
 }
@@ -40,7 +40,7 @@ pub trait OnClearShared<K, V, Context, Shared>: Send {
         Self: 'a,
         Shared: 'a;
 
-    /// #Arguments
+    /// # Arguments
     /// * `shared` - The shared state.
     /// * `handler_context` - Utility for constructing event handlers.
     /// * `before` - The contents of the map before it was cleared.

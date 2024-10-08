@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -22,9 +22,9 @@ const DEFAULT_REG_CHANNEL_SIZE: NonZeroUsize = non_zero_usize!(8);
 /// Configuration for the introspection meta agents.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct IntrospectionConfig {
-    /// Frequencey at which the node meta agents will generate an uplink pulse.
+    /// Frequency at which the node meta agents will generate an uplink pulse.
     pub node_pulse_interval: Duration,
-    /// Frequencey at which the lane meta agents will generate an uplink pulse.
+    /// Frequency at which the lane meta agents will generate an uplink pulse.
     pub lane_pulse_interval: Duration,
     /// Size of the buffer for registering new lanes with the introspection system.
     pub registration_channel_size: NonZeroUsize,

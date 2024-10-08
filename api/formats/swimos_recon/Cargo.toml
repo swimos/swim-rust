@@ -1,28 +1,33 @@
 [package]
 name = "swimos_recon"
-version = "0.1.0"
-authors = ["Swim Inc. developers info@swim.ai"]
-edition = "2021"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+description = "SwimOS Recon"
+license.workspace = true
+repository = "https://github.com/swimos/swim-rust/tree/main/api/formats/swimos_recon"
+homepage.workspace = true
 
 [features]
 default = []
-async_parser = ["futures", "tokio", "tokio-util", "bytes"]
 
 [dependencies]
 base64 = { workspace = true }
 either = { workspace = true }
-swimos_form = { path = "../../swimos_form" }
-swimos_model = { path = "../../swimos_model" }
+swimos_form = { workspace = true }
+swimos_model = { workspace = true }
+swimos_utilities = { workspace = true, features = ["encoding"] }
 nom = { workspace = true }
 nom_locate = { workspace = true }
 num-traits = { workspace = true }
-ryu = "1.0"
-futures = { workspace = true, optional = true }
-tokio = { workspace = true, features = ["io-util"], optional = true }
-tokio-util = { workspace = true, optional = true, features = ["codec"] }
-bytes = { workspace = true, optional = true }
+ryu = { workspace = true }
+futures = { workspace = true }
+tokio = { workspace = true, features = ["io-util"] }
+tokio-util = { workspace = true, features = ["codec"] }
+bytes = { workspace = true }
 smallvec = { workspace = true }
 thiserror = { workspace = true }
+num-bigint = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["io-util", "macros", "rt", "fs"] }

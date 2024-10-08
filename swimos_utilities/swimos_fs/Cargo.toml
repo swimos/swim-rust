@@ -1,0 +1,11 @@
+[package]
+name = "swimos_fs"
+version.workspace = true
+edition.workspace = true
+description = "SwimOS Filesystem Utilities"
+license.workspace = true
+repository = "https://github.com/swimos/swim-rust/tree/main/swimos_utilities/swimos_fs"
+homepage.workspace = true
+
+[dependencies]
+tempdir = { workspace = true }
