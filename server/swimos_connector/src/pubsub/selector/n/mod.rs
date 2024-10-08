@@ -12,10 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-mod selector;
+mod base;
+mod model;
 #[cfg(test)]
 mod tests;
 
-pub use crate::relay::selector::{
-    LaneSelector, NodeSelector, ParseError, PayloadSelector, Relay, Relays,
-};
+pub use base::*;
+pub use model::*;
+
+// #[cfg(feature = "pubsub")]
+mod pubsub;
+// #[cfg(feature = "pubsub")]
+pub use pubsub::*;

@@ -12,6 +12,7 @@ homepage.workspace = true
 default = []
 json = ["dep:serde_json"]
 avro = ["dep:apache-avro", "dep:chrono"]
+pubsub = []
 
 [dependencies]
 futures = { workspace = true }
@@ -42,3 +43,5 @@ nom_locate = { workspace = true }
 tokio = { workspace = true, features = ["rt", "test-util", "time"] }
 parking_lot = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }

@@ -1,3 +1,5 @@
+use crate::{LaneSelector, NodeSelector, ParseError, PayloadSelector, Relay, Relays};
+use std::str::FromStr;
 use swimos_form::Form;
 
 /// Specification of a value lane for the connector.
@@ -69,5 +71,77 @@ impl IngressMapLaneSpec {
             remove_when_no_value,
             required,
         }
+    }
+}
+
+#[derive(Clone, Debug, Form, PartialEq, Eq)]
+#[form(tag = "ValueRelaySpec")]
+pub struct ValueRelaySpecification {
+    pub node: String,
+    pub lane: String,
+    pub payload: String,
+    pub required: bool,
+}
+
+#[derive(Clone, Debug, Form, PartialEq, Eq)]
+#[form(tag = "MapRelaySpec")]
+pub struct MapRelaySpecification {
+    pub node: String,
+    pub lane: String,
+    pub key: String,
+    pub value: String,
+    pub required: bool,
+    pub remove_when_no_value: bool,
+}
+
+#[derive(Clone, Debug, Form, PartialEq, Eq)]
+pub enum RelaySpecification {
+    Value(ValueRelaySpecification),
+    Map(MapRelaySpecification),
+}
+
+impl TryFrom<Vec<RelaySpecification>> for Relays {
+    type Error = ParseError;
+
+    fn try_from(value: Vec<RelaySpecification>) -> Result<Self, Self::Error> {
+        let mut chain = Vec::with_capacity(value.len());
+
+        for spec in value {
+            match spec {
+                RelaySpecification::Value(ValueRelaySpecification {
+                    node,
+                    lane,
+                    payload,
+                    required,
+                }) => {
+                    let node = NodeSelector::from_str(node.as_str())?;
+                    let lane = LaneSelector::from_str(lane.as_str())?;
+                    let payload = PayloadSelector::value(payload.as_str(), required)?;
+
+                    chain.push(Relay::new(node, lane, payload));
+                }
+                RelaySpecification::Map(MapRelaySpecification {
+                    node,
+                    lane,
+                    key,
+                    value,
+                    required,
+                    remove_when_no_value,
+                }) => {
+                    let node = NodeSelector::from_str(node.as_str())?;
+                    let lane = LaneSelector::from_str(lane.as_str())?;
+                    let payload = PayloadSelector::map(
+                        key.as_str(),
+                        value.as_str(),
+                        required,
+                        remove_when_no_value,
+                    )?;
+
+                    chain.push(Relay::new(node, lane, payload));
+                }
+            }
+        }
+
+        Ok(Relays::new(chain))
     }
 }

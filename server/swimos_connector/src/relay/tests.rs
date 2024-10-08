@@ -20,7 +20,9 @@ use serde_json::json;
 use std::str::FromStr;
 use swimos_model::Item;
 
-fn mock_value() -> serde_json::Value {
+type JsonValue = serde_json::Value;
+
+fn mock_value() -> JsonValue {
     json! {
         {
             "success": 200,
@@ -33,11 +35,11 @@ fn to_bytes(s: impl Serialize) -> Vec<u8> {
     serde_json::to_vec(&s).unwrap()
 }
 
-fn convert_json_value(input: serde_json::Value) -> swimos_model::Value {
+fn convert_json_value(input: JsonValue) -> swimos_model::Value {
     match input {
-        serde_json::Value::Null => swimos_model::Value::Extant,
-        serde_json::Value::Bool(p) => swimos_model::Value::BooleanValue(p),
-        serde_json::Value::Number(n) => {
+        JsonValue::Null => swimos_model::Value::Extant,
+        JsonValue::Bool(p) => swimos_model::Value::BooleanValue(p),
+        JsonValue::Number(n) => {
             if let Some(i) = n.as_u64() {
                 swimos_model::Value::UInt64Value(i)
             } else if let Some(i) = n.as_i64() {
@@ -46,13 +48,13 @@ fn convert_json_value(input: serde_json::Value) -> swimos_model::Value {
                 swimos_model::Value::Float64Value(n.as_f64().unwrap_or(f64::NAN))
             }
         }
-        serde_json::Value::String(s) => swimos_model::Value::Text(s.into()),
-        serde_json::Value::Array(arr) => swimos_model::Value::record(
+        JsonValue::String(s) => swimos_model::Value::Text(s.into()),
+        JsonValue::Array(arr) => swimos_model::Value::record(
             arr.into_iter()
                 .map(|v| Item::ValueItem(convert_json_value(v)))
                 .collect(),
         ),
-        serde_json::Value::Object(obj) => swimos_model::Value::record(
+        JsonValue::Object(obj) => swimos_model::Value::record(
             obj.into_iter()
                 .map(|(k, v)| {
                     Item::Slot(swimos_model::Value::Text(k.into()), convert_json_value(v))
@@ -127,7 +129,7 @@ fn invalid_node_uri() {
 //             MessagePart::Key => message.key(),
 //             MessagePart::Payload => message.payload(),
 //         };
-//         let v: serde_json::Value = serde_json::from_slice(payload)?;
+//         let v: JsonValue = serde_json::from_slice(payload)?;
 //         Ok::<_, serde_json::Error>(convert_json_value(v))
 //     });
 //     AgentRelay::new(selectors, deser, deser)

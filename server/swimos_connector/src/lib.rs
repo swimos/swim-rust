@@ -24,6 +24,7 @@ mod test_support;
 pub mod config;
 pub mod deser;
 pub mod ingress;
+mod pubsub;
 pub mod selector;
 pub mod ser;
 
@@ -38,8 +39,5 @@ pub use error::{
 };
 pub use generic::{ConnectorAgent, MapLaneSelectorFn, ValueLaneSelectorFn};
 pub use lifecycle::{EgressConnectorLifecycle, IngressConnectorLifecycle};
-pub use relay::{
-    LaneSelector, MapRelaySpecification, NodeSelector, ParseError, PayloadSelector, Relay,
-    RelaySpecification, Relays, ValueRelaySpecification,
-};
+pub use relay::{LaneSelector, NodeSelector, ParseError, PayloadSelector, Relay, Relays};
 pub use route::{EgressConnectorModel, IngressConnectorModel};

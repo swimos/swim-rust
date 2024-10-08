@@ -13,9 +13,3 @@
 // limitations under the License.
 
 mod selector;
-#[cfg(test)]
-mod tests;
-
-pub use crate::relay::selector::{
-    LaneSelector, NodeSelector, ParseError, PayloadSelector, Relay, Relays,
-};

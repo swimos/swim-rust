@@ -16,8 +16,8 @@ use fluvio::config::{TlsCerts, TlsConfig, TlsPaths, TlsPolicy as FluvioTlsPolicy
 use fluvio::Offset;
 use std::path::PathBuf;
 use swimos_connector::config::format::DataFormat;
-use swimos_connector::config::{IngressMapLaneSpec, IngressValueLaneSpec};
-use swimos_connector::{RelaySpecification, Relays};
+use swimos_connector::config::{IngressMapLaneSpec, IngressValueLaneSpec, RelaySpecification};
+use swimos_connector::Relays;
 use swimos_form::Form;
 
 type BoxError = Box<dyn std::error::Error + 'static>;
@@ -33,7 +33,7 @@ pub struct FluvioIngressSpecification {
     /// The partition to consume from.
     pub partition: u32,
     /// The offset to start consuming from.
-    #[form(name = "Offset")]
+    #[form(name = "offset")]
     pub offset: OffsetSpecification,
     /// Specifications for the value lanes to define for the connector. This includes a pattern to
     /// define a selector that will pick out values to set to that lane, from a Fluvio message.
@@ -131,7 +131,7 @@ impl FluvioSpecification {
     }
 }
 
-/// Describes whether or not to use TLS and how
+/// Describes whether or not to use TLS and how.
 #[derive(Clone, Debug, Form, PartialEq, Eq)]
 pub enum TlsPolicy {
     Disabled,
@@ -176,7 +176,7 @@ impl TlsPolicy {
     }
 }
 
-/// Describes the TLS configuration either inline or via file paths
+/// Describes the TLS configuration either inline or via file paths.
 #[derive(Clone, Debug, Form, PartialEq, Eq)]
 pub enum FluvioTlsConfig {
     Inline(FluvioTlsCerts),
@@ -185,26 +185,26 @@ pub enum FluvioTlsConfig {
 
 #[derive(Clone, Debug, Form, PartialEq, Eq)]
 pub struct FluvioTlsCerts {
-    /// Domain name
+    /// Domain name.
     pub domain: String,
-    /// Client or Server private key
+    /// Client or Server private key.
     pub key: String,
-    /// Client or Server certificate
+    /// Client or Server certificate.
     pub cert: String,
-    /// Certificate Authority cert
+    /// Certificate Authority cert.
     pub ca_cert: String,
 }
 
-/// TLS config with paths to keys and certs
+/// TLS config with paths to keys and certs.
 #[derive(Clone, Debug, Form, PartialEq, Eq)]
 pub struct FluvioTlsPaths {
-    /// Domain name
+    /// Domain name.
     pub domain: String,
-    /// Path to client or server private key
+    /// Path to client or server private key.
     pub key: String,
-    /// Path to client or server certificate
+    /// Path to client or server certificate.
     pub cert: String,
-    /// Path to Certificate Authority certificate
+    /// Path to Certificate Authority certificate.
     pub ca_cert: String,
 }
 

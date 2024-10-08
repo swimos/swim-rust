@@ -12,10 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-mod selector;
-#[cfg(test)]
-mod tests;
-
-pub use crate::relay::selector::{
-    LaneSelector, NodeSelector, ParseError, PayloadSelector, Relay, Relays,
-};
+// #[test]
+// fn selectors() {
+//     type S = Coprod!(TopicSelector, KeySelector, ValueSelector);
+//
+//     let selector = S::inject(TopicSelector);
+//
+//     let topic = Value::from("topic");
+//     let key = Value::from(0);
+//     let value = Value::from(1);
+//
+//     let args = hlist![topic, key, value];
+//
+//     // let r = crate::pubsub::selector::n::model::select(&a, &args).unwrap();
+//     // println!("{:?}", r);
+// }

@@ -334,9 +334,9 @@ fn create_field_regex() -> Result<Regex, regex::Error> {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SelectorComponent<'a> {
-    is_attr: bool,
-    name: &'a str,
-    index: Option<usize>,
+    pub is_attr: bool,
+    pub name: &'a str,
+    pub index: Option<usize>,
 }
 
 impl<'a> SelectorComponent<'a> {
