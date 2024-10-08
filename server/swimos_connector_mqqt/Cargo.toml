@@ -1,0 +1,26 @@
+[package]
+name = "swimos_connector_mqqt"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+description = "SwimOS Connector for MQTT"
+license.workspace = true
+repository = "https://github.com/swimos/swim-rust/tree/main/server/swimos_connector_mqqt"
+homepage.workspace = true
+
+[dependencies]
+futures = { workspace = true }
+swimos_api = { workspace = true }
+swimos_utilities = { workspace = true }
+swimos_model = { workspace = true }
+swimos_form = { workspace = true }
+swimos_recon = { workspace = true }
+tokio = { workspace = true, features = ["sync", "macros"] }
+swimos_agent = { workspace = true }
+tracing = { workspace = true }
+rumqttc = { workspace = true }
+thiserror = { workspace = true }
+swimos_connector = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt"] }

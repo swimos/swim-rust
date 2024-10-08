@@ -20,7 +20,7 @@ swimos_utilities = { workspace = true }
 swimos_model = { workspace = true }
 swimos_form = { workspace = true }
 swimos_recon = { workspace = true }
-tokio = { workspace = true, features = ["sync", "macros", "fs"] }
+tokio = { workspace = true, features = ["sync", "macros"] }
 swimos_agent = { workspace = true }
 tracing = { workspace = true }
 uuid = { workspace = true }
