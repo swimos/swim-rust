@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::pubsub::selector::n::model::{SelectHandler, Selector, ValueSelector};
-use crate::selector::SelectorComponent;
+use crate::selector::{SelectHandler, Selector, ValueSelector};
 use crate::{
     ConnectorAgent, DeserializationError, MapLaneSelectorFn, SelectorError, ValueLaneSelectorFn,
 };
@@ -37,7 +36,7 @@ pub trait Deferred {
     fn get(&mut self) -> Result<&Value, DeserializationError>;
 }
 
-pub type BoxedComputed = Computed<Box<dyn Fn() -> Result<Value, DeserializationError> + 'static>>;
+pub type BoxedComputed = Computed<Box<dyn Fn() -> Result<Value, DeserializationError>>>;
 
 impl BoxedComputed {
     pub fn boxed<F>(f: F) -> BoxedComputed
@@ -48,10 +47,24 @@ impl BoxedComputed {
     }
 }
 
+#[derive(Debug, PartialEq)]
 pub struct ValueLaneSelector<S> {
     name: String,
     selector: S,
     required: bool,
+}
+
+impl<S> Clone for ValueLaneSelector<S>
+where
+    S: Clone,
+{
+    fn clone(&self) -> Self {
+        ValueLaneSelector {
+            name: self.name.clone(),
+            selector: self.selector.clone(),
+            required: self.required,
+        }
+    }
 }
 
 impl<S> ValueLaneSelector<S> {
@@ -62,15 +75,27 @@ impl<S> ValueLaneSelector<S> {
             required,
         }
     }
+
+    pub fn name(&self) -> &str {
+        self.name.as_str()
+    }
+
+    pub fn is_required(&self) -> bool {
+        self.required
+    }
+
+    pub fn into_selector(self) -> S {
+        self.selector
+    }
 }
 
-impl<S, A> SelectHandler<A> for ValueLaneSelector<S>
+impl<'a, S, A> SelectHandler<'a, A> for ValueLaneSelector<S>
 where
-    S: Selector<Arg = A>,
+    S: Selector<'a, Arg = A>,
 {
     type Handler = GenericValueLaneSet;
 
-    fn select_handler(&self, args: &mut A) -> Result<Self::Handler, SelectorError> {
+    fn select_handler(&self, args: &'a A) -> Result<Self::Handler, SelectorError> {
         let ValueLaneSelector {
             name,
             selector,
@@ -82,7 +107,7 @@ where
             Some(value) => {
                 trace!(name, value = %value, "Setting a value extracted from a message to a value lane.");
                 let select_lane = ValueLaneSelectorFn::new(name.clone());
-                Some(ValueLaneSelectSet::new(select_lane, value.clone()))
+                Some(ValueLaneSelectSet::new(select_lane, value))
             }
             None => {
                 if *required {
@@ -131,7 +156,7 @@ where
 pub struct IdentitySelector;
 
 impl ValueSelector for IdentitySelector {
-    fn select<'a>(&self, value: &'a Value) -> Option<&'a Value> {
+    fn select_value<'a>(&self, value: &'a Value) -> Option<&'a Value> {
         Some(value)
     }
 }
@@ -151,7 +176,7 @@ impl AttrSelector {
 }
 
 impl ValueSelector for AttrSelector {
-    fn select<'a>(&self, value: &'a Value) -> Option<&'a Value> {
+    fn select_value<'a>(&self, value: &'a Value) -> Option<&'a Value> {
         let AttrSelector { select_name } = self;
         match value {
             Value::Record(attrs, _) => attrs.iter().find_map(|Attr { name, value }: &Attr| {
@@ -185,7 +210,7 @@ impl SlotSelector {
 }
 
 impl ValueSelector for SlotSelector {
-    fn select<'a>(&self, value: &'a Value) -> Option<&'a Value> {
+    fn select_value<'a>(&self, value: &'a Value) -> Option<&'a Value> {
         let SlotSelector { select_key } = self;
         match value {
             Value::Record(_, items) => items.iter().find_map(|item: &Item| match item {
@@ -213,7 +238,7 @@ impl IndexSelector {
 }
 
 impl ValueSelector for IndexSelector {
-    fn select<'a>(&self, value: &'a Value) -> Option<&'a Value> {
+    fn select_value<'a>(&self, value: &'a Value) -> Option<&'a Value> {
         let IndexSelector { index } = self;
         match value {
             Value::Record(_, items) => items.get(*index).map(|item| match item {
@@ -252,11 +277,11 @@ impl From<IndexSelector> for BasicSelector {
 }
 
 impl ValueSelector for BasicSelector {
-    fn select<'a>(&self, value: &'a Value) -> Option<&'a Value> {
+    fn select_value<'a>(&self, value: &'a Value) -> Option<&'a Value> {
         match self {
-            BasicSelector::Attr(s) => ValueSelector::select(s, value),
-            BasicSelector::Slot(s) => ValueSelector::select(s, value),
-            BasicSelector::Index(s) => ValueSelector::select(s, value),
+            BasicSelector::Attr(s) => ValueSelector::select_value(s, value),
+            BasicSelector::Slot(s) => ValueSelector::select_value(s, value),
+            BasicSelector::Index(s) => ValueSelector::select_value(s, value),
         }
     }
 }
@@ -299,13 +324,30 @@ impl ChainSelector {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SelectorComponent<'a> {
+    pub is_attr: bool,
+    pub name: &'a str,
+    pub index: Option<usize>,
+}
+
+impl<'a> SelectorComponent<'a> {
+    pub fn new(is_attr: bool, name: &'a str, index: Option<usize>) -> Self {
+        SelectorComponent {
+            is_attr,
+            name,
+            index,
+        }
+    }
+}
+
 impl ValueSelector for ChainSelector {
-    fn select<'a>(&self, value: &'a Value) -> Option<&'a Value> {
+    fn select_value<'a>(&self, value: &'a Value) -> Option<&'a Value> {
         let mut v = Some(value);
         let ChainSelector(selectors) = self;
         for s in selectors {
             let selected = if let Some(v) = v {
-                ValueSelector::select(s, v)
+                ValueSelector::select_value(s, v)
             } else {
                 break;
             };
@@ -316,13 +358,29 @@ impl ValueSelector for ChainSelector {
 }
 
 /// A value lane selector generates event handlers from messages to update the state of a map lane.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct MapLaneSelector<K, V> {
     name: String,
     key_selector: K,
     value_selector: V,
     required: bool,
     remove_when_no_value: bool,
+}
+
+impl<K, V> Clone for MapLaneSelector<K, V>
+where
+    K: Clone,
+    V: Clone,
+{
+    fn clone(&self) -> Self {
+        MapLaneSelector {
+            name: self.name.clone(),
+            key_selector: self.key_selector.clone(),
+            value_selector: self.value_selector.clone(),
+            required: self.required,
+            remove_when_no_value: self.remove_when_no_value,
+        }
+    }
 }
 
 impl<K, V> MapLaneSelector<K, V> {
@@ -352,16 +410,33 @@ impl<K, V> MapLaneSelector<K, V> {
     pub fn name(&self) -> &str {
         &self.name
     }
+
+    pub fn is_required(&self) -> bool {
+        self.required
+    }
+
+    pub fn remove_when_no_value(&self) -> bool {
+        self.remove_when_no_value
+    }
+
+    pub fn into_selectors(self) -> (K, V) {
+        let MapLaneSelector {
+            key_selector,
+            value_selector,
+            ..
+        } = self;
+        (key_selector, value_selector)
+    }
 }
 
-impl<K, V, A> SelectHandler<A> for MapLaneSelector<K, V>
+impl<'a, K, V, A> SelectHandler<'a, A> for MapLaneSelector<K, V>
 where
-    K: Selector<Arg = A>,
-    V: Selector<Arg = A>,
+    K: Selector<'a, Arg = A>,
+    V: Selector<'a, Arg = A>,
 {
     type Handler = GenericMapLaneOp;
 
-    fn select_handler(&self, from: &mut A) -> Result<Self::Handler, SelectorError> {
+    fn select_handler(&self, from: &'a A) -> Result<Self::Handler, SelectorError> {
         let MapLaneSelector {
             name,
             key_selector,
@@ -370,7 +445,7 @@ where
             remove_when_no_value,
         } = self;
 
-        let maybe_key: Option<Value> = key_selector.select(from)?.cloned();
+        let maybe_key: Option<Value> = key_selector.select(from)?;
         let maybe_value = value_selector.select(from)?;
         let select_lane = MapLaneSelectorFn::new(name.clone());
 
@@ -389,7 +464,7 @@ where
             }
             (Some(key), Some(value)) => {
                 trace!(name, key = %key, value = %value, "Updating a map lane with an entry extracted from a message.");
-                let update = MapLaneSelectUpdate::new(select_lane, key, value.clone());
+                let update = MapLaneSelectUpdate::new(select_lane, key, value);
                 Some(MapLaneOp::inject(update))
             }
             _ => None,

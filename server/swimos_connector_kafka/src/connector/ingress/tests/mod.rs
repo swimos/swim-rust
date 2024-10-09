@@ -21,12 +21,9 @@ use std::{
     time::Duration,
 };
 
-use crate::{
-    connector::{
-        ingress::MessageSelector,
-        test_util::{run_handler, run_handler_with_futures, TestSpawner},
-    },
-    IngressMapLaneSpec, IngressValueLaneSpec,
+use crate::connector::{
+    ingress::MessageSelector,
+    test_util::{run_handler, run_handler_with_futures, TestSpawner},
 };
 use futures::future::join;
 use swimos_agent::agent_lifecycle::HandlerContext;
@@ -39,6 +36,10 @@ use swimos_utilities::trigger;
 use tokio::time::timeout;
 
 use super::Lanes;
+use swimos_connector::config::{IngressMapLaneSpec, IngressValueLaneSpec};
+use swimos_connector::selector::{
+    KeySelector, PubSubSelector, PubSubValueLaneSelector, SelectHandler,
+};
 use swimos_connector::{
     deser::{MessageDeserializer, MessageView, ReconDeserializer},
     selector::{
@@ -167,9 +168,9 @@ fn make_key_only(key: impl Into<Value>) -> Value {
 fn value_lane_selector_handler() {
     let (mut agent, ids) = setup_agent();
 
-    let selector = ValueLaneSelector::new(
+    let selector = PubSubValueLaneSelector::new(
         "key".to_string(),
-        ValueSelector::Key(ChainSelector::default()),
+        PubSubSelector::inject(KeySelector::new(ChainSelector::default())),
         true,
     );
 

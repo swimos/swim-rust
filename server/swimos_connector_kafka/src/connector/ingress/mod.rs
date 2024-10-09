@@ -233,7 +233,7 @@ where
             let message = consumer.recv().await?;
             let view = message.view();
             let (trigger_tx, trigger_rx) = trigger::trigger();
-            // We need to keep a borrow on the receiver in order to be bale to commit it. However, we don't want
+            // We need to keep a borrow on the receiver in order to be able to commit it. However, we don't want
             // to do this until after we know the handler has been run. The handler cannot be executed within the
             // as it requires access to the agent state. Therefore, we send it out via an MPSC channel and
             // wait for a signal to indicate that it has been handled.

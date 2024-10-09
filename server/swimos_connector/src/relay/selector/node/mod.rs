@@ -17,11 +17,12 @@ mod tests;
 
 use crate::relay::selector::{
     common::{
-        failure, parse_consume, parse_payload_selector, Segment, Selector, Span, StaticBound,
+        failure, parse_consume, parse_payload_selector, Segment, Selector as SelectorModel, Span,
+        StaticBound,
     },
     ParseError, Part, SelectorPatternIter,
 };
-use crate::selector::Deferred;
+use crate::selector::{PubSubSelectorArgs, Selector};
 use crate::SelectorError;
 use nom::{
     branch::alt,
@@ -64,16 +65,10 @@ pub struct NodeSelector {
 }
 
 impl NodeSelector {
-    pub(crate) fn select<K, V>(
+    pub(crate) fn select<'a>(
         &self,
-        key: &mut K,
-        value: &mut V,
-        topic: &Value,
-    ) -> Result<String, SelectorError>
-    where
-        K: Deferred,
-        V: Deferred,
-    {
+        args: &PubSubSelectorArgs<'a>,
+    ) -> Result<String, SelectorError> {
         let mut node_uri = String::new();
 
         for elem in self.into_iter() {
@@ -81,11 +76,11 @@ impl NodeSelector {
                 Part::Static(p) => node_uri.push_str(p),
                 Part::Selector(selector) => {
                     let value = selector
-                        .select(topic, key, value)?
+                        .select(args)?
                         .ok_or(SelectorError::InvalidRecord("".to_string()))?;
                     match value {
                         Value::BooleanValue(v) => {
-                            node_uri.push_str(if *v { "true" } else { "false" })
+                            node_uri.push_str(if v { "true" } else { "false" })
                         }
                         Value::Int32Value(v) => node_uri.push_str(&v.to_string()),
                         Value::Int64Value(v) => node_uri.push_str(&v.to_string()),
@@ -161,7 +156,7 @@ fn parse_path(input: Span) -> IResult<Span, Vec<Segment>> {
         start,
         many1(alt((
             parse_payload_selector.map(Segment::Selector),
-            tag("$topic").map(|_| Segment::Selector(Selector::Topic)),
+            tag("$topic").map(|_| Segment::Selector(SelectorModel::Topic)),
             // Anything prefixed by $ will be an escaped character. E.g, an input of /$key$_value
             // will yield a key selector and then a static segment of '_value'.
             preceded(opt(one_of("$")), parse_static).map(|span| {

@@ -26,13 +26,14 @@ pub use json::JsonDeserializer;
 #[cfg(feature = "avro")]
 pub use avro::AvroDeserializer;
 
+use std::cell::RefCell;
 use std::error::Error;
 use std::{array::TryFromSliceError, convert::Infallible};
 use swimos_form::Form;
 use swimos_model::{Blob, Value};
 use swimos_recon::parser::{parse_recognize, AsyncParseError};
 
-use uuid::Uuid;
+use uuid::{Bytes, Uuid};
 
 use crate::error::DeserializationError;
 
@@ -75,11 +76,7 @@ pub enum MessagePart {
 pub trait MessageDeserializer {
     type Error: std::error::Error;
 
-    fn deserialize<'a>(
-        &'a self,
-        message: &'a MessageView<'a>,
-        part: MessagePart,
-    ) -> Result<Value, Self::Error>;
+    fn deserialize(&self, buf: &[u8]) -> Result<Value, Self::Error>;
 
     fn boxed(self) -> BoxMessageDeserializer
     where
@@ -105,48 +102,24 @@ pub struct ReconDeserializer;
 impl MessageDeserializer for StringDeserializer {
     type Error = std::str::Utf8Error;
 
-    fn deserialize<'a>(
-        &self,
-        message: &'a MessageView<'a>,
-        part: MessagePart,
-    ) -> Result<Value, Self::Error> {
-        let payload = match part {
-            MessagePart::Key => message.key_str(),
-            MessagePart::Payload => message.payload_str(),
-        };
-        payload.map(Value::text)
+    fn deserialize(&self, buf: &[u8]) -> Result<Value, Self::Error> {
+        std::str::from_utf8(buf).map(Value::text)
     }
 }
 
 impl MessageDeserializer for BytesDeserializer {
     type Error = Infallible;
 
-    fn deserialize<'a>(
-        &self,
-        message: &'a MessageView<'a>,
-        part: MessagePart,
-    ) -> Result<Value, Self::Error> {
-        let payload = match part {
-            MessagePart::Key => message.key(),
-            MessagePart::Payload => message.payload(),
-        };
-        Ok(Value::Data(Blob::from_vec(payload.to_vec())))
+    fn deserialize(&self, buf: &[u8]) -> Result<Value, Self::Error> {
+        Ok(Value::Data(Blob::from_vec(buf.to_vec())))
     }
 }
 
 impl MessageDeserializer for ReconDeserializer {
     type Error = AsyncParseError;
 
-    fn deserialize<'a>(
-        &self,
-        message: &'a MessageView<'a>,
-        part: MessagePart,
-    ) -> Result<Value, Self::Error> {
-        let payload = match part {
-            MessagePart::Key => message.key_str(),
-            MessagePart::Payload => message.payload_str(),
-        };
-        let payload_str = match payload {
+    fn deserialize(&self, buf: &[u8]) -> Result<Value, Self::Error> {
+        let payload_str = match std::str::from_utf8(buf) {
             Ok(string) => string,
             Err(err) => return Err(AsyncParseError::BadUtf8(err)),
         };
@@ -176,19 +149,11 @@ macro_rules! num_deser {
         impl MessageDeserializer for $deser {
             type Error = TryFromSliceError;
 
-            fn deserialize<'a>(
-                &self,
-                message: &'a MessageView<'a>,
-                part: MessagePart,
-            ) -> Result<Value, Self::Error> {
+            fn deserialize<'a>(&self, buf: &[u8]) -> Result<Value, Self::Error> {
                 let $deser(endianness) = self;
-                let payload = match part {
-                    MessagePart::Key => message.key(),
-                    MessagePart::Payload => message.payload(),
-                };
                 let x = match endianness {
-                    Endianness::LittleEndian => <$numt>::from_le_bytes(payload.try_into()?),
-                    Endianness::BigEndian => <$numt>::from_be_bytes(payload.try_into()?),
+                    Endianness::LittleEndian => <$numt>::from_le_bytes(buf.try_into()?),
+                    Endianness::BigEndian => <$numt>::from_be_bytes(buf.try_into()?),
                 };
                 Ok(Value::$variant(x.into()))
             }
@@ -210,16 +175,8 @@ pub struct UuidDeserializer;
 impl MessageDeserializer for UuidDeserializer {
     type Error = TryFromSliceError;
 
-    fn deserialize<'a>(
-        &self,
-        message: &'a MessageView<'a>,
-        part: MessagePart,
-    ) -> Result<Value, Self::Error> {
-        let payload = match part {
-            MessagePart::Key => message.key(),
-            MessagePart::Payload => message.payload(),
-        };
-        let x = Uuid::from_bytes(payload.try_into()?);
+    fn deserialize(&self, buf: &[u8]) -> Result<Value, Self::Error> {
+        let x = Uuid::from_bytes(Bytes::try_from(buf)?);
         Ok(Value::BigInt(x.as_u128().into()))
     }
 }
@@ -234,13 +191,9 @@ where
 {
     type Error = DeserializationError;
 
-    fn deserialize<'a>(
-        &self,
-        message: &'a MessageView<'a>,
-        part: MessagePart,
-    ) -> Result<Value, Self::Error> {
+    fn deserialize(&self, buf: &[u8]) -> Result<Value, Self::Error> {
         self.inner
-            .deserialize(message, part)
+            .deserialize(buf)
             .map_err(DeserializationError::new)
     }
 }
@@ -251,12 +204,8 @@ pub type BoxMessageDeserializer =
 impl MessageDeserializer for BoxMessageDeserializer {
     type Error = DeserializationError;
 
-    fn deserialize<'a>(
-        &self,
-        message: &'a MessageView<'a>,
-        part: MessagePart,
-    ) -> Result<Value, Self::Error> {
-        (**self).deserialize(message, part)
+    fn deserialize(&self, buf: &[u8]) -> Result<Value, Self::Error> {
+        (**self).deserialize(buf)
     }
 
     fn boxed(self) -> BoxMessageDeserializer
@@ -280,16 +229,53 @@ impl<F> FnDeserializer<F> {
 
 impl<F, E> MessageDeserializer for FnDeserializer<F>
 where
-    F: for<'a> Fn(&'a MessageView<'a>, MessagePart) -> Result<Value, E>,
+    F: for<'a> Fn(&'a [u8]) -> Result<Value, E>,
     E: Error,
 {
     type Error = E;
 
-    fn deserialize<'a>(
-        &'a self,
-        message: &'a MessageView<'a>,
-        part: MessagePart,
-    ) -> Result<Value, Self::Error> {
-        self.0(message, part)
+    fn deserialize(&self, buf: &[u8]) -> Result<Value, Self::Error> {
+        self.0(buf)
+    }
+}
+
+pub struct Deser<'a> {
+    buf: &'a [u8],
+    deser: &'a BoxMessageDeserializer,
+    state: RefCell<Option<Value>>,
+}
+
+impl<'a> Deser<'a> {
+    pub fn new(buf: &'a [u8], deser: &'a BoxMessageDeserializer) -> Deser<'a> {
+        Deser {
+            buf,
+            deser,
+            state: RefCell::new(None),
+        }
+    }
+
+    pub fn get(&self) -> Result<Value, DeserializationError> {
+        let Deser { buf, deser, state } = self;
+        if let Some(v) = &*state.borrow() {
+            Ok(v.clone())
+        } else {
+            let inner = &mut *state.borrow_mut();
+            Ok(inner.insert(deser.deserialize(buf)?).clone())
+        }
+    }
+
+    pub fn with<F>(&self, f: F) -> Result<Option<Value>, DeserializationError>
+    where
+        F: FnOnce(&Value) -> Option<Value>,
+    {
+        let Deser { buf, deser, state } = self;
+        {
+            if let Some(v) = &*state.borrow() {
+                return Ok(f(v));
+            }
+        }
+        let inner = &mut *state.borrow_mut();
+        let val = inner.insert(deser.deserialize(buf)?);
+        Ok(f(val))
     }
 }

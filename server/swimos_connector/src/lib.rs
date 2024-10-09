@@ -24,7 +24,6 @@ mod test_support;
 pub mod config;
 pub mod deser;
 pub mod ingress;
-mod pubsub;
 pub mod selector;
 pub mod ser;
 

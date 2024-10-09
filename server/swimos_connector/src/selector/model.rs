@@ -25,71 +25,59 @@ use swimos_model::Value;
 /// pattern, returning nothing if the pattern does not match.
 pub trait ValueSelector: Debug {
     /// Attempt to select some sub-component of the provided [`Value`].
-    fn select<'a>(&self, value: &'a Value) -> Option<&'a Value>;
+    fn select_value<'a>(&self, value: &'a Value) -> Option<&'a Value>;
 }
 
 /// A dynamic selector which attempts to choose some sub-component of a [`Value`] from some
 /// arguments, matching against a pattern, returning nothing if the pattern does not match.
-pub trait Selector {
+pub trait Selector<'a> {
     /// The arguments this selector accepts.
     type Arg;
 
     /// Attempt to select some sub-component of the provided [`Value`] from the arguments this
     /// selector accepts.
-    fn select<'a>(
-        &self,
-        from: &'a mut Self::Arg,
-    ) -> Result<Option<&'a Value>, DeserializationError>;
+    fn select(&self, from: &'a Self::Arg) -> Result<Option<Value>, DeserializationError>;
 }
 
-// Bridge from Selector -> ValueSelector traits.
-impl<V> Selector for V
-where
-    V: ValueSelector,
-{
-    type Arg = Value;
+// // Bridge from Selector -> ValueSelector traits.
+// impl<'a, V> Selector<'a> for V
+// where
+//     V: ValueSelector,
+// {
+//     type Arg = Value;
+//
+//     fn select(&self, from: &'a Self::Arg) -> Result<Option<Value>, DeserializationError> {
+//         // Delegate this operation to the ValueSelector.
+//         Ok(V::select_value(self, from).cloned())
+//     }
+// }
 
-    fn select<'a>(
-        &self,
-        from: &'a mut Self::Arg,
-    ) -> Result<Option<&'a Value>, DeserializationError> {
-        // Delegate this operation to the ValueSelector.
-        Ok(V::select(self, from))
-    }
-}
-
-impl<L, R, Head, Tail> Selector for Coproduct<L, R>
+impl<'a, L, R, Head, Tail> Selector<'a> for Coproduct<L, R>
 where
-    L: Selector<Arg = Head>,
-    R: Selector<Arg = Tail>,
+    L: Selector<'a, Arg = Head>,
+    R: Selector<'a, Arg = Tail>,
     Tail: HList,
 {
     type Arg = HCons<Head, Tail>;
 
-    fn select<'a>(
-        &self,
-        from: &'a mut Self::Arg,
-    ) -> Result<Option<&'a Value>, DeserializationError> {
+    fn select(&self, from: &'a Self::Arg) -> Result<Option<Value>, DeserializationError> {
         match self {
-            Coproduct::Inl(l) => l.select(&mut from.head),
-            Coproduct::Inr(r) => r.select(&mut from.tail),
+            Coproduct::Inl(l) => l.select(&from.head),
+            Coproduct::Inr(r) => r.select(&from.tail),
         }
     }
 }
 
-impl Selector for CNil {
+impl<'a> Selector<'a> for CNil {
     type Arg = HNil;
 
-    fn select<'a>(
-        &self,
-        _from: &'a mut Self::Arg,
-    ) -> Result<Option<&'a Value>, DeserializationError> {
+    fn select(&self, _from: &'a Self::Arg) -> Result<Option<Value>, DeserializationError> {
         Ok(None)
     }
 }
 
-pub trait SelectHandler<A> {
-    type Handler: HandlerAction<ConnectorAgent, Completion = ()>;
+pub trait SelectHandler<'a, A> {
+    type Handler: HandlerAction<ConnectorAgent, Completion = ()> + 'static;
 
-    fn select_handler(&self, args: &mut A) -> Result<Self::Handler, SelectorError>;
+    fn select_handler(&self, args: &'a A) -> Result<Self::Handler, SelectorError>;
 }

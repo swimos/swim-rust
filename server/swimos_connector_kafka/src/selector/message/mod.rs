@@ -19,7 +19,7 @@ use std::{
 
 use swimos_api::address::Address;
 use swimos_connector::selector::{
-    ChainSelector, RawSelectorDescriptor, Selector, SelectorComponent,
+    ChainSelector, RawSelectorDescriptor, SelectorComponent, ValueSelector,
 };
 use swimos_connector::BadSelector;
 use swimos_model::Value;
@@ -95,8 +95,8 @@ impl FieldSelector {
     pub fn select<'a>(&self, key: Option<&'a Value>, value: &'a Value) -> Option<&'a Value> {
         let FieldSelector { part, selector } = self;
         match part {
-            KeyOrValue::Key => key.and_then(|k| selector.select(k)),
-            KeyOrValue::Value => selector.select(value),
+            KeyOrValue::Key => key.and_then(|k| selector.select_value(k)),
+            KeyOrValue::Value => selector.select_value(value),
         }
     }
 }

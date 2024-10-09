@@ -13,11 +13,11 @@
 use crate::relay::selector::{
     common::{
         parse_consume, parse_payload_selector, parse_static_expression, segment_to_part, Segment,
-        Selector, Span, StaticBound,
+        Selector as SelectorModel, Span, StaticBound,
     },
     ParseError, Part,
 };
-use crate::selector::Deferred;
+use crate::selector::{PubSubSelectorArgs, Selector};
 use crate::SelectorError;
 use frunk::Coprod;
 use nom::{
@@ -132,36 +132,24 @@ impl PayloadSelector {
         })
     }
 
-    pub(crate) fn select<K, V>(
+    pub(crate) fn select<'a>(
         &self,
         node_uri: String,
         lane_uri: String,
-        deferred_key: &mut K,
-        deferred_value: &mut V,
-        topic: &Value,
-    ) -> Result<GenericSendCommandOp, SelectorError>
-    where
-        K: Deferred,
-        V: Deferred,
-    {
+        args: &PubSubSelectorArgs<'a>,
+    ) -> Result<GenericSendCommandOp, SelectorError> {
         let PayloadSelector { inner, required } = self;
 
         let op = match inner {
-            Inner::Value { input, segment } => build_value(
-                *required,
-                input.as_str(),
-                segment,
-                deferred_key,
-                deferred_value,
-                topic,
-            )?
-            .map(|payload| {
-                SendCommandOp::inject(SendCommand::new(
-                    Address::new(None, node_uri, lane_uri),
-                    payload,
-                    false,
-                ))
-            }),
+            Inner::Value { input, segment } => {
+                build_value(*required, input.as_str(), segment, args)?.map(|payload| {
+                    SendCommandOp::inject(SendCommand::new(
+                        Address::new(None, node_uri, lane_uri),
+                        payload,
+                        false,
+                    ))
+                })
+            }
             Inner::Map {
                 key_pattern,
                 value_pattern,
@@ -169,22 +157,8 @@ impl PayloadSelector {
                 key,
                 value,
             } => {
-                let key = build_value(
-                    *required,
-                    key_pattern.as_str(),
-                    key,
-                    deferred_key,
-                    deferred_value,
-                    topic,
-                )?;
-                let value = build_value(
-                    *required,
-                    value_pattern.as_str(),
-                    value,
-                    deferred_key,
-                    deferred_value,
-                    topic,
-                )?;
+                let key = build_value(*required, key_pattern.as_str(), key, args)?;
+                let value = build_value(*required, value_pattern.as_str(), value, args)?;
 
                 match (key, value) {
                     (Some(key_payload), Some(value_payload)) => {
@@ -215,24 +189,15 @@ impl PayloadSelector {
     }
 }
 
-fn build_value<K, V>(
+fn build_value<'a>(
     required: bool,
     pattern: &str,
     segment: &Segment,
-    key: &mut K,
-    value: &mut V,
-    topic: &Value,
-) -> Result<Option<Value>, SelectorError>
-where
-    K: Deferred,
-    V: Deferred,
-{
+    args: &PubSubSelectorArgs<'a>,
+) -> Result<Option<Value>, SelectorError> {
     let payload = match segment_to_part(pattern, segment) {
         Part::Static(path) => Ok(Some(swimos_model::Value::from(path.to_string()))),
-        Part::Selector(selector) => selector
-            .select(topic, key, value)
-            .map(|v| v.cloned())
-            .map_err(SelectorError::from),
+        Part::Selector(selector) => selector.select(args).map_err(SelectorError::from),
     };
 
     match payload {
@@ -261,7 +226,7 @@ fn parse_pattern(span: Span) -> Result<Segment, ParseError> {
 fn parse(span: Span) -> IResult<Span, Segment> {
     alt((
         parse_payload_selector.map(Segment::Selector),
-        tag("$topic").map(|_| Segment::Selector(Selector::Topic)),
+        tag("$topic").map(|_| Segment::Selector(SelectorModel::Topic)),
         // Anything prefixed by $ will be an escaped character. E.g, an input of $key$_value
         // will yield a key selector and then a static segment of '_value'.
         preceded(

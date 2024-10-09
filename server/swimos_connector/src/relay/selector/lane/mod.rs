@@ -15,12 +15,12 @@
 use crate::relay::selector::common::segment_to_part;
 use crate::relay::selector::{
     common::{
-        parse_consume, parse_payload_selector, parse_static_expression, Segment, Selector, Span,
-        StaticBound,
+        parse_consume, parse_payload_selector, parse_static_expression, Segment,
+        Selector as SelectorModel, Span, StaticBound,
     },
     ParseError, Part, SelectorPatternIter,
 };
-use crate::selector::Deferred;
+use crate::selector::{PubSubSelectorArgs, Selector};
 use crate::SelectorError;
 use nom::{
     branch::alt,
@@ -60,27 +60,21 @@ pub struct LaneSelector {
 }
 
 impl LaneSelector {
-    pub(crate) fn select<K, V>(
+    pub(crate) fn select<'a>(
         &self,
-        key: &mut K,
-        value: &mut V,
-        topic: &Value,
-    ) -> Result<String, SelectorError>
-    where
-        K: Deferred,
-        V: Deferred,
-    {
+        args: &PubSubSelectorArgs<'a>,
+    ) -> Result<String, SelectorError> {
         let LaneSelector { pattern, segment } = self;
 
         match segment_to_part(pattern, segment) {
             Part::Static(p) => Ok(p.to_string()),
             Part::Selector(selector) => {
                 let value = selector
-                    .select(topic, key, value)?
+                    .select(args)?
                     .ok_or(SelectorError::InvalidRecord("".to_string()))?;
                 match value {
                     Value::BooleanValue(v) => {
-                        if *v {
+                        if v {
                             Ok("true".to_string())
                         } else {
                             Ok("false".to_string())
@@ -134,7 +128,7 @@ fn parse_pattern(span: Span) -> Result<LaneSelector, ParseError> {
 fn parse(span: Span) -> IResult<Span, Segment> {
     alt((
         parse_payload_selector.map(Segment::Selector),
-        tag("$topic").map(|_| Segment::Selector(Selector::Topic)),
+        tag("$topic").map(|_| Segment::Selector(SelectorModel::Topic)),
         // Anything prefixed by $ will be an escaped character. E.g, an input of $key$_value
         // will yield a key selector and then a static segment of '_value'.
         preceded(

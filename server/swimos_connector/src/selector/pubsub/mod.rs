@@ -12,45 +12,77 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::deser::MessagePart;
-use crate::pubsub::selector::base::{
-    ChainSelector, Deferred, GenericMapLaneOp, MapLaneSelector, Selector,
+#[cfg(test)]
+mod tests;
+
+use crate::config::{IngressMapLaneSpec, IngressValueLaneSpec};
+use crate::deser::{Deser, MessagePart};
+use crate::selector::{MapLaneSelector, SelectorComponent, ValueLaneSelector};
+use crate::{
+    selector::{ChainSelector, Selector, ValueSelector},
+    BadSelector, DeserializationError, InvalidLaneSpec,
 };
-use crate::{BadSelector, DeserializationError, SelectorError};
+use frunk::{Coprod, HList};
 use regex::Regex;
-use std::{fmt::Debug, sync::OnceLock};
-use swimos_agent::event_handler::HandlerActionExt;
+use std::sync::OnceLock;
 use swimos_model::Value;
 
-/// A value selector attempts to extract a value from a message to use as a new value for a value,
-/// lane an update for a map lane or for use in deriving a node or lane URI.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ValueSelector {
-    /// Use a selector to select a sub-component of the key of the message.
-    Key(ChainSelector),
-    /// Use a selector to select a sub-component of the payload of the message.
-    Payload(ChainSelector),
+/// Canonical selector for pub-sub type connectors.
+pub type PubSubSelector = Coprod!(TopicSelector, KeySelector, PayloadSelector);
+pub type PubSubSelectorArgs<'a> = HList!(
+    <TopicSelector as Selector<'a>>::Arg,
+    <KeySelector as Selector<'a>>::Arg,
+    <PayloadSelector as Selector<'a>>::Arg
+);
+/// Selector type for Value Lanes.
+pub type PubSubValueLaneSelector = ValueLaneSelector<PubSubSelector>;
+/// Selector type for Map Lanes.
+pub type PubSubMapLaneSelector = MapLaneSelector<PubSubSelector, PubSubSelector>;
+
+#[derive(Debug, PartialEq, Clone, Eq)]
+pub struct TopicSelector;
+
+impl<'a> Selector<'a> for TopicSelector {
+    type Arg = Value;
+
+    fn select(&self, from: &'a Self::Arg) -> Result<Option<Value>, DeserializationError> {
+        Ok(Some(from.clone()))
+    }
 }
 
-impl ValueSelector {
-    /// Attempt to select a sub-component from a message.
-    ///
-    /// # Arguments
-    /// * `key` - Lazily deserialized message key.
-    /// * `payload` - Lazily deserialized message payload.
-    pub fn select<'a, K, V>(
-        &self,
-        key: &'a mut K,
-        payload: &'a mut V,
-    ) -> Result<Option<&'a Value>, DeserializationError>
-    where
-        K: Deferred + 'a,
-        V: Deferred + 'a,
-    {
-        Ok(match self {
-            ValueSelector::Key(selector) => selector.select(key.get()?),
-            ValueSelector::Payload(selector) => selector.select(payload.get()?),
-        })
+#[derive(Debug, PartialEq, Clone, Eq)]
+pub struct KeySelector(ChainSelector);
+
+impl KeySelector {
+    pub fn new(inner: ChainSelector) -> KeySelector {
+        KeySelector(inner)
+    }
+}
+
+impl<'a> Selector<'a> for KeySelector {
+    type Arg = Deser<'a>;
+
+    fn select(&self, from: &'a Self::Arg) -> Result<Option<Value>, DeserializationError> {
+        let KeySelector(chain) = self;
+        from.with(|val| ValueSelector::select_value(chain, val).cloned())
+    }
+}
+
+#[derive(Debug, PartialEq, Clone, Eq)]
+pub struct PayloadSelector(ChainSelector);
+
+impl PayloadSelector {
+    pub fn new(inner: ChainSelector) -> PayloadSelector {
+        PayloadSelector(inner)
+    }
+}
+
+impl<'a> Selector<'a> for PayloadSelector {
+    type Arg = Deser<'a>;
+
+    fn select(&self, from: &'a Self::Arg) -> Result<Option<Value>, DeserializationError> {
+        let PayloadSelector(chain) = self;
+        from.with(|val| ValueSelector::select_value(chain, val).cloned())
     }
 }
 
@@ -92,26 +124,8 @@ fn create_field_regex() -> Result<Regex, regex::Error> {
     Regex::new("\\A(\\@?(?:\\w+))(?:\\[(\\d+)])?\\z")
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct SelectorComponent<'a> {
-    pub is_attr: bool,
-    pub name: &'a str,
-    pub index: Option<usize>,
-}
-
-impl<'a> SelectorComponent<'a> {
-    pub fn new(is_attr: bool, name: &'a str, index: Option<usize>) -> Self {
-        SelectorComponent {
-            is_attr,
-            name,
-            index,
-        }
-    }
-}
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RawSelectorDescriptor<'a> {
-    // todo remove pub vis after moving everything else
     pub part: &'a str,
     pub index: Option<usize>,
     pub components: Vec<SelectorComponent<'a>>,
@@ -177,7 +191,7 @@ impl<'a> TryFrom<&'a str> for RawSelectorDescriptor<'a> {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-enum SelectorDescriptor<'a> {
+pub enum SelectorDescriptor<'a> {
     Part {
         part: MessagePart,
         index: Option<usize>,
@@ -241,6 +255,7 @@ impl<'a> SelectorDescriptor<'a> {
                     }
                 } else if index.is_none() {
                     Some(match part {
+                        // todo: move MessagePart to this module and rework the deserializer
                         MessagePart::Key => "key",
                         MessagePart::Payload => "payload",
                     })
@@ -263,56 +278,61 @@ impl<'a> SelectorDescriptor<'a> {
 }
 
 /// Attempt to parse a descriptor for a selector from a string.
-fn parse_selector(descriptor: &str) -> Result<SelectorDescriptor<'_>, BadSelector> {
+pub fn parse_selector(descriptor: &str) -> Result<SelectorDescriptor<'_>, BadSelector> {
     RawSelectorDescriptor::try_from(descriptor)?.try_into()
 }
 
-/// A value lane selector generates event handlers from messages to update the state of a map lane.
-#[derive(Debug, Clone)]
-pub struct PubSubMapLaneSelector {
-    inner: MapLaneSelector,
-}
+impl TryFrom<&IngressValueLaneSpec> for PubSubValueLaneSelector {
+    type Error = InvalidLaneSpec;
 
-impl PubSubMapLaneSelector {
-    /// # Arguments
-    /// * `name` - The name of the lane.
-    /// * `key_selector` - Selects a component from the message for the map key.
-    /// * `value_selector` - Selects a component from the message for the map value.
-    /// * `required` - If this is required and the selectors do not return a result, an error will be generated.
-    /// * `remove_when_no_value` - If a key is selected but no value is selected, the corresponding entry will be
-    ///   removed from the map.
-    pub fn new(
-        name: String,
-        key_selector: ChainSelector,
-        value_selector: ChainSelector,
-        required: bool,
-        remove_when_no_value: bool,
-    ) -> Self {
-        PubSubMapLaneSelector {
-            inner: MapLaneSelector::new(
-                name,
-                key_selector,
-                value_selector,
-                required,
-                remove_when_no_value,
-            ),
+    fn try_from(value: &IngressValueLaneSpec) -> Result<Self, Self::Error> {
+        let IngressValueLaneSpec {
+            name,
+            selector,
+            required,
+        } = value;
+        let parsed = parse_selector(selector.as_str())?;
+        if let Some(lane_name) = name
+            .as_ref()
+            .cloned()
+            .or_else(|| parsed.suggested_name().map(|s| s.to_owned()))
+        {
+            Ok(ValueLaneSelector::new(lane_name, parsed.into(), *required))
+        } else {
+            Err(InvalidLaneSpec::NameCannotBeInferred)
         }
     }
+}
 
-    pub fn name(&self) -> &str {
-        &self.inner.name()
+impl<'a> From<SelectorDescriptor<'a>> for PubSubSelector {
+    fn from(parsed: SelectorDescriptor<'a>) -> Self {
+        match (parsed.field(), parsed.selector()) {
+            (MessageField::Key, Some(selector)) => PubSubSelector::inject(KeySelector(selector)),
+            (MessageField::Payload, Some(selector)) => {
+                PubSubSelector::inject(PayloadSelector(selector))
+            }
+            _ => PubSubSelector::inject(TopicSelector),
+        }
     }
+}
 
-    pub fn select_handler<K, V>(
-        &self,
-        topic: &Value,
-        key: &mut K,
-        value: &mut V,
-    ) -> Result<GenericMapLaneOp, SelectorError>
-    where
-        K: Deferred,
-        V: Deferred,
-    {
-        unimplemented!()
+impl TryFrom<&IngressMapLaneSpec> for PubSubMapLaneSelector {
+    type Error = InvalidLaneSpec;
+
+    fn try_from(value: &IngressMapLaneSpec) -> Result<Self, Self::Error> {
+        let IngressMapLaneSpec {
+            name,
+            key_selector,
+            value_selector,
+            remove_when_no_value,
+            required,
+        } = value;
+        Ok(PubSubMapLaneSelector::new(
+            name.clone(),
+            parse_selector(key_selector.as_str())?.into(),
+            parse_selector(value_selector.as_str())?.into(),
+            *required,
+            *remove_when_no_value,
+        ))
     }
 }

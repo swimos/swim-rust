@@ -12,15 +12,27 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::deser::{Deser, MessageDeserializer};
 use crate::relay::selector::NodeSelector;
-use crate::selector::{Computed, Deferred};
-use crate::DeserializationError;
+use frunk::hlist;
 use serde::Serialize;
 use serde_json::json;
 use std::str::FromStr;
-use swimos_model::Item;
+use swimos_model::{Item, Value};
 
 type JsonValue = serde_json::Value;
+
+#[derive(Default)]
+struct JsonDeserializer;
+
+impl MessageDeserializer for JsonDeserializer {
+    type Error = serde_json::Error;
+
+    fn deserialize(&self, buf: &[u8]) -> Result<Value, Self::Error> {
+        let v: serde_json::Value = serde_json::from_slice(buf)?;
+        Ok(convert_json_value(v))
+    }
+}
 
 fn mock_value() -> JsonValue {
     json! {
@@ -35,40 +47,31 @@ fn to_bytes(s: impl Serialize) -> Vec<u8> {
     serde_json::to_vec(&s).unwrap()
 }
 
-fn convert_json_value(input: JsonValue) -> swimos_model::Value {
+fn convert_json_value(input: JsonValue) -> Value {
     match input {
-        JsonValue::Null => swimos_model::Value::Extant,
-        JsonValue::Bool(p) => swimos_model::Value::BooleanValue(p),
+        JsonValue::Null => Value::Extant,
+        JsonValue::Bool(p) => Value::BooleanValue(p),
         JsonValue::Number(n) => {
             if let Some(i) = n.as_u64() {
-                swimos_model::Value::UInt64Value(i)
+                Value::UInt64Value(i)
             } else if let Some(i) = n.as_i64() {
-                swimos_model::Value::Int64Value(i)
+                Value::Int64Value(i)
             } else {
-                swimos_model::Value::Float64Value(n.as_f64().unwrap_or(f64::NAN))
+                Value::Float64Value(n.as_f64().unwrap_or(f64::NAN))
             }
         }
-        JsonValue::String(s) => swimos_model::Value::Text(s.into()),
-        JsonValue::Array(arr) => swimos_model::Value::record(
+        JsonValue::String(s) => Value::Text(s.into()),
+        JsonValue::Array(arr) => Value::record(
             arr.into_iter()
                 .map(|v| Item::ValueItem(convert_json_value(v)))
                 .collect(),
         ),
-        JsonValue::Object(obj) => swimos_model::Value::record(
+        JsonValue::Object(obj) => Value::record(
             obj.into_iter()
-                .map(|(k, v)| {
-                    Item::Slot(swimos_model::Value::Text(k.into()), convert_json_value(v))
-                })
+                .map(|(k, v)| Item::Slot(Value::Text(k.into()), convert_json_value(v)))
                 .collect(),
         ),
     }
-}
-
-fn deferred_deserializer(payload: Vec<u8>) -> impl Deferred {
-    Computed::new(move || match serde_json::from_slice(payload.as_ref()) {
-        Ok(v) => Ok(convert_json_value(v)),
-        Err(e) => Err(DeserializationError::new(e)),
-    })
 }
 
 #[test]
@@ -77,13 +80,13 @@ fn node_uri() {
     let key = to_bytes(1);
     let value = to_bytes(mock_value());
 
-    let node_uri = route
-        .select(
-            &mut deferred_deserializer(key),
-            &mut deferred_deserializer(value),
-            &"topic".into(),
-        )
-        .expect("Failed to build node URI");
+    let topic = Value::text("topic");
+    let deser = JsonDeserializer::default().boxed();
+    let key = Deser::new(key.as_slice(), &deser);
+    let value = Deser::new(value.as_slice(), &deser);
+    let args = hlist![topic, key, value];
+
+    let node_uri = route.select(&args).expect("Failed to build node URI");
 
     assert_eq!(node_uri, "/1/waffles")
 }
@@ -94,249 +97,13 @@ fn invalid_node_uri() {
     let key = to_bytes(1);
     let value = to_bytes(mock_value());
 
+    let deser = JsonDeserializer::default().boxed();
+    let topic = Value::text("topic");
+    let key = Deser::new(key.as_slice(), &deser);
+    let value = Deser::new(value.as_slice(), &deser);
+    let args = hlist![topic, key, value];
+
     route
-        .select(
-            &mut deferred_deserializer(key),
-            &mut deferred_deserializer(value),
-            &"topic".into(),
-        )
+        .select(&args)
         .expect_err("Should have failed to build node URI due to object being used");
 }
-//
-// #[test]
-// fn stop_agent() {
-//     let agent = ConnectorAgent::default();
-//     let handler = agent
-//         .on_value_command("stop", BytesMut::default())
-//         .expect("Missing lane");
-//
-//     run_handler(
-//         &TestSpawner::default(),
-//         &mut BytesMut::default(),
-//         &agent,
-//         handler,
-//         |e| {
-//             if !matches!(e, EventHandlerError::StopInstructed) {
-//                 panic!("Expected a stop instruction")
-//             }
-//         },
-//     )
-// }
-//
-// fn relay(selectors: impl Into<Relays>) -> impl Relay {
-//     let deser = FnDeserializer::new(|message: &MessageView, part| {
-//         let payload = match part {
-//             MessagePart::Key => message.key(),
-//             MessagePart::Payload => message.payload(),
-//         };
-//         let v: JsonValue = serde_json::from_slice(payload)?;
-//         Ok::<_, serde_json::Error>(convert_json_value(v))
-//     });
-//     AgentRelay::new(selectors, deser, deser)
-// }
-//
-// fn run_relay<R, H>(
-//     relay: &R,
-//     messages: Vec<MessageView<'_>>,
-//     mut commands: Vec<CommandMessage<String, Command>>,
-// ) where
-//     R: Relay<Handler = H>,
-//     H: EventHandler<ConnectorAgent> + 'static,
-// {
-//     let mut ad_hoc_buffer = BytesMut::default();
-//     let spawner = TestSpawner::default();
-//     let agent = ConnectorAgent::default();
-//
-//     for msg in messages {
-//         let handler = relay
-//             .on_record(msg, HandlerContext::default())
-//             .expect("Failed to build handler");
-//         run_handler(&spawner, &mut ad_hoc_buffer, &agent, handler, fail);
-//
-//         while let Some(actual_command) = decode_command(&mut ad_hoc_buffer) {
-//             let expected_command = commands.pop().expect("Exhausted expected commands early");
-//             assert_eq!(actual_command, expected_command);
-//         }
-//
-//         ad_hoc_buffer.clear();
-//     }
-// }
-//
-// fn decode_command(buf: &mut BytesMut) -> Option<CommandMessage<String, Command>> {
-//     let mut decoder = CommandMessageDecoder::<String, MapMessage<Value, Value>>::default();
-//     let mut map_buf = buf.clone();
-//     let command = decoder.decode(&mut map_buf);
-//
-//     match command {
-//         Ok(Some(CommandMessage::Addressed {
-//             target,
-//             command,
-//             overwrite_permitted,
-//         })) => {
-//             buf.advance(buf.len() - map_buf.len());
-//             Some(CommandMessage::Addressed {
-//                 target,
-//                 command: Command::Map(command),
-//                 overwrite_permitted,
-//             })
-//         }
-//         Ok(Some(c)) => {
-//             panic!("Unexpected command: {c:?}")
-//         }
-//         Ok(None) => None,
-//         Err(_) => {
-//             let mut decoder = CommandMessageDecoder::<String, Value>::default();
-//             decoder
-//                 .decode(buf)
-//                 .expect("Failed to decode command")
-//                 .map(|command| match command {
-//                     CommandMessage::Addressed {
-//                         target,
-//                         command,
-//                         overwrite_permitted,
-//                     } => CommandMessage::Addressed {
-//                         target,
-//                         command: Command::Value(command),
-//                         overwrite_permitted,
-//                     },
-//                     c => {
-//                         panic!("Unexpected command: {c:?}")
-//                     }
-//                 })
-//         }
-//     }
-// }
-//
-// #[derive(Form, PartialEq, Debug)]
-// enum Command {
-//     Value(Value),
-//     Map(MapMessage<Value, Value>),
-// }
-//
-// #[test]
-// fn value_command() {
-//     let node = NodeSelector::from_str("/node").unwrap();
-//     let lane = LaneSelector::from_str("lane").unwrap();
-//     let payload = PayloadSelector::value("$value", true).unwrap();
-//     let relay = relay(Selectors::new(node, lane, payload));
-//
-//     run_relay(
-//         &relay,
-//         vec![MessageView {
-//             topic: "topic",
-//             key: serde_json::to_vec(&json! {13}).unwrap().as_ref(),
-//             payload: serde_json::to_vec(&json! {13}).unwrap().as_ref(),
-//         }],
-//         vec![CommandMessage::Addressed {
-//             target: Address::new(None, "/node".to_string(), "lane".to_string()),
-//             command: Command::Value(Value::Int64Value(13)),
-//             overwrite_permitted: false,
-//         }],
-//     );
-// }
-//
-// #[test]
-// fn map_update() {
-//     let node = NodeSelector::from_str("/node").unwrap();
-//     let lane = LaneSelector::from_str("lane").unwrap();
-//     let payload = PayloadSelector::map("$key", "$value", true, true).unwrap();
-//     let relay = relay(Selectors::new(node, lane, payload));
-//
-//     run_relay(
-//         &relay,
-//         vec![MessageView {
-//             topic: "topic",
-//             key: serde_json::to_vec(&json! {13}).unwrap().as_ref(),
-//             payload: serde_json::to_vec(&json! {"text"}).unwrap().as_ref(),
-//         }],
-//         vec![CommandMessage::Addressed {
-//             target: Address::new(None, "/node".to_string(), "lane".to_string()),
-//             command: Command::Map(MapMessage::Update {
-//                 key: Value::Int64Value(13),
-//                 value: Value::from("text"),
-//             }),
-//             overwrite_permitted: false,
-//         }],
-//     );
-// }
-//
-// #[test]
-// fn map_remove() {
-//     let node = NodeSelector::from_str("/node").unwrap();
-//     let lane = LaneSelector::from_str("lane").unwrap();
-//     let payload = PayloadSelector::map("$key", "$value", false, true).unwrap();
-//     let relay = relay(Selectors::new(node, lane, payload));
-//
-//     run_relay(
-//         &relay,
-//         vec![MessageView {
-//             topic: "topic",
-//             key: serde_json::to_vec(&json! {13}).unwrap().as_ref(),
-//             payload: &[],
-//         }],
-//         vec![CommandMessage::Addressed {
-//             target: Address::new(None, "/node".to_string(), "lane".to_string()),
-//             command: Command::Map(MapMessage::Remove {
-//                 key: Value::Int64Value(13),
-//             }),
-//             overwrite_permitted: false,
-//         }],
-//     );
-// }
-//
-// #[test]
-// fn heterogeneous_selectors() {
-//     let a = Selectors::new(
-//         NodeSelector::from_str("/node/$value.a").unwrap(),
-//         LaneSelector::from_str("lane").unwrap(),
-//         PayloadSelector::map("$key", "$value.a", true, true).unwrap(),
-//     );
-//     let b = Selectors::new(
-//         NodeSelector::from_str("/node/$value.b").unwrap(),
-//         LaneSelector::from_str("lane").unwrap(),
-//         PayloadSelector::map("$key", "$value.b", true, true).unwrap(),
-//     );
-//     let c = Selectors::new(
-//         NodeSelector::from_str("/node/3").unwrap(),
-//         LaneSelector::from_str("lane").unwrap(),
-//         PayloadSelector::value("$value", true).unwrap(),
-//     );
-//     let relay = relay(Relays::from([a, b, c]));
-//
-//     let value = json! {{
-//         "a": 1,
-//         "b": 2
-//     }};
-//
-//     run_relay(
-//         &relay,
-//         vec![MessageView {
-//             topic: "topic",
-//             key: serde_json::to_vec(&json! {13}).unwrap().as_ref(),
-//             payload: serde_json::to_vec(&value).unwrap().as_ref(),
-//         }],
-//         vec![
-//             CommandMessage::Addressed {
-//                 target: Address::new(None, "/node/3".to_string(), "lane".to_string()),
-//                 command: Command::Value(Value::from_vec(vec![("a", 1), ("b", 2)])),
-//                 overwrite_permitted: false,
-//             },
-//             CommandMessage::Addressed {
-//                 target: Address::new(None, "/node/2".to_string(), "lane".to_string()),
-//                 command: Command::Map(MapMessage::Update {
-//                     key: Value::Int64Value(13),
-//                     value: Value::Int64Value(2),
-//                 }),
-//                 overwrite_permitted: false,
-//             },
-//             CommandMessage::Addressed {
-//                 target: Address::new(None, "/node/1".to_string(), "lane".to_string()),
-//                 command: Command::Map(MapMessage::Update {
-//                     key: Value::Int64Value(13),
-//                     value: Value::Int64Value(1),
-//                 }),
-//                 overwrite_permitted: false,
-//             },
-//         ],
-//     );
-// }

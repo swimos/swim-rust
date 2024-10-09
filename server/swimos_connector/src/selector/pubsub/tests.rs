@@ -12,15 +12,29 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use super::{
-    AttrSelector, BasicSelector, ChainSelector, Deferred, IdentitySelector, IndexSelector,
-    MapLaneSelector, Selector, SlotSelector, ValueLaneSelector, ValueSelector,
-};
+use super::{init_regex, SelectorDescriptor};
+use super::{MessageField, SelectorComponent};
 use crate::config::{IngressMapLaneSpec, IngressValueLaneSpec};
-use crate::deser::MessagePart;
-use crate::selector::{MessageField, SelectorComponent, SelectorDescriptor};
-use crate::{BadSelector, DeserializationError, InvalidLaneSpec};
-use swimos_model::{Attr, Item, Value};
+use crate::deser::{Deser, MessageDeserializer, MessagePart, ReconDeserializer};
+use crate::selector::{
+    AttrSelector, BasicSelector, ChainSelector, IdentitySelector, IndexSelector, MapLaneSelector,
+    SelectHandler, SlotSelector, ValueLaneSelector, ValueSelector,
+};
+use crate::{BadSelector, InvalidLaneSpec};
+use swimos_model::{Attr, Item};
+
+use crate::selector::{PubSubSelector, PubSubValueLaneSelector};
+use crate::{
+    selector::pubsub::{KeySelector, PayloadSelector, TopicSelector},
+    test_support::{fail, run_handler, TestSpawner},
+    ConnectorAgent,
+};
+use bytes::BytesMut;
+use frunk::hlist;
+use std::ops::Deref;
+use swimos_agent::agent_model::{AgentSpec, ItemDescriptor};
+use swimos_api::agent::WarpLaneKind;
+use swimos_model::Value;
 
 #[test]
 fn init_regex_creation() {
@@ -29,7 +43,7 @@ fn init_regex_creation() {
 
 #[test]
 fn match_key() {
-    if let Some(captures) = super::init_regex().captures("$key") {
+    if let Some(captures) = init_regex().captures("$key") {
         let kind = captures.get(1).expect("Missing capture.");
         assert!(captures.get(2).is_none());
         assert_eq!(kind.as_str(), "$key");
@@ -248,7 +262,7 @@ fn test_value() -> Value {
 fn identity_selector() {
     let selector = IdentitySelector;
     let value = test_value();
-    let selected = selector.select(&value);
+    let selected = selector.select_value(&value);
     assert_eq!(selected, Some(&value));
 }
 
@@ -260,9 +274,9 @@ fn attr_selector() {
     let selector2 = AttrSelector::new("attr2".to_string());
     let selector3 = AttrSelector::new("other".to_string());
 
-    assert_eq!(selector1.select(&value), Some(&Value::Extant));
-    assert_eq!(selector2.select(&value), Some(&Value::from(5)));
-    assert!(selector3.select(&value).is_none());
+    assert_eq!(selector1.select_value(&value), Some(&Value::Extant));
+    assert_eq!(selector2.select_value(&value), Some(&Value::from(5)));
+    assert!(selector3.select_value(&value).is_none());
 }
 
 #[test]
@@ -273,9 +287,9 @@ fn slot_selector() {
     let selector2 = SlotSelector::for_field("a");
     let selector3 = SlotSelector::for_field("other");
 
-    assert_eq!(selector1.select(&value), Some(&Value::from(true)));
-    assert!(selector2.select(&value).is_none());
-    assert!(selector3.select(&value).is_none());
+    assert_eq!(selector1.select_value(&value), Some(&Value::from(true)));
+    assert!(selector2.select_value(&value).is_none());
+    assert!(selector3.select_value(&value).is_none());
 }
 
 #[test]
@@ -286,9 +300,9 @@ fn index_selector() {
     let selector2 = IndexSelector::new(2);
     let selector3 = IndexSelector::new(4);
 
-    assert_eq!(selector1.select(&value), Some(&Value::from(3)));
-    assert_eq!(selector2.select(&value), Some(&Value::from(true)));
-    assert!(selector3.select(&value).is_none());
+    assert_eq!(selector1.select_value(&value), Some(&Value::from(3)));
+    assert_eq!(selector2.select_value(&value), Some(&Value::from(true)));
+    assert!(selector3.select_value(&value).is_none());
 }
 
 #[test]
@@ -306,94 +320,10 @@ fn chain_selector() {
         BasicSelector::Slot(SlotSelector::for_field("green")),
     ]);
 
-    assert_eq!(selector1.select(&value), Some(&value));
-    assert_eq!(selector2.select(&value), Some(&Value::from(true)));
-    assert_eq!(selector3.select(&value), Some(&Value::from(5)));
-    assert!(selector4.select(&value).is_none());
-}
-
-struct TestDeferred {
-    value: Value,
-    called: bool,
-}
-
-impl TestDeferred {
-    fn new(value: Value) -> Self {
-        TestDeferred {
-            value,
-            called: false,
-        }
-    }
-
-    fn was_called(&self) -> bool {
-        self.called
-    }
-}
-
-impl Deferred for TestDeferred {
-    fn get(&mut self) -> Result<&Value, DeserializationError> {
-        let TestDeferred { value, called } = self;
-        *called = true;
-        Ok(value)
-    }
-}
-
-#[test]
-fn select_topic() {
-    let selector = ValueSelector::Topic;
-
-    let topic = Value::text("topic_name");
-    let mut key = TestDeferred::new(Value::Extant);
-    let mut payload = TestDeferred::new(Value::Extant);
-
-    let selected = selector
-        .select(&topic, &mut key, &mut payload)
-        .expect("Failed.");
-    assert_eq!(selected, Some(&topic));
-    assert!(!key.was_called());
-    assert!(!payload.was_called());
-}
-
-#[test]
-fn select_key() {
-    let selector = ChainSelector::from(vec![
-        BasicSelector::Slot(SlotSelector::for_field("inner")),
-        BasicSelector::Slot(SlotSelector::for_field("green")),
-    ]);
-
-    let lane_selector = ValueSelector::Key(selector);
-
-    let topic = Value::text("topic_name");
-    let mut key = TestDeferred::new(test_value());
-    let mut payload = TestDeferred::new(Value::Extant);
-
-    let selected = lane_selector
-        .select(&topic, &mut key, &mut payload)
-        .expect("Failed.");
-    assert_eq!(selected, Some(&Value::from(5)));
-    assert!(key.was_called());
-    assert!(!payload.was_called());
-}
-
-#[test]
-fn select_payload() {
-    let selector = ChainSelector::from(vec![
-        BasicSelector::Slot(SlotSelector::for_field("inner")),
-        BasicSelector::Slot(SlotSelector::for_field("green")),
-    ]);
-
-    let lane_selector = ValueSelector::Payload(selector);
-
-    let topic = Value::text("topic_name");
-    let mut key = TestDeferred::new(Value::Extant);
-    let mut payload = TestDeferred::new(test_value());
-
-    let selected = lane_selector
-        .select(&topic, &mut key, &mut payload)
-        .expect("Failed.");
-    assert_eq!(selected, Some(&Value::from(5)));
-    assert!(!key.was_called());
-    assert!(payload.was_called());
+    assert_eq!(selector1.select_value(&value), Some(&value));
+    assert_eq!(selector2.select_value(&value), Some(&Value::from(true)));
+    assert_eq!(selector3.select_value(&value), Some(&Value::from(5)));
+    assert!(selector4.select_value(&value).is_none());
 }
 
 #[test]
@@ -494,11 +424,16 @@ fn complex_selector_descriptor_unnamed() {
 fn value_lane_selector_from_spec_inferred_name() {
     let spec = IngressValueLaneSpec::new(None, "$key", true);
     let selector = ValueLaneSelector::try_from(&spec).expect("Bad specification.");
-    assert_eq!(&selector.name, "key");
-    assert!(&selector.required);
+    assert_eq!(selector.name(), "key");
+    assert!(&selector.is_required());
+    let delegate_selector = selector
+        .into_selector()
+        .uninject::<KeySelector, _>()
+        .expect("Failed to get inner selector");
+
     assert_eq!(
-        selector.selector,
-        ValueSelector::Key(ChainSelector::default())
+        delegate_selector,
+        KeySelector::new(ChainSelector::default())
     );
 }
 
@@ -506,11 +441,15 @@ fn value_lane_selector_from_spec_inferred_name() {
 fn value_lane_selector_from_spec_named() {
     let spec = IngressValueLaneSpec::new(Some("field"), "$key[0]", false);
     let selector = ValueLaneSelector::try_from(&spec).expect("Bad specification.");
-    assert_eq!(&selector.name, "field");
-    assert!(!&selector.required);
+    assert_eq!(selector.name(), "field");
+    assert!(!&selector.is_required());
+    let delegate_selector = selector
+        .into_selector()
+        .uninject::<KeySelector, _>()
+        .expect("Failed to get inner selector");
     assert_eq!(
-        selector.selector,
-        ValueSelector::Key(ChainSelector::from(vec![BasicSelector::Index(
+        delegate_selector,
+        KeySelector(ChainSelector::from(vec![BasicSelector::Index(
             IndexSelector::new(0)
         )]))
     );
@@ -534,16 +473,22 @@ fn value_lane_selector_from_spec_bad_selector() {
 fn map_lane_selector_from_spec() {
     let spec = IngressMapLaneSpec::new("field", "$key", "$payload", true, false);
     let selector = MapLaneSelector::try_from(&spec).expect("Bad specification.");
-    assert_eq!(&selector.name, "field");
-    assert!(!selector.required);
-    assert!(selector.remove_when_no_value);
+    assert_eq!(selector.name(), "field");
+    assert!(!selector.is_required());
+    assert!(selector.remove_when_no_value());
+
+    let (key_selector, value_selector) = selector.into_selectors();
+    let key_delegate = key_selector
+        .uninject::<KeySelector, _>()
+        .expect("Failed to get key delegate.");
+    let value_delegate = value_selector
+        .uninject::<PayloadSelector, _>()
+        .expect("Failed to get key delegate.");
+
+    assert_eq!(key_delegate, KeySelector::new(ChainSelector::default()));
     assert_eq!(
-        selector.key_selector,
-        ValueSelector::Key(ChainSelector::default())
-    );
-    assert_eq!(
-        selector.value_selector,
-        ValueSelector::Payload(ChainSelector::default())
+        value_delegate,
+        PayloadSelector::new(ChainSelector::default())
     );
 }
 
@@ -559,4 +504,64 @@ fn map_lane_selector_from_spec_bad_value() {
     let spec = IngressMapLaneSpec::new("field", "$key", "$other", true, false);
     let error = MapLaneSelector::try_from(&spec).expect_err("Should fail.");
     assert_eq!(error, InvalidLaneSpec::Selector(BadSelector::InvalidRoot));
+}
+
+fn run_selector(selector: PubSubSelector, expected: Value) {
+    const LANE: &str = "lane";
+
+    let selector = PubSubValueLaneSelector::new(LANE.to_string(), selector, true);
+    let topic = Value::from("topic");
+
+    let deserializer = ReconDeserializer::default().boxed();
+    let key = Deser::new(&b"13".as_slice(), &deserializer);
+    let value = Deser::new(&b"64.0".as_slice(), &deserializer);
+    let mut args = hlist![topic, key, value];
+    let handler = selector.select_handler(&mut args).unwrap();
+    let mut agent = ConnectorAgent::default();
+
+    agent
+        .register_dynamic_item(
+            LANE,
+            ItemDescriptor::WarpLane {
+                kind: WarpLaneKind::Value,
+                flags: Default::default(),
+            },
+        )
+        .expect("Failed to register lane");
+
+    run_handler(
+        &TestSpawner::default(),
+        &mut BytesMut::default(),
+        &agent,
+        handler,
+        fail,
+    );
+
+    match agent.value_lane(LANE) {
+        Some(lane) => lane.deref().read(|state| assert_eq!(state, &expected)),
+        None => {
+            panic!("Missing lane")
+        }
+    };
+}
+
+#[test]
+fn selects_topic() {
+    run_selector(PubSubSelector::inject(TopicSelector), Value::from("topic"));
+}
+
+#[test]
+fn selects_key() {
+    run_selector(
+        PubSubSelector::inject(KeySelector::new(ChainSelector::default())),
+        Value::from(13),
+    );
+}
+
+#[test]
+fn selects_payload() {
+    run_selector(
+        PubSubSelector::inject(PayloadSelector::new(ChainSelector::default())),
+        Value::from(64f64),
+    );
 }

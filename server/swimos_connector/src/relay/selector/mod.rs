@@ -22,9 +22,10 @@ pub use lane::LaneSelector;
 pub use node::NodeSelector;
 pub use payload::PayloadSelector;
 
+use crate::deser::Deser;
 use crate::relay::selector::payload::GenericSendCommandOp;
-use crate::selector::Deferred;
 use crate::SelectorError;
+use frunk::HList;
 use std::slice::Iter;
 use std::sync::Arc;
 use swimos_model::Value;
@@ -103,23 +104,18 @@ impl Relay {
         }
     }
 
-    pub fn select_handler<K, V>(
+    pub fn select_handler<'a>(
         &self,
-        topic: &Value,
-        key: &mut K,
-        value: &mut V,
-    ) -> Result<GenericSendCommandOp, SelectorError>
-    where
-        K: Deferred,
-        V: Deferred,
-    {
+        args: &HList!(Value, Deser<'a>, Deser<'a>),
+    ) -> Result<GenericSendCommandOp, SelectorError> {
         let Relay {
             node,
             lane,
             payload,
         } = self;
-        let node_uri = node.select(key, value, topic)?;
-        let lane_uri = lane.select(key, value, topic)?;
-        payload.select(node_uri, lane_uri, key, value, topic)
+
+        let node_uri = node.select(args)?;
+        let lane_uri = lane.select(args)?;
+        payload.select(node_uri, lane_uri, args)
     }
 }

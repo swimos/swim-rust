@@ -18,7 +18,9 @@ use crate::relay::selector::{
     node::parse_pattern,
     NodeSelector, ParseError, Part,
 };
-use crate::selector::{BasicSelector, ChainSelector, SlotSelector, ValueSelector};
+use crate::selector::{
+    BasicSelector, ChainSelector, KeySelector, PayloadSelector, PubSubSelector, SlotSelector,
+};
 
 fn test(pattern_str: &str, expected_scheme: Option<StaticBound>, expected_segments: Vec<Segment>) {
     match parse_pattern(pattern_str.into()) {
@@ -491,22 +493,26 @@ fn iter_nested() {
     assert_eq!(iter.next(), Some(Part::Static("/")));
     assert_eq!(
         iter.next(),
-        Some(Part::Selector(ValueSelector::Payload(ChainSelector::from(
-            vec![]
-        ))))
+        Some(Part::Selector(PubSubSelector::inject(
+            PayloadSelector::new(ChainSelector::from(vec![]))
+        )))
     );
     assert_eq!(iter.next(), Some(Part::Static("/")));
     assert_eq!(
         iter.next(),
-        Some(Part::Selector(ValueSelector::Key(ChainSelector::from(
-            vec![BasicSelector::Slot(SlotSelector::for_field("field_a"))]
+        Some(Part::Selector(PubSubSelector::inject(KeySelector::new(
+            ChainSelector::from(vec![BasicSelector::Slot(SlotSelector::for_field(
+                "field_a"
+            ))])
         ))))
     );
     assert_eq!(
         iter.next(),
-        Some(Part::Selector(ValueSelector::Payload(ChainSelector::from(
-            vec![BasicSelector::Slot(SlotSelector::for_field("field_b"))]
-        ))))
+        Some(Part::Selector(PubSubSelector::inject(
+            PayloadSelector::new(ChainSelector::from(vec![BasicSelector::Slot(
+                SlotSelector::for_field("field_b")
+            )]))
+        )))
     );
     assert_eq!(iter.next(), None);
     assert_eq!(iter.next(), None);

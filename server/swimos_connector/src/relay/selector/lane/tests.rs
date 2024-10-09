@@ -17,7 +17,9 @@ use crate::relay::selector::{
     lane::parse_pattern,
     LaneSelector, Part,
 };
-use crate::selector::{BasicSelector, ChainSelector, SlotSelector, ValueSelector};
+use crate::selector::{
+    BasicSelector, ChainSelector, PayloadSelector, PubSubSelector, SlotSelector,
+};
 
 fn test(pattern_str: &str, expected_segment: Segment) {
     match parse_pattern(pattern_str.into()) {
@@ -133,12 +135,12 @@ fn iter() {
 
     assert_eq!(
         iter.next(),
-        Some(Part::Selector(ValueSelector::Payload(ChainSelector::from(
-            vec![
+        Some(Part::Selector(PubSubSelector::inject(
+            PayloadSelector::new(ChainSelector::from(vec![
                 BasicSelector::Slot(SlotSelector::for_field("field")),
                 BasicSelector::Slot(SlotSelector::for_field("a"))
-            ]
-        ))))
+            ]))
+        )))
     );
     assert_eq!(iter.next(), None);
     assert_eq!(iter.next(), None);

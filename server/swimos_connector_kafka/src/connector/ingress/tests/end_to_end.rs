@@ -13,10 +13,12 @@
 // limitations under the License.
 
 use crate::{
-    connector::test_util::create_kafka_props, DataFormat, Endianness, IngressMapLaneSpec,
-    IngressValueLaneSpec, KafkaIngressConfiguration, KafkaIngressConnector, KafkaLogLevel,
+    connector::test_util::create_kafka_props, DataFormat, KafkaIngressConfiguration,
+    KafkaIngressConnector, KafkaLogLevel,
 };
 use futures::{future::join, TryStreamExt};
+use swimos_connector::config::{IngressMapLaneSpec, IngressValueLaneSpec};
+use swimos_connector::deser::Endianness;
 use swimos_connector::{BaseConnector, ConnectorAgent, IngressConnector};
 use swimos_utilities::trigger;
 

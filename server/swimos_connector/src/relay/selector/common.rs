@@ -13,7 +13,8 @@
 // limitations under the License.
 
 use crate::selector::{
-    AttrSelector, BasicSelector, ChainSelector, IndexSelector, SlotSelector, ValueSelector,
+    AttrSelector, BasicSelector, ChainSelector, IndexSelector, KeySelector, PayloadSelector,
+    PubSubSelector, SlotSelector,
 };
 use nom::{
     branch::alt,
@@ -128,7 +129,10 @@ where
 pub fn segment_to_part<'p>(pattern: &'p str, segment: &Segment) -> Part<'p> {
     match segment {
         Segment::Static(StaticBound { start, end }) => Part::Static(&pattern[*start..*end]),
-        Segment::Selector(Selector::Topic) => Part::Selector(ValueSelector::Topic),
+        Segment::Selector(Selector::Topic) => {
+            todo!()
+            // Part::Selector()
+        }
         Segment::Selector(Selector::Property { kind, parts }) => {
             let parts = parts
                 .iter()
@@ -160,10 +164,12 @@ pub fn segment_to_part<'p>(pattern: &'p str, segment: &Segment) -> Part<'p> {
                 })
                 .collect::<Vec<_>>();
             match kind {
-                SelectorKind::Key => Part::Selector(ValueSelector::Key(ChainSelector::from(parts))),
-                SelectorKind::Value => {
-                    Part::Selector(ValueSelector::Payload(ChainSelector::from(parts)))
-                }
+                SelectorKind::Key => Part::Selector(PubSubSelector::inject(KeySelector::new(
+                    ChainSelector::from(parts),
+                ))),
+                SelectorKind::Value => Part::Selector(PubSubSelector::inject(
+                    PayloadSelector::new(ChainSelector::from(parts)),
+                )),
             }
         }
     }
@@ -176,7 +182,7 @@ pub enum Part<'p> {
     /// a static part will be derived which contains `/node_uri/`.
     Static(&'p str),
     /// The derived part is a Value selector.
-    Selector(ValueSelector),
+    Selector(PubSubSelector),
 }
 
 /// Selector types in a selector pattern.

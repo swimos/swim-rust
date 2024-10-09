@@ -1,53 +1,18 @@
-use crate::config::{IngressMapLaneSpec, IngressValueLaneSpec};
-use crate::deser::{BoxMessageDeserializer, MessagePart, MessageView};
-use crate::relay::Relays;
-use crate::selector::{Computed, MapLaneSelector, ValueLaneSelector};
-use crate::{ConnectorAgent, InvalidLanes, SelectorError};
+mod lanes;
+
+use crate::deser::{BoxMessageDeserializer, Deser, MessageView};
+use crate::selector::{PubSubMapLaneSelector, PubSubValueLaneSelector, SelectHandler};
+use crate::{ConnectorAgent, InvalidLanes, Relays, SelectorError};
+use frunk::hlist;
+pub use lanes::*;
 use std::collections::HashSet;
 use swimos_agent::event_handler::{EventHandler, HandlerActionExt, Sequentially};
 use swimos_model::Value;
 use tracing::trace;
 
-// Information about the lanes of the connector. These are computed from the configuration in the `on_start` handler
-// and stored in the lifecycle to be used to start the consumer stream.
-#[derive(Debug, Default, Clone)]
-pub struct Lanes {
-    value_lanes: Vec<ValueLaneSelector>,
-    map_lanes: Vec<MapLaneSelector>,
-}
-
-impl Lanes {
-    pub fn value_lanes(&self) -> &[ValueLaneSelector] {
-        &self.value_lanes
-    }
-
-    pub fn map_lanes(&self) -> &[MapLaneSelector] {
-        &self.map_lanes
-    }
-
-    pub fn try_from_lane_specs(
-        value_lanes: &[IngressValueLaneSpec],
-        map_lanes: &[IngressMapLaneSpec],
-    ) -> Result<Lanes, InvalidLanes> {
-        let value_selectors = value_lanes
-            .iter()
-            .map(ValueLaneSelector::try_from)
-            .collect::<Result<Vec<_>, _>>()?;
-        let map_selectors = map_lanes
-            .iter()
-            .map(MapLaneSelector::try_from)
-            .collect::<Result<Vec<_>, _>>()?;
-        check_selectors(&value_selectors, &map_selectors)?;
-        Ok(Lanes {
-            value_lanes: value_selectors,
-            map_lanes: map_selectors,
-        })
-    }
-}
-
 fn check_selectors(
-    value_selectors: &[ValueLaneSelector],
-    map_selectors: &[MapLaneSelector],
+    value_selectors: &[PubSubValueLaneSelector],
+    map_selectors: &[PubSubMapLaneSelector],
 ) -> Result<(), InvalidLanes> {
     let mut names = HashSet::new();
     for value_selector in value_selectors {
@@ -102,11 +67,10 @@ impl MessageSelector {
             lanes,
             relays,
         } = self;
-        let Lanes {
-            value_lanes,
-            map_lanes,
-            ..
-        } = lanes;
+
+        let value_lanes = lanes.value_lanes();
+        let map_lanes = lanes.map_lanes();
+
         trace!(topic = { message.topic() }, "Handling a message.");
 
         let mut value_lane_handlers = Vec::with_capacity(value_lanes.len());
@@ -115,18 +79,18 @@ impl MessageSelector {
 
         {
             let topic = Value::text(message.topic());
-            let mut key = Computed::new(|| key_deserializer.deserialize(message, MessagePart::Key));
-            let mut value =
-                Computed::new(|| value_deserializer.deserialize(message, MessagePart::Payload));
+            let key = Deser::new(message.key, key_deserializer);
+            let value = Deser::new(message.payload, value_deserializer);
+            let args = hlist![topic, key, value];
 
             for value_lane in value_lanes {
-                value_lane_handlers.push(value_lane.select_handler(&topic, &mut key, &mut value)?);
+                value_lane_handlers.push(value_lane.select_handler(&args)?);
             }
             for map_lane in map_lanes {
-                map_lane_handlers.push(map_lane.select_handler(&topic, &mut key, &mut value)?);
+                map_lane_handlers.push(map_lane.select_handler(&args)?);
             }
             for relay in relays {
-                relay_handlers.push(relay.select_handler(&topic, &mut key, &mut value)?);
+                relay_handlers.push(relay.select_handler(&args)?);
             }
         }
 

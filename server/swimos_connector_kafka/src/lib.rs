@@ -28,9 +28,3 @@ pub use error::{
     DoubleInitialization, InvalidExtractor, InvalidExtractors, KafkaConnectorError,
     KafkaSenderError,
 };
-pub use swimos_connector::{
-    config::{IngressMapLaneSpec, IngressValueLaneSpec},
-    deser::Endianness,
-    BadSelector, DeserializationError, InvalidLaneSpec, InvalidLanes, LoadError, SelectorError,
-    SerializationError,
-};

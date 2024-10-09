@@ -11,7 +11,7 @@ homepage.workspace = true
 [features]
 default = []
 json = ["dep:serde_json"]
-avro = ["dep:apache-avro", "dep:chrono"]
+avro = ["dep:apache-avro", "dep:chrono", "tokio/fs"]
 pubsub = []
 
 [dependencies]
