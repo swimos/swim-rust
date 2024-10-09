@@ -12,13 +12,25 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-mod config;
-mod connector;
-mod error;
+use rumqttc::{ClientError, ConnectionError, OptionError};
+use thiserror::Error;
 
-pub use config::{
-    EgressDownlinkSpec, EgressLaneSpec, IngressMapLaneSpec, IngressValueLaneSpec,
-    MqqtEgressConfiguration, MqttIngressConfiguration, Subscription,
-};
-pub use connector::MqttIngressConnector;
-pub use error::{InvalidLanes, MqttConnectorError};
+#[derive(Debug, Error)]
+pub enum MqttConnectorError {
+    #[error("The connector was not initialized correctly.")]
+    NotInitialized,
+    #[error(transparent)]
+    Lanes(#[from] InvalidLanes),
+    #[error(transparent)]
+    Options(#[from] OptionError),
+    #[error(transparent)]
+    Client(#[from] ClientError),
+    #[error(transparent)]
+    Connection(#[from] ConnectionError),
+}
+
+#[derive(Debug, Error)]
+pub enum InvalidLanes {
+    #[error("Duplicate lane name.")]
+    NameCollision,
+}

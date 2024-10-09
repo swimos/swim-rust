@@ -12,13 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-mod config;
-mod connector;
-mod error;
+mod ingress;
 
-pub use config::{
-    EgressDownlinkSpec, EgressLaneSpec, IngressMapLaneSpec, IngressValueLaneSpec,
-    MqqtEgressConfiguration, MqttIngressConfiguration, Subscription,
-};
-pub use connector::MqttIngressConnector;
-pub use error::{InvalidLanes, MqttConnectorError};
+pub use ingress::MqttIngressConnector;

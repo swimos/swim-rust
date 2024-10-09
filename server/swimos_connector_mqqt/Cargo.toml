@@ -18,7 +18,7 @@ swimos_recon = { workspace = true }
 tokio = { workspace = true, features = ["sync", "macros"] }
 swimos_agent = { workspace = true }
 tracing = { workspace = true }
-rumqttc = { workspace = true }
+rumqttc = { workspace = true, features = ["url"]}
 thiserror = { workspace = true }
 swimos_connector = { workspace = true }
 
