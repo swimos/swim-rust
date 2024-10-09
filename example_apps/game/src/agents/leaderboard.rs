@@ -14,10 +14,10 @@
 
 use std::{cell::RefCell, collections::HashMap, time::Duration};
 
-use game_model::config;
+use crate::generator::config;
 use swimos::{
     agent::{
-        agent_lifecycle::utility::HandlerContext,
+        agent_lifecycle::HandlerContext,
         event_handler::{EventHandler, HandlerAction, HandlerActionExt},
         lanes::{CommandLane, DemandLane, JoinValueLane, ValueLane},
         lifecycle, projections, AgentLaneModel,

@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use game_model::round::Round;
+use crate::generator::round::Round;
 use swimos::agent::{
-    agent_lifecycle::utility::HandlerContext,
+    agent_lifecycle::HandlerContext,
     event_handler::{EventHandler, HandlerActionExt, Sequentially},
     lanes::{CommandLane, ValueLane},
     lifecycle, projections, AgentLaneModel,
@@ -51,7 +51,7 @@ impl MatchLifecycle {
                 info!(id = round.id, "New match published.");
                 round
             })
-            .map(MatchSummary::from_round)
+            .map(Round::into)
             .and_then(move |summary: MatchSummary| {
                 context
                     .set_value(MatchAgent::STATS, Some(summary.clone()))
@@ -81,14 +81,14 @@ fn forward_match_summary(
     let forward_to_players = match_summary
         .player_stats
         .keys()
-        .map(|id| command_match_summary(context, match_summary.clone(), format!("/player/{id}")))
+        .map(|id| command_match_summary(context, match_summary.clone(), format!("/player/{id}").as_str()))
         .collect::<Vec<_>>();
     let forward_to_teams = match_summary
         .team_stats
         .keys()
-        .map(|name| command_match_summary(context, match_summary.clone(), format!("/team/{name}")))
+        .map(|name| command_match_summary(context, match_summary.clone(), format!("/team/{name}").as_str()))
         .collect::<Vec<_>>();
-    let forward_to_game = command_match_summary(context, match_summary, "/match".to_string());
+    let forward_to_game = command_match_summary(context, match_summary, "/match");
     forward_to_game
         .followed_by(Sequentially::new(forward_to_players))
         .followed_by(Sequentially::new(forward_to_teams))
@@ -97,7 +97,7 @@ fn forward_match_summary(
 fn command_match_summary(
     context: HandlerContext<MatchAgent>,
     match_summary: MatchSummary,
-    node_uri: String,
+    node_uri: &str,
 ) -> impl EventHandler<MatchAgent> {
-    context.send_command(None, node_uri, "addMatch".to_string(), match_summary)
+    context.send_command(None, node_uri, "addMatch", match_summary)
 }

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use game_model::round::{PlayerRound, Round};
+use crate::generator::round::{PlayerRound, Round};
 use std::collections::HashMap;
 use swimos_form::Form;
 
@@ -35,8 +35,8 @@ pub struct MatchSummary {
     pub player_stats: HashMap<usize, MatchStats>,
 }
 
-impl MatchSummary {
-    pub fn from_round(round: Round) -> MatchSummary {
+impl From<Round> for MatchSummary {
+    fn from(round: Round) -> MatchSummary {
         MatchSummary {
             match_id: round.id,
             duration: round.duration,

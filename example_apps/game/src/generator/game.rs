@@ -13,8 +13,8 @@
 // limitations under the License.
 
 
-use crate::{player::Player, round::Round};
-use crate::config;
+use crate::generator::{player::Player, round::Round};
+use crate::generator::config;
 
 
 #[derive(Debug, Default)]

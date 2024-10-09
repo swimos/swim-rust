@@ -45,8 +45,7 @@ members = [
     "example_apps/stocks_simulated",
     "example_apps/kafka_ingress_connector",
     "example_apps/kafka_egress_connector", 
-    "example_apps/game",
-    "example_apps/game/game-model"
+    "example_apps/game"
 ]
 
 [workspace.package]
@@ -185,3 +184,4 @@ hyper-util = "0.1.5"
 rdkafka = "0.36"
 apache-avro = "0.17.0"
 time = "0.3.36"
+rand_distr = "0.4.3"

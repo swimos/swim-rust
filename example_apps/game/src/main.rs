@@ -128,7 +128,7 @@ async fn run_swim_server(
     let (_, result) = futures::future::join(shutdown, task).await;
 
     result?;
-    println!("Server stopped successfully.");
+    info!("Server stopped successfully.");
     Ok(())
 }
 
@@ -195,7 +195,7 @@ async fn ui_server(
 
         let server = axum::Server::try_bind(&bind_to)?.serve(app.into_make_service());
         let ui_addr = server.local_addr();
-        println!("UI bound to: {}", ui_addr);
+        info!("UI bound to: {}", ui_addr);
         let stop_tx = Arc::new(Notify::new());
         let stop_rx = stop_tx.clone();
         let server_task = pin!(server.with_graceful_shutdown(stop_rx.notified()));

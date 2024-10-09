@@ -15,7 +15,7 @@
 use std::collections::HashSet;
 use rand::Rng;
 use rand_distr::{Beta, Binomial};
-use crate::player::Player;
+use crate::generator::player::Player;
 
 pub const MAX_MATCH_ID: usize = 250;
 
@@ -36,8 +36,6 @@ pub const XP_PER_KILL: usize = 100;
 pub const XP_PER_ASSIST: usize = 50;
 
 pub const ASSIST_RATIO: f32 = 0.2;
-
-// TODO: Cache the ThreadRng and Distributions 
 
 pub fn generate_game_duration() -> u64 {
     rand::thread_rng().sample(Binomial::new(30, 0.5).unwrap()) * 60000 +

@@ -13,4 +13,5 @@
 // limitations under the License.
 
 pub mod agents;
+pub mod generator;
 pub mod ui;

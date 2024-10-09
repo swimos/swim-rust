@@ -13,9 +13,9 @@
 // limitations under the License.
 
 
-use rand::Rng;
+use rand::{seq::SliceRandom, Rng};
 
-use crate::{config, player::Player, round::PlayerRound};
+use crate::generator::{config, player::Player, round::PlayerRound};
 
 pub struct Battle<'a> {
     team1: Team<'a>,
@@ -73,7 +73,7 @@ struct Team<'a> {
 impl<'a> Team<'a> {
 
     fn new(name: &'static str, players: Vec<&'a mut Player>) -> Team<'a> {
-        let alive: Vec<PlayerBattleContext> = players.into_iter().map(|player| PlayerBattleContext::new(player)).collect();
+        let alive: Vec<PlayerBattleContext> = players.into_iter().map(|player| PlayerBattleContext::from(player)).collect();
         let dead = Vec::with_capacity(alive.len());
         Team { name, alive, dead }
     }
@@ -90,14 +90,15 @@ impl<'a> Team<'a> {
         self.dead.push(player);
     }
 
-    fn take_random_alive(&'_ mut self) -> PlayerBattleContext<'a> {
+    fn take_random_alive(&mut self) -> PlayerBattleContext<'a> {
         self.alive.swap_remove(rand::thread_rng().gen_range(0..self.alive.len()))
     }
 
     fn assign_random_assist(&mut self) {
-        let alive_count = self.alive.len();
-        if alive_count > 0 {
-            self.alive.get_mut(rand::thread_rng().gen_range(0..alive_count)).unwrap().increment_assists();
+        let mut rng = rand::thread_rng();
+        let assister = self.alive.choose_mut(&mut rng);
+        if let Some(player) = assister {
+            player.increment_assists();
         }
     }
 
@@ -121,11 +122,15 @@ struct PlayerBattleContext<'a> {
     assists: usize,
 }
 
-impl<'a> PlayerBattleContext<'a> {
+impl<'a> From<&'a mut Player> for PlayerBattleContext<'a> {
 
-    fn new(player: &mut Player) -> PlayerBattleContext {
+    fn from(player: &'a mut Player) -> Self {
         PlayerBattleContext { player, kills: 0, assists: 0 }
     }
+
+} 
+
+impl<'a> PlayerBattleContext<'a> {
 
     fn increment_kills(&mut self) {
         self.kills += 1;
@@ -178,7 +183,7 @@ mod tests {
         player.xp = 500;
 
         let result = {
-            let mut player_context = PlayerBattleContext::new(&mut player);
+            let mut player_context = PlayerBattleContext::from(&mut player);
 
             player_context.increment_kills();
             player_context.increment_assists();

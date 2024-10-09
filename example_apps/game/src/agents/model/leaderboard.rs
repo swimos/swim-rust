@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{cmp::Ordering, sync::Arc};
+use std::cmp::Ordering;
 
 use super::stats::PlayerTotals;
 
-type Comparator = Arc<dyn Fn(&PlayerTotals, &PlayerTotals) -> Ordering + Sync + Send>;
+type Comparator = fn(&PlayerTotals, &PlayerTotals) -> Ordering;
 
 #[derive(Clone)]
 pub struct Leaderboard {
@@ -31,30 +31,30 @@ impl Leaderboard {
     pub fn kill_count(capacity: usize) -> Self {
         Leaderboard::new(
             capacity,
-            Arc::new(|p1, p2| p1.total_kills.cmp(&p2.total_kills)),
+            |p1, p2| p1.total_kills.cmp(&p2.total_kills),
         )
     }
 
     pub fn death_count(capacity: usize) -> Self {
         Leaderboard::new(
             capacity,
-            Arc::new(|p1, p2| p1.total_deaths.cmp(&p2.total_deaths)),
+            |p1, p2| p1.total_deaths.cmp(&p2.total_deaths),
         )
     }
 
     pub fn kd_ratio(capacity: usize) -> Self {
         Leaderboard::new(
             capacity,
-            Arc::new(|p1, p2| {
+            |p1, p2| {
                 p1.kd_ratio
                     .partial_cmp(&p2.kd_ratio)
                     .unwrap_or_else(|| p1.total_kills.cmp(&p2.total_kills))
-            }),
+            },
         )
     }
 
     pub fn xp(capacity: usize) -> Self {
-        Leaderboard::new(capacity, Arc::new(|p1, p2| p1.total_xp.cmp(&p2.total_xp)))
+        Leaderboard::new(capacity, |p1, p2| p1.total_xp.cmp(&p2.total_xp))
     }
 
     pub fn new(capacity: usize, f: Comparator) -> Self {
@@ -93,7 +93,7 @@ impl Leaderboard {
             return false;
         };
 
-        let mover_stats = self.items.get(index).unwrap();
+        let mover_stats = &self.items[index];
         if (self.comparator)(mover_stats, self.items.get(index + 1).unwrap()) != Ordering::Less {
             return false;
         }
@@ -108,7 +108,7 @@ impl Leaderboard {
             return false;
         };
 
-        let mover_stats = self.items.get(index).unwrap();
+        let mover_stats = &self.items[index];
         if (self.comparator)(mover_stats, self.items.get(index - 1).unwrap()) != Ordering::Greater {
             return false;
         };

@@ -14,9 +14,9 @@
 
 use std::{cell::RefCell, collections::VecDeque, time::Duration};
 
-use game_model::game::Game;
+use crate::generator::game::Game;
 use swimos::agent::{
-    agent_lifecycle::utility::HandlerContext,
+    agent_lifecycle::HandlerContext,
     event_handler::{EventHandler, HandlerActionExt},
     lanes::{CommandLane, MapLane, ValueLane},
     lifecycle, projections, AgentLaneModel,
@@ -126,8 +126,8 @@ fn generate_match(
     let round = game.generate_round();
     context.send_command(
         None,
-        format!("/match/{id}", id = round.id),
-        "publish".to_string(),
+        format!("/match/{id}", id = round.id).as_str(),
+        "publish",
         round,
     )
 }

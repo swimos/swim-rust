@@ -14,7 +14,7 @@
 
 use std::time::{SystemTime, UNIX_EPOCH};
 use swimos_form::Form;
-use crate::{battle::Battle, config, player::Player};
+use crate::{generator::battle::Battle, generator::config, generator::player::Player};
 
 #[derive(Debug, Clone, Form)]
 #[form(tag = "match", fields_convention = "camel")]

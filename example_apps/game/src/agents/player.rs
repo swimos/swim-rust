@@ -14,9 +14,9 @@
 
 use std::{cell::RefCell, collections::VecDeque};
 
-use game_model::gamertag;
+use crate::generator::gamertag;
 use swimos::agent::{
-    agent_lifecycle::utility::HandlerContext,
+    agent_lifecycle::HandlerContext,
     event_handler::{EventHandler, HandlerActionExt},
     lanes::{CommandLane, MapLane, ValueLane},
     lifecycle, projections, AgentLaneModel,
@@ -109,7 +109,7 @@ impl PlayerLifecycle {
                     }),
             )
             .followed_by(context.get_agent_uri().and_then(move |uri| {
-                context.send_command(None, "/player".to_string(), "addPlayer".to_string(), uri)
+                context.send_command(None, "/player", "addPlayer", uri)
             }))
     }
 
