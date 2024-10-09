@@ -132,11 +132,11 @@ impl PayloadSelector {
         })
     }
 
-    pub(crate) fn select<'a>(
+    pub(crate) fn select(
         &self,
         node_uri: String,
         lane_uri: String,
-        args: &PubSubSelectorArgs<'a>,
+        args: &PubSubSelectorArgs<'_>,
     ) -> Result<GenericSendCommandOp, SelectorError> {
         let PayloadSelector { inner, required } = self;
 
@@ -189,11 +189,11 @@ impl PayloadSelector {
     }
 }
 
-fn build_value<'a>(
+fn build_value(
     required: bool,
     pattern: &str,
     segment: &Segment,
-    args: &PubSubSelectorArgs<'a>,
+    args: &PubSubSelectorArgs<'_>,
 ) -> Result<Option<Value>, SelectorError> {
     let payload = match segment_to_part(pattern, segment) {
         Part::Static(path) => Ok(Some(swimos_model::Value::from(path.to_string()))),

@@ -60,9 +60,9 @@ pub struct LaneSelector {
 }
 
 impl LaneSelector {
-    pub(crate) fn select<'a>(
+    pub(crate) fn select(
         &self,
-        args: &PubSubSelectorArgs<'a>,
+        args: &PubSubSelectorArgs<'_>,
     ) -> Result<String, SelectorError> {
         let LaneSelector { pattern, segment } = self;
 

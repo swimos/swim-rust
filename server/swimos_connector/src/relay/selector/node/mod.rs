@@ -65,9 +65,9 @@ pub struct NodeSelector {
 }
 
 impl NodeSelector {
-    pub(crate) fn select<'a>(
+    pub(crate) fn select(
         &self,
-        args: &PubSubSelectorArgs<'a>,
+        args: &PubSubSelectorArgs<'_>,
     ) -> Result<String, SelectorError> {
         let mut node_uri = String::new();
 

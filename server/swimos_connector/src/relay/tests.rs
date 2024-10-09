@@ -81,7 +81,7 @@ fn node_uri() {
     let value = to_bytes(mock_value());
 
     let topic = Value::text("topic");
-    let deser = JsonDeserializer::default().boxed();
+    let deser = JsonDeserializer.boxed();
     let key = Deser::new(key.as_slice(), &deser);
     let value = Deser::new(value.as_slice(), &deser);
     let args = hlist![topic, key, value];
@@ -97,7 +97,7 @@ fn invalid_node_uri() {
     let key = to_bytes(1);
     let value = to_bytes(mock_value());
 
-    let deser = JsonDeserializer::default().boxed();
+    let deser = JsonDeserializer.boxed();
     let topic = Value::text("topic");
     let key = Deser::new(key.as_slice(), &deser);
     let value = Deser::new(value.as_slice(), &deser);

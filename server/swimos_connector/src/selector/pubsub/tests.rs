@@ -512,11 +512,11 @@ fn run_selector(selector: PubSubSelector, expected: Value) {
     let selector = PubSubValueLaneSelector::new(LANE.to_string(), selector, true);
     let topic = Value::from("topic");
 
-    let deserializer = ReconDeserializer::default().boxed();
-    let key = Deser::new(&b"13".as_slice(), &deserializer);
-    let value = Deser::new(&b"64.0".as_slice(), &deserializer);
-    let mut args = hlist![topic, key, value];
-    let handler = selector.select_handler(&mut args).unwrap();
+    let deserializer = ReconDeserializer.boxed();
+    let key = Deser::new(b"13".as_slice(), &deserializer);
+    let value = Deser::new(b"64.0".as_slice(), &deserializer);
+    let  args = hlist![topic, key, value];
+    let handler = selector.select_handler(&args).unwrap();
     let mut agent = ConnectorAgent::default();
 
     agent
