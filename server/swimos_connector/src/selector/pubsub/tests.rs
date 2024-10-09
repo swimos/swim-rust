@@ -515,7 +515,7 @@ fn run_selector(selector: PubSubSelector, expected: Value) {
     let deserializer = ReconDeserializer.boxed();
     let key = Deser::new(b"13".as_slice(), &deserializer);
     let value = Deser::new(b"64.0".as_slice(), &deserializer);
-    let  args = hlist![topic, key, value];
+    let args = hlist![topic, key, value];
     let handler = selector.select_handler(&args).unwrap();
     let mut agent = ConnectorAgent::default();
 
