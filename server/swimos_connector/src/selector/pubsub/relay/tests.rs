@@ -34,14 +34,11 @@ fn parse_lane() {
     }
 
     fn err(pattern: &str) {
-        match LaneSelector::from_str(pattern) {
-            Ok(actual) => {
-                panic!(
-                    "Expected parse error from pattern {}, but got {:?}",
-                    pattern, actual
-                );
-            }
-            Err(_) => {}
+        if let Ok(actual) = LaneSelector::from_str(pattern) {
+            panic!(
+                "Expected parse error from pattern {}, but got {:?}",
+                pattern, actual
+            );
         }
     }
 
@@ -69,7 +66,7 @@ fn parse_lane() {
     ok(
         "$topic",
         LaneSelector {
-            segment: Segment::Selector(PubSubSelector::inject(TopicSelector::default())),
+            segment: Segment::Selector(PubSubSelector::inject(TopicSelector)),
             pattern: "$topic".to_string(),
         },
     );
@@ -111,14 +108,11 @@ fn parse_node() {
     }
 
     fn err(pattern: &str) {
-        match NodeSelector::from_str(pattern) {
-            Ok(actual) => {
-                panic!(
-                    "Expected parse error from pattern {}, but got {:?}",
-                    pattern, actual
-                );
-            }
-            Err(_) => {}
+        if let Ok(actual) = NodeSelector::from_str(pattern) {
+            panic!(
+                "Expected parse error from pattern {}, but got {:?}",
+                pattern, actual
+            );
         }
     }
     ok(
@@ -160,7 +154,7 @@ fn parse_node() {
         NodeSelector {
             segments: vec![
                 Segment::Static("/node/".to_string()),
-                Segment::Selector(PubSubSelector::inject(TopicSelector::default())),
+                Segment::Selector(PubSubSelector::inject(TopicSelector)),
             ],
             pattern: "/node/$topic".to_string(),
         },
@@ -226,7 +220,7 @@ fn parse_payload() {
         PayloadSelector {
             inner: Inner::Value {
                 pattern: "$topic".to_string(),
-                segment: PayloadSegment::Selector(PubSubSelector::inject(TopicSelector::default())),
+                segment: PayloadSegment::Selector(PubSubSelector::inject(TopicSelector)),
             },
             required: true,
         },

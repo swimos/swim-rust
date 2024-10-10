@@ -476,9 +476,9 @@ impl Relay {
         })
     }
 
-    pub fn select_handler<'a>(
+    pub fn select_handler(
         &self,
-        args: &PubSubSelectorArgs<'a>,
+        args: &PubSubSelectorArgs<'_>,
     ) -> Result<GenericSendCommandOp, SelectorError> {
         let Relay {
             node,
