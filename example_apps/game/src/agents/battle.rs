@@ -81,12 +81,24 @@ fn forward_match_summary(
     let forward_to_players = match_summary
         .player_stats
         .keys()
-        .map(|id| command_match_summary(context, match_summary.clone(), format!("/player/{id}").as_str()))
+        .map(|id| {
+            command_match_summary(
+                context,
+                match_summary.clone(),
+                format!("/player/{id}").as_str(),
+            )
+        })
         .collect::<Vec<_>>();
     let forward_to_teams = match_summary
         .team_stats
         .keys()
-        .map(|name| command_match_summary(context, match_summary.clone(), format!("/team/{name}").as_str()))
+        .map(|name| {
+            command_match_summary(
+                context,
+                match_summary.clone(),
+                format!("/team/{name}").as_str(),
+            )
+        })
         .collect::<Vec<_>>();
     let forward_to_game = command_match_summary(context, match_summary, "/match");
     forward_to_game

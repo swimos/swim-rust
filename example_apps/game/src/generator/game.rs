@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::time::{SystemTime, UNIX_EPOCH};
+use crate::generator::{battle::Battle, player::Player};
 use rand::Rng;
 use rand_distr::Binomial;
+use std::time::{SystemTime, UNIX_EPOCH};
 use swimos_form::Form;
-use crate::generator::{battle::Battle, player::Player};
 
 #[derive(Debug, Clone, Form)]
 #[form(tag = "game", fields_convention = "camel")]
@@ -26,7 +26,7 @@ pub struct Game {
     pub end_time: u64,
     pub duration: u64,
     pub first_kill_time: u64,
-    pub player_results: Vec<PlayerGame>
+    pub player_results: Vec<PlayerGame>,
 }
 
 #[derive(Debug, Clone, Form)]
@@ -45,10 +45,12 @@ pub struct PlayerGame {
 }
 
 impl Game {
-
     pub fn generate(id: usize, players: Vec<&mut Player>) -> Game {
         // Generate the metadata
-        let end_time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64;
+        let end_time = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64;
         let duration = generate_game_duration();
         let start_time = end_time - duration;
         let first_kill_time = generate_first_kill_time();
@@ -57,17 +59,23 @@ impl Game {
         battle.play();
         let player_results = battle.resolve();
 
-        Game { id, start_time, end_time, duration, first_kill_time, player_results }
+        Game {
+            id,
+            start_time,
+            end_time,
+            duration,
+            first_kill_time,
+            player_results,
+        }
     }
-
 }
 
 fn generate_game_duration() -> u64 {
-    rand::thread_rng().sample(Binomial::new(30, 0.5).unwrap()) * 60000 +
-    rand::thread_rng().gen_range(0..60000)
+    rand::thread_rng().sample(Binomial::new(30, 0.5).unwrap()) * 60000
+        + rand::thread_rng().gen_range(0..60000)
 }
 
 fn generate_first_kill_time() -> u64 {
-    rand::thread_rng().sample(Binomial::new(120, 0.3).unwrap()) * 1000 +
-    rand::thread_rng().gen_range(0..1000)
+    rand::thread_rng().sample(Binomial::new(120, 0.3).unwrap()) * 1000
+        + rand::thread_rng().gen_range(0..1000)
 }

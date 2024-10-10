@@ -14,7 +14,7 @@
 
 use rand::{seq::SliceRandom, Rng};
 
-use crate::generator::{player::Player, game::PlayerGame};
+use crate::generator::{game::PlayerGame, player::Player};
 
 pub const TEAMS: [&str; 2] = ["Hubble", "Donut"];
 pub const XP_PER_WIN: usize = 200;
@@ -28,20 +28,17 @@ pub struct Battle<'a> {
 }
 
 impl<'a> From<Vec<&'a mut Player>> for Battle<'a> {
-
     fn from(mut players1: Vec<&'a mut Player>) -> Self {
         let (team1, team2) = generate_team_name_pair();
         let players2 = players1.split_off(players1.len() / 2);
-        Battle { 
-            team1: Team::new(team1, players1), 
-            team2: Team::new(team2, players2)
+        Battle {
+            team1: Team::new(team1, players1),
+            team2: Team::new(team2, players2),
         }
     }
-
 }
 
 impl<'a> Battle<'a> {
-
     pub fn play(&mut self) {
         while self.team1.is_alive() && self.team2.is_alive() {
             duel(&mut self.team1, &mut self.team2);
@@ -49,9 +46,12 @@ impl<'a> Battle<'a> {
     }
 
     pub fn resolve(self) -> Vec<PlayerGame> {
-        self.team1.resolve().into_iter().chain(self.team2.resolve()).collect()
+        self.team1
+            .resolve()
+            .into_iter()
+            .chain(self.team2.resolve())
+            .collect()
     }
-
 }
 
 fn duel(team1: &mut Team, team2: &mut Team) {
@@ -62,20 +62,24 @@ fn duel(team1: &mut Team, team2: &mut Team) {
     let player2_ability = player2.get_player_ability();
 
     let player1_win_probability = player1_ability / (player1_ability + player2_ability);
-    let player1_is_winner = rand::thread_rng().gen_range(0.0..=1.0) < player1_win_probability; 
+    let player1_is_winner = rand::thread_rng().gen_range(0.0..=1.0) < player1_win_probability;
 
     if player1_is_winner {
         player1.increment_kills();
         team2.add_dead(player2);
-        if generate_is_assist() { team1.assign_random_assist() }
+        if generate_is_assist() {
+            team1.assign_random_assist()
+        }
         team1.add_alive(player1);
     } else {
         player2.increment_kills();
         team1.add_dead(player1);
-        if generate_is_assist() { team2.assign_random_assist() }
+        if generate_is_assist() {
+            team2.assign_random_assist()
+        }
         team2.add_alive(player2);
     }
-} 
+}
 
 struct Team<'a> {
     name: &'static str,
@@ -84,9 +88,8 @@ struct Team<'a> {
 }
 
 impl<'a> Team<'a> {
-
     fn new(name: &'static str, players: Vec<&'a mut Player>) -> Team<'a> {
-        let alive: Vec<PlayerBattle> = players.into_iter().map(|player| PlayerBattle::from(player)).collect();
+        let alive: Vec<PlayerBattle> = players.into_iter().map(PlayerBattle::from).collect();
         let dead = Vec::with_capacity(alive.len());
         Team { name, alive, dead }
     }
@@ -99,12 +102,13 @@ impl<'a> Team<'a> {
         self.alive.push(player);
     }
 
-    fn add_dead(&mut self,  player: PlayerBattle<'a>) {
+    fn add_dead(&mut self, player: PlayerBattle<'a>) {
         self.dead.push(player);
     }
 
     fn take_random_alive(&mut self) -> PlayerBattle<'a> {
-        self.alive.swap_remove(rand::thread_rng().gen_range(0..self.alive.len()))
+        self.alive
+            .swap_remove(rand::thread_rng().gen_range(0..self.alive.len()))
     }
 
     fn assign_random_assist(&mut self) {
@@ -123,10 +127,10 @@ impl<'a> Team<'a> {
             .chain(
                 self.dead
                     .into_iter()
-                    .map(|player| player.resolve(self.name, is_winner, true))
-            ).collect()
-    } 
-
+                    .map(|player| player.resolve(self.name, is_winner, true)),
+            )
+            .collect()
+    }
 }
 
 struct PlayerBattle<'a> {
@@ -136,15 +140,16 @@ struct PlayerBattle<'a> {
 }
 
 impl<'a> From<&'a mut Player> for PlayerBattle<'a> {
-
     fn from(player: &'a mut Player) -> Self {
-        PlayerBattle { player, kills: 0, assists: 0 }
+        PlayerBattle {
+            player,
+            kills: 0,
+            assists: 0,
+        }
     }
-
-} 
+}
 
 impl<'a> PlayerBattle<'a> {
-
     fn increment_kills(&mut self) {
         self.kills += 1;
     }
@@ -153,7 +158,7 @@ impl<'a> PlayerBattle<'a> {
         self.assists += 1;
     }
 
-    fn get_player_ability(&self) -> f32 { 
+    fn get_player_ability(&self) -> f32 {
         self.player.ability
     }
 
@@ -168,20 +173,19 @@ impl<'a> PlayerBattle<'a> {
 
         self.player.add_xp(xp);
 
-        PlayerGame { 
-            id: self.player.id, 
-            username: self.player.username.clone(), 
+        PlayerGame {
+            id: self.player.id,
+            username: self.player.username.clone(),
             kills: self.kills,
-            deaths: if is_dead {1} else {0},
+            deaths: if is_dead { 1 } else { 0 },
             assists: self.assists,
             xp_gained: xp,
             total_xp: self.player.xp,
             level: self.player.level,
             winner: is_winner,
-            team: String::from(team_name), 
+            team: String::from(team_name),
         }
     }
-
 }
 
 fn generate_is_assist() -> bool {
@@ -193,21 +197,19 @@ fn generate_team_name_pair() -> (&'static str, &'static str) {
     let second_team_index = rand::thread_rng().gen_range(0..(TEAMS.len() - 1));
 
     if first_team_index != second_team_index {
-        ( TEAMS[first_team_index], TEAMS[second_team_index] )
+        (TEAMS[first_team_index], TEAMS[second_team_index])
     } else {
-        ( TEAMS[first_team_index], TEAMS[TEAMS.len() - 1] )
+        (TEAMS[first_team_index], TEAMS[TEAMS.len() - 1])
     }
 }
 
-
 #[cfg(test)]
 mod tests {
-    use std::borrow::BorrowMut;
     use super::*;
+    use std::borrow::BorrowMut;
 
     #[test]
     fn player_resolve() {
-
         let mut player = Player::new(0, 0.5);
         player.xp = 500;
 
@@ -222,7 +224,7 @@ mod tests {
         };
 
         assert_eq!(player.xp, 900);
-    
+
         assert_eq!(0, result.id);
         assert_eq!(1, result.kills);
         assert_eq!(1, result.deaths);
@@ -245,7 +247,7 @@ mod tests {
         duel(&mut winning_team, &mut losing_team);
 
         assert!(winning_team.is_alive());
-        assert!(!losing_team.is_alive()); 
+        assert!(!losing_team.is_alive());
 
         winning_team.resolve();
         losing_team.resolve();

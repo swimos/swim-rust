@@ -27,14 +27,13 @@ pub struct Player {
 }
 
 impl Player {
-
     pub fn new(id: usize, ability: f32) -> Self {
-        Player { 
-            id, 
-            username: username_from_id(id), 
-            ability, 
-            xp: 0, 
-            level: 0 
+        Player {
+            id,
+            username: username_from_id(id),
+            ability,
+            xp: 0,
+            level: 0,
         }
     }
 
@@ -46,21 +45,43 @@ impl Player {
         self.xp += xp;
         self.level = self.xp / XP_PER_LEVEL;
     }
-    
 }
 
 // Username generation
 
 const NAME_POOL_SIZE: usize = 16;
-const TAG_FIRST_WORDS: [&str; NAME_POOL_SIZE] = ["The", "Elite", "A", "Friendly", "My", "Some", "IAm", "Just", "Simply", "Magical", "Mythical", "Tranquil", "OverThe", "UnderThe", "Homeward", "Outbound"];
-const TAG_SECOND_WORDS: [&str; NAME_POOL_SIZE] = ["Big", "Red", "Skilled", "Elite", "Huge", "Tiny", "Night", "Day", "Tall", "Short", "Flying", "Bright", "Evil", "Fun", "Sassy", "Fire"];
-const TAG_THIRD_WORDS: [&str; NAME_POOL_SIZE] = ["Dog", "Cat", "Lion", "Skull", "Poet", "Crocodile", "Bear", "Elite", "Gamer", "Pig", "Diamond", "Wizard", "Chicken", "Judge", "Artist", "Sky"];
+const TAG_FIRST_WORDS: [&str; NAME_POOL_SIZE] = [
+    "The", "Elite", "A", "Friendly", "My", "Some", "IAm", "Just", "Simply", "Magical", "Mythical",
+    "Tranquil", "OverThe", "UnderThe", "Homeward", "Outbound",
+];
+const TAG_SECOND_WORDS: [&str; NAME_POOL_SIZE] = [
+    "Big", "Red", "Skilled", "Elite", "Huge", "Tiny", "Night", "Day", "Tall", "Short", "Flying",
+    "Bright", "Evil", "Fun", "Sassy", "Fire",
+];
+const TAG_THIRD_WORDS: [&str; NAME_POOL_SIZE] = [
+    "Dog",
+    "Cat",
+    "Lion",
+    "Skull",
+    "Poet",
+    "Crocodile",
+    "Bear",
+    "Elite",
+    "Gamer",
+    "Pig",
+    "Diamond",
+    "Wizard",
+    "Chicken",
+    "Judge",
+    "Artist",
+    "Sky",
+];
 
 pub fn username_from_id(id: usize) -> String {
     let mut username = String::new();
-    username.push_str(TAG_FIRST_WORDS[ (id % NAME_POOL_SIZE.pow(1)) / 1]);
-    username.push_str(TAG_SECOND_WORDS[ (id % NAME_POOL_SIZE.pow(2)) / NAME_POOL_SIZE ]);
-    username.push_str(TAG_THIRD_WORDS[ (id % NAME_POOL_SIZE.pow(3)) / NAME_POOL_SIZE.pow(2) ]);
+    username.push_str(TAG_FIRST_WORDS[id % NAME_POOL_SIZE.pow(1)]);
+    username.push_str(TAG_SECOND_WORDS[(id % NAME_POOL_SIZE.pow(2)) / NAME_POOL_SIZE]);
+    username.push_str(TAG_THIRD_WORDS[(id % NAME_POOL_SIZE.pow(3)) / NAME_POOL_SIZE.pow(2)]);
 
     // If the ID exceeds the limit of names we can generate, append a number
     if id >= NAME_POOL_SIZE.pow(3) {
@@ -69,12 +90,11 @@ pub fn username_from_id(id: usize) -> String {
     username
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test] 
+    #[test]
     fn new_player() {
         let player = Player::new(0, 0.5);
 
@@ -85,7 +105,7 @@ mod tests {
         assert_eq!(0, player.level);
     }
 
-    #[test] 
+    #[test]
     fn generate() {
         let player = Player::generate(0);
 
@@ -96,7 +116,7 @@ mod tests {
         assert_eq!(0, player.level);
     }
 
-    #[test] 
+    #[test]
     fn level_up() {
         let mut player = Player::new(0, 0.5);
         player.add_xp(XP_PER_LEVEL);
@@ -138,5 +158,4 @@ mod tests {
     fn username_from_id_4097() {
         assert_eq!("EliteBigDog1", username_from_id(4097));
     }
-
 }

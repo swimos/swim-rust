@@ -19,10 +19,10 @@ use example_util::{example_filter, manage_handle_report};
 use futures::future::{select, Either};
 use game::{
     agents::{
+        battle::{MatchAgent, MatchLifecycle},
         game::{GameAgent, GameLifecycle},
         leaderboard::{LeaderboardAgent, LeaderboardLifecycle},
         player::{PlayerAgent, PlayerLifecycle},
-        battle::{MatchAgent, MatchLifecycle},
         team::{TeamAgent, TeamLifecycle},
     },
     ui::ui_server_router,

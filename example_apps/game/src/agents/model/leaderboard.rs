@@ -18,10 +18,17 @@ use super::stats::PlayerTotals;
 
 type Comparator = fn(&PlayerTotals, &PlayerTotals) -> Ordering;
 
-const TOTAL_KILLS_COMP: for<'a> fn(&'a PlayerTotals, &'a PlayerTotals) -> Ordering = |left, right| left.total_kills.cmp(&right.total_kills);
-const TOTAL_DEATHS_COMP: for<'a> fn(&'a PlayerTotals, &'a PlayerTotals) -> Ordering = |left, right| left.total_deaths.cmp(&right.total_deaths);
-const KD_RATIO_COMP: for<'a> fn(&'a PlayerTotals, &'a PlayerTotals) -> Ordering = |left, right| left.kd_ratio.partial_cmp(&right.kd_ratio).unwrap_or_else(|| left.total_kills.cmp(&right.total_kills));
-const XP_COMP: for<'a> fn(&'a PlayerTotals, &'a PlayerTotals) -> Ordering = |left, right| left.total_xp.cmp(&right.total_xp);
+const TOTAL_KILLS_COMP: for<'a> fn(&'a PlayerTotals, &'a PlayerTotals) -> Ordering =
+    |left, right| left.total_kills.cmp(&right.total_kills);
+const TOTAL_DEATHS_COMP: for<'a> fn(&'a PlayerTotals, &'a PlayerTotals) -> Ordering =
+    |left, right| left.total_deaths.cmp(&right.total_deaths);
+const KD_RATIO_COMP: for<'a> fn(&'a PlayerTotals, &'a PlayerTotals) -> Ordering = |left, right| {
+    left.kd_ratio
+        .partial_cmp(&right.kd_ratio)
+        .unwrap_or_else(|| left.total_kills.cmp(&right.total_kills))
+};
+const XP_COMP: for<'a> fn(&'a PlayerTotals, &'a PlayerTotals) -> Ordering =
+    |left, right| left.total_xp.cmp(&right.total_xp);
 
 #[derive(Clone)]
 pub struct PlayerLeaderboard {
@@ -33,7 +40,6 @@ pub struct PlayerLeaderboard {
 }
 
 impl PlayerLeaderboard {
-
     pub fn new(capacity: usize, f: Comparator) -> Self {
         Self {
             comparator: f,

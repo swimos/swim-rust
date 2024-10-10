@@ -14,9 +14,9 @@
 
 use std::collections::HashMap;
 
-use rand::Rng;
+use crate::generator::{game::Game, player::Player};
 use rand::prelude::SliceRandom;
-use crate::generator::{player::Player, game::Game};
+use rand::Rng;
 
 pub const UNIVERSE_PLAYER_COUNT: usize = 2048;
 pub const MAX_GAME_ID: usize = 250;
@@ -30,23 +30,17 @@ pub struct Universe {
 }
 
 impl Default for Universe {
-
     fn default() -> Self {
-        Universe { 
-            players: generate_players(UNIVERSE_PLAYER_COUNT), 
-            next_game_id: 0 
+        Universe {
+            players: generate_players(UNIVERSE_PLAYER_COUNT),
+            next_game_id: 0,
         }
     }
-    
 }
 
 impl Universe {
-
     pub fn generate_game(&mut self) -> Game {
-        Game::generate(
-            self.new_game_id(), 
-            self.pick_players_for_game()
-        )
+        Game::generate(self.new_game_id(), self.pick_players_for_game())
     }
 
     fn new_game_id(&mut self) -> usize {
@@ -67,7 +61,6 @@ impl Universe {
 
         players.into_iter().take(count).collect()
     }
-
 }
 
 fn generate_players(count: usize) -> HashMap<usize, Player> {
@@ -79,5 +72,6 @@ fn generate_players(count: usize) -> HashMap<usize, Player> {
 }
 
 fn generate_game_player_count() -> usize {
-    rand::thread_rng().gen_range(0..=(MAX_PLAYERS_PER_GAME - MIN_PLAYERS_PER_GAME)) + MIN_PLAYERS_PER_GAME
+    rand::thread_rng().gen_range(0..=(MAX_PLAYERS_PER_GAME - MIN_PLAYERS_PER_GAME))
+        + MIN_PLAYERS_PER_GAME
 }

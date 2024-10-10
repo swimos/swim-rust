@@ -109,9 +109,11 @@ impl PlayerLifecycle {
                         context.set_value(PlayerAgent::STATS, PlayerTotals::new(id, username))
                     }),
             )
-            .followed_by(context.get_agent_uri().and_then(move |uri| {
-                context.send_command(None, "/player", "addPlayer", uri)
-            }))
+            .followed_by(
+                context
+                    .get_agent_uri()
+                    .and_then(move |uri| context.send_command(None, "/player", "addPlayer", uri)),
+            )
     }
 
     #[on_stop]

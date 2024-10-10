@@ -76,8 +76,7 @@ impl MatchStats {
 
     fn match_stats_from_game(game: &Game) -> MatchStats {
         let mut stats = MatchStats::default();
-        game
-            .player_results
+        game.player_results
             .iter()
             .for_each(|player_round| stats.increment(player_round));
         stats
@@ -100,7 +99,8 @@ impl MatchStats {
     fn player_stats_from_game(game: &Game) -> HashMap<usize, MatchStats> {
         let mut player_stats = HashMap::new();
         game.player_results.iter().for_each(|player_round| {
-            let mut stats = MatchStats::new(player_round.username.clone(), player_round.team.clone());
+            let mut stats =
+                MatchStats::new(player_round.username.clone(), player_round.team.clone());
             stats.increment(player_round);
             player_stats.insert(player_round.id, stats);
         });

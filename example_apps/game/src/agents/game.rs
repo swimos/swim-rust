@@ -43,7 +43,6 @@ pub struct GameLifecycle {
 }
 
 impl GameLifecycle {
-
     fn update_timestamps(&self, timestamp: u64) -> impl EventHandler<GameAgent> + '_ {
         let context: HandlerContext<GameAgent> = Default::default();
         context
@@ -123,6 +122,6 @@ fn generate_match(
         None,
         format!("/match/{id}", id = game.id).as_str(),
         "publish",
-        game
+        game,
     )
 }
