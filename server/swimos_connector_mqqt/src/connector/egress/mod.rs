@@ -124,6 +124,12 @@ impl EgressConnector for MqttEgressConnector {
         for lane in map_lanes {
             context.open_lane(&lane.name, WarpLaneKind::Map);
         }
+        for downlink in value_downlinks {
+            context.open_event_downlink(downlink.address.borrow_parts());
+        }
+        for downlink in map_downlinks {
+            context.open_map_downlink(downlink.address.borrow_parts());
+        }
         let (client, event_loop) = super::open_client(
             url,
             *keep_alive_secs,
