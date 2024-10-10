@@ -254,10 +254,10 @@ fn open_downlinks(config: &KafkaEgressConfiguration, context: &mut dyn EgressCon
         ..
     } = config;
     for value_dl in value_downlinks {
-        context.open_event_downlink(<Address<&str>>::from(&value_dl.address));
+        context.open_event_downlink(value_dl.address.borrow_parts());
     }
     for map_dl in map_downlinks {
-        context.open_map_downlink(<Address<&str>>::from(&map_dl.address));
+        context.open_map_downlink(map_dl.address.borrow_parts());
     }
 }
 

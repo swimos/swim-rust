@@ -19,7 +19,7 @@ use swimos_connector::EgressContext;
 
 use crate::{
     config::{EgressDownlinkSpec, KafkaEgressConfiguration, TopicSpecifier},
-    DataFormat, DownlinkAddress, ExtractionSpec, KafkaLogLevel,
+    DataFormat, ExtractionSpec, KafkaLogLevel,
 };
 
 use super::open_downlinks;
@@ -50,16 +50,16 @@ const NODE1: &str = "/node1";
 const NODE2: &str = "/node2";
 const LANE: &str = "lane";
 
-fn addr1() -> DownlinkAddress {
-    DownlinkAddress {
+fn addr1() -> Address<String> {
+    Address {
         host: Some(HOST.to_string()),
         node: NODE1.to_string(),
         lane: LANE.to_string(),
     }
 }
 
-fn addr2() -> DownlinkAddress {
-    DownlinkAddress {
+fn addr2() -> Address<String> {
+    Address {
         host: Some(HOST.to_string()),
         node: NODE2.to_string(),
         lane: LANE.to_string(),
@@ -117,8 +117,8 @@ fn open_downlinks_from_config() {
 
     let expected = TestEgressContext {
         lanes: vec![],
-        value: vec![Address::from(&addr1())],
-        map: vec![Address::from(&addr2())],
+        value: vec![addr1()],
+        map: vec![addr2()],
     };
 
     assert_eq!(context, expected);

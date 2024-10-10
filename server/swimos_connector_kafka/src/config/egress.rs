@@ -80,38 +80,12 @@ pub struct EgressLaneSpec {
     pub extractor: ExtractionSpec,
 }
 
-/// Target lane for a remote downlink.
-#[derive(Clone, Debug, Form, PartialEq, Eq)]
-pub struct DownlinkAddress {
-    pub host: Option<String>,
-    pub node: String,
-    pub lane: String,
-}
-
-impl From<&DownlinkAddress> for Address<String> {
-    fn from(value: &DownlinkAddress) -> Self {
-        let DownlinkAddress { host, node, lane } = value;
-        Address::new(host.clone(), node.clone(), lane.clone())
-    }
-}
-
-impl<'a> From<&'a DownlinkAddress> for Address<&'a str> {
-    fn from(value: &'a DownlinkAddress) -> Self {
-        let DownlinkAddress { host, node, lane } = value;
-        Address {
-            host: host.as_ref().map(|s| s.as_str()),
-            node,
-            lane,
-        }
-    }
-}
-
 /// Specification of a downlink (to a remote lane) for the connector agent.
 #[derive(Clone, Debug, Form, PartialEq, Eq)]
 #[form(tag = "DownlinkSpec")]
 pub struct EgressDownlinkSpec {
     /// The address of the lane to link from.
-    pub address: DownlinkAddress,
+    pub address: Address<String>,
     /// Specification for extracting the Kafka message from the downlink events.
     pub extractor: ExtractionSpec,
 }

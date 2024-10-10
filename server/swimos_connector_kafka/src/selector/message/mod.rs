@@ -319,7 +319,6 @@ impl TryFrom<&KafkaEgressConfiguration> for MessageSelectors {
             }
         }
         for EgressDownlinkSpec { address, extractor } in value_downlinks {
-            let address = Address::<String>::from(address);
             match value_dl_selectors.entry(address.clone()) {
                 Entry::Occupied(entry) => {
                     let (address, _) = entry.remove_entry();
@@ -332,8 +331,7 @@ impl TryFrom<&KafkaEgressConfiguration> for MessageSelectors {
             }
         }
         for EgressDownlinkSpec { address, extractor } in map_downlinks {
-            let address = Address::<String>::from(address);
-            if value_dl_selectors.contains_key(&address) {
+            if value_dl_selectors.contains_key(address) {
                 return Err(InvalidExtractors::AddressCollision(address.clone()));
             }
             match map_dl_selectors.entry(address.clone()) {

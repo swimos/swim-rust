@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use swimos_api::address::Address;
 use swimos_form::Form;
 
 /// Configuration parameters for the MQTT ingress connector.
@@ -74,7 +75,7 @@ pub struct EgressLaneSpec {
 
 #[derive(Clone, Debug, Form, PartialEq, Eq)]
 pub struct EgressDownlinkSpec {
-    //pub address: Address<String>,
+    pub address: Address<String>,
 }
 
 #[derive(Clone, Debug, Form, PartialEq, Eq)]

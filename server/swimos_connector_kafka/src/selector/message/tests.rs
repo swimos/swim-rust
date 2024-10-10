@@ -20,7 +20,7 @@ use swimos_model::{Item, Value};
 use crate::{
     config::{EgressDownlinkSpec, EgressLaneSpec, KafkaEgressConfiguration, TopicSpecifier},
     selector::{BasicSelector, ChainSelector, SlotSelector},
-    DataFormat, DownlinkAddress, Endianness, ExtractionSpec, InvalidExtractors, KafkaLogLevel,
+    DataFormat, Endianness, ExtractionSpec, InvalidExtractors, KafkaLogLevel,
 };
 
 use super::{FieldSelector, KeyOrValue, MessageSelector, MessageSelectors, TopicSelector};
@@ -68,7 +68,7 @@ fn test_config() -> KafkaEgressConfiguration {
     }];
     let map_lanes = vec;
     let value_downlinks = vec![EgressDownlinkSpec {
-        address: DownlinkAddress {
+        address: Address {
             host: Some(HOST.to_string()),
             node: NODE1.to_string(),
             lane: LANE.to_string(),
@@ -80,7 +80,7 @@ fn test_config() -> KafkaEgressConfiguration {
         },
     }];
     let map_downlinks = vec![EgressDownlinkSpec {
-        address: DownlinkAddress {
+        address: Address {
             host: Some(HOST.to_string()),
             node: NODE2.to_string(),
             lane: LANE.to_string(),
@@ -390,12 +390,11 @@ fn duplicate_value_and_map_lane() {
 
 #[test]
 fn duplicate_value_downlink() {
-    let addr = DownlinkAddress {
+    let addr = Address {
         host: Some(HOST.to_string()),
         node: NODE1.to_string(),
         lane: LANE.to_string(),
     };
-    let expected = Address::<String>::from(&addr);
     let config = KafkaEgressConfiguration {
         value_downlinks: vec![
             EgressDownlinkSpec {
@@ -403,14 +402,14 @@ fn duplicate_value_downlink() {
                 extractor: ExtractionSpec::default(),
             },
             EgressDownlinkSpec {
-                address: addr,
+                address: addr.clone(),
                 extractor: ExtractionSpec::default(),
             },
         ],
         ..empty_config()
     };
     if let Err(InvalidExtractors::AddressCollision(address)) = MessageSelectors::try_from(&config) {
-        assert_eq!(address, expected);
+        assert_eq!(address, addr);
     } else {
         panic!("Expected name collision error.");
     }
@@ -418,12 +417,11 @@ fn duplicate_value_downlink() {
 
 #[test]
 fn duplicate_map_downlink() {
-    let addr = DownlinkAddress {
+    let addr = Address {
         host: Some(HOST.to_string()),
         node: NODE1.to_string(),
         lane: LANE.to_string(),
     };
-    let expected = Address::<String>::from(&addr);
     let config = KafkaEgressConfiguration {
         map_downlinks: vec![
             EgressDownlinkSpec {
@@ -431,14 +429,14 @@ fn duplicate_map_downlink() {
                 extractor: ExtractionSpec::default(),
             },
             EgressDownlinkSpec {
-                address: addr,
+                address: addr.clone(),
                 extractor: ExtractionSpec::default(),
             },
         ],
         ..empty_config()
     };
     if let Err(InvalidExtractors::AddressCollision(address)) = MessageSelectors::try_from(&config) {
-        assert_eq!(address, expected);
+        assert_eq!(address, addr);
     } else {
         panic!("Expected name collision error.");
     }
@@ -446,25 +444,24 @@ fn duplicate_map_downlink() {
 
 #[test]
 fn duplicate_value_and_map_downlink() {
-    let addr = DownlinkAddress {
+    let addr = Address {
         host: Some(HOST.to_string()),
         node: NODE1.to_string(),
         lane: LANE.to_string(),
     };
-    let expected = Address::<String>::from(&addr);
     let config = KafkaEgressConfiguration {
         value_downlinks: vec![EgressDownlinkSpec {
             address: addr.clone(),
             extractor: ExtractionSpec::default(),
         }],
         map_downlinks: vec![EgressDownlinkSpec {
-            address: addr,
+            address: addr.clone(),
             extractor: ExtractionSpec::default(),
         }],
         ..empty_config()
     };
     if let Err(InvalidExtractors::AddressCollision(address)) = MessageSelectors::try_from(&config) {
-        assert_eq!(address, expected);
+        assert_eq!(address, addr);
     } else {
         panic!("Expected name collision error.");
     }
