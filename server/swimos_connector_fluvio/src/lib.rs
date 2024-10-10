@@ -15,15 +15,15 @@
 mod config;
 mod ingress;
 
-pub use config::*;
+pub use config::FluvioIngressConfiguration;
 pub use fluvio::dataplane::link::ErrorCode;
 pub use fluvio::FluvioError;
 pub use ingress::FluvioIngressConnector;
+use swimos_connector::selector::{InvalidLanes, SelectorError};
 pub use swimos_connector::{
     config::{IngressMapLaneSpec, IngressValueLaneSpec},
     deser::Endianness,
-    BadSelector, DeserializationError, InvalidLaneSpec, InvalidLanes, LoadError, SelectorError,
-    SerializationError,
+    DeserializationError, LoadError, SerializationError,
 };
 
 /// Errors that can be produced by the Fluvio connector.
@@ -47,4 +47,7 @@ pub enum FluvioConnectorError {
     /// The specification of at least one lane is invalid.
     #[error(transparent)]
     Lanes(#[from] InvalidLanes),
+    /// A selector failed to select a value from a Fluvio record.
+    #[error(transparent)]
+    Selector(SelectorError),
 }

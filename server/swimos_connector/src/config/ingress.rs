@@ -1,4 +1,4 @@
-// use crate::{LaneSelector, NodeSelector, ParseError, PayloadSelector, Relay, Relays};
+use crate::selector::{BadSelector, Relay, Relays};
 use swimos_form::Form;
 
 /// Specification of a value lane for the connector.
@@ -98,49 +98,46 @@ pub enum RelaySpecification {
     Value(ValueRelaySpecification),
     Map(MapRelaySpecification),
 }
-//
-// impl TryFrom<Vec<RelaySpecification>> for Relays {
-//     type Error = ParseError;
-//
-//     fn try_from(value: Vec<RelaySpecification>) -> Result<Self, Self::Error> {
-//         let mut chain = Vec::with_capacity(value.len());
-//
-//         for spec in value {
-//             match spec {
-//                 RelaySpecification::Value(ValueRelaySpecification {
-//                     node,
-//                     lane,
-//                     payload,
-//                     required,
-//                 }) => {
-//                     let node = NodeSelector::from_str(node.as_str())?;
-//                     let lane = LaneSelector::from_str(lane.as_str())?;
-//                     let payload = PayloadSelector::value(payload.as_str(), required)?;
-//
-//                     chain.push(Relay::new(node, lane, payload));
-//                 }
-//                 RelaySpecification::Map(MapRelaySpecification {
-//                     node,
-//                     lane,
-//                     key,
-//                     value,
-//                     required,
-//                     remove_when_no_value,
-//                 }) => {
-//                     let node = NodeSelector::from_str(node.as_str())?;
-//                     let lane = LaneSelector::from_str(lane.as_str())?;
-//                     let payload = PayloadSelector::map(
-//                         key.as_str(),
-//                         value.as_str(),
-//                         required,
-//                         remove_when_no_value,
-//                     )?;
-//
-//                     chain.push(Relay::new(node, lane, payload));
-//                 }
-//             }
-//         }
-//
-//         Ok(Relays::new(chain))
-//     }
-// }
+
+impl TryFrom<Vec<RelaySpecification>> for Relays {
+    type Error = BadSelector;
+
+    fn try_from(value: Vec<RelaySpecification>) -> Result<Self, Self::Error> {
+        let mut chain = Vec::with_capacity(value.len());
+
+        for spec in value {
+            match spec {
+                RelaySpecification::Value(ValueRelaySpecification {
+                    node,
+                    lane,
+                    payload,
+                    required,
+                }) => {
+                    let relay =
+                        Relay::value(node.as_str(), lane.as_str(), payload.as_str(), required)?;
+                    chain.push(relay);
+                }
+                RelaySpecification::Map(MapRelaySpecification {
+                    node,
+                    lane,
+                    key,
+                    value,
+                    required,
+                    remove_when_no_value,
+                }) => {
+                    let relay = Relay::map(
+                        node.as_str(),
+                        lane.as_str(),
+                        key.as_str(),
+                        value.as_str(),
+                        required,
+                        remove_when_no_value,
+                    )?;
+                    chain.push(relay);
+                }
+            }
+        }
+
+        Ok(Relays::new(chain))
+    }
+}

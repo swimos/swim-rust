@@ -14,7 +14,8 @@
 
 use rdkafka::error::KafkaError;
 use swimos_api::address::Address;
-use swimos_connector::{BadSelector, InvalidLanes, LoadError, SelectorError, SerializationError};
+use swimos_connector::selector::{BadSelector, InvalidLanes, SelectorError};
+use swimos_connector::{LoadError, SerializationError};
 use thiserror::Error;
 
 /// Errors that can be produced by the Kafka connector.
@@ -37,7 +38,7 @@ pub enum KafkaConnectorError {
 }
 
 /// Error type for an invalid egress extractor specification.
-#[derive(Clone, Copy, Debug, Error, PartialEq, Eq)]
+#[derive(Clone, Debug, Error, PartialEq, Eq)]
 pub enum InvalidExtractor {
     /// A string describing a selector was invalid.
     #[error(transparent)]

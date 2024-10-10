@@ -19,9 +19,8 @@ use std::{
 
 use swimos_api::address::Address;
 use swimos_connector::selector::{
-    ChainSelector, RawSelectorDescriptor, SelectorComponent, ValueSelector,
+    BadSelector, ChainSelector, RawSelectorDescriptor, SelectorComponent, ValueSelector,
 };
-use swimos_connector::BadSelector;
 use swimos_model::Value;
 
 use crate::{

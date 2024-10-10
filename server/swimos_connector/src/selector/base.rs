@@ -12,10 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::selector::{SelectHandler, Selector, ValueSelector};
-use crate::{
-    ConnectorAgent, DeserializationError, MapLaneSelectorFn, SelectorError, ValueLaneSelectorFn,
-};
+use crate::selector::{SelectHandler, Selector, SelectorError, ValueSelector};
+use crate::{ConnectorAgent, MapLaneSelectorFn, ValueLaneSelectorFn};
 use frunk::Coprod;
 use swimos_agent::event_handler::{Discard, HandlerActionExt};
 use swimos_agent::lanes::{MapLaneSelectRemove, MapLaneSelectUpdate, ValueLaneSelectSet};
@@ -29,23 +27,12 @@ pub type GenericMapLaneOp = Discard<Option<MapLaneOp>>;
 pub type GenericValueLaneSet =
     Discard<Option<ValueLaneSelectSet<ConnectorAgent, Value, ValueLaneSelectorFn>>>;
 
-/// A lazy loader for a component of a messages. This ensures that deserializers are only run if a
-/// selector refers to a component.
-pub trait Deferred {
-    /// Get the deserialized component (computing it on the first call).
-    fn get(&mut self) -> Result<&Value, DeserializationError>;
-}
-
-pub type BoxedComputed = Computed<Box<dyn Fn() -> Result<Value, DeserializationError>>>;
-
-impl BoxedComputed {
-    pub fn boxed<F>(f: F) -> BoxedComputed
-    where
-        F: Fn() -> Result<Value, DeserializationError> + 'static,
-    {
-        Computed::new(Box::new(f))
-    }
-}
+// /// A lazy loader for a component of a messages. This ensures that deserializers are only run if a
+// /// selector refers to a component.
+// pub trait Deferred {
+//     /// Get the deserialized component (computing it on the first call).
+//     fn get(&mut self) -> Result<&Value, DeserializationError>;
+// }
 
 #[derive(Debug, PartialEq)]
 pub struct ValueLaneSelector<S> {
@@ -119,35 +106,6 @@ where
             }
         };
         Ok(handler.discard())
-    }
-}
-
-/// Canonical implementation of [`Deferred`].
-pub struct Computed<F> {
-    inner: Option<Value>,
-    f: F,
-}
-
-impl<F> Computed<F>
-where
-    F: Fn() -> Result<Value, DeserializationError>,
-{
-    pub fn new(f: F) -> Self {
-        Computed { inner: None, f }
-    }
-}
-
-impl<F> Deferred for Computed<F>
-where
-    F: Fn() -> Result<Value, DeserializationError>,
-{
-    fn get(&mut self) -> Result<&Value, DeserializationError> {
-        let Computed { inner, f } = self;
-        if let Some(v) = inner {
-            Ok(v)
-        } else {
-            Ok(inner.insert(f()?))
-        }
     }
 }
 

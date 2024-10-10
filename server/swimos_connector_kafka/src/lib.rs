@@ -20,8 +20,7 @@ mod selector;
 
 pub use config::{
     DataFormat, DownlinkAddress, EgressDownlinkSpec, EgressLaneSpec, ExtractionSpec,
-    KafkaEgressConfiguration, KafkaIngressConfiguration, KafkaIngressSpecification, KafkaLogLevel,
-    TopicSpecifier,
+    KafkaEgressConfiguration, KafkaIngressConfiguration, KafkaLogLevel, TopicSpecifier,
 };
 pub use connector::{KafkaEgressConnector, KafkaIngressConnector};
 pub use error::{

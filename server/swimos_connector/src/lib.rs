@@ -16,7 +16,6 @@ mod connector;
 mod error;
 mod generic;
 mod lifecycle;
-mod relay;
 mod route;
 #[cfg(test)]
 mod test_support;
@@ -32,11 +31,7 @@ pub use connector::{
     EgressConnectorSender, EgressContext, IngressConnector, IngressContext, MessageSource,
     SendResult,
 };
-pub use error::{
-    BadSelector, ConnectorInitError, DeserializationError, InvalidLaneSpec, InvalidLanes,
-    LoadError, SelectorError, SerializationError,
-};
+pub use error::{ConnectorInitError, DeserializationError, LoadError, SerializationError};
 pub use generic::{ConnectorAgent, MapLaneSelectorFn, ValueLaneSelectorFn};
 pub use lifecycle::{EgressConnectorLifecycle, IngressConnectorLifecycle};
-pub use relay::{LaneSelector, NodeSelector, ParseError, PayloadSelector, Relay, Relays};
 pub use route::{EgressConnectorModel, IngressConnectorModel};

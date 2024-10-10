@@ -12,7 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::{ConnectorAgent, DeserializationError, SelectorError};
+use crate::selector::SelectorError;
+use crate::{ConnectorAgent, DeserializationError};
 use frunk::{hlist::HList, HCons, HNil};
 use std::fmt::Debug;
 use swimos_agent::{

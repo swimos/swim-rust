@@ -15,9 +15,9 @@
 use crate::config::{IngressMapLaneSpec, IngressValueLaneSpec};
 use crate::ingress::check_selectors;
 use crate::selector::{
-    MapLaneSelector, PubSubMapLaneSelector, PubSubValueLaneSelector, ValueLaneSelector,
+    InvalidLanes, MapLaneSelector, PubSubMapLaneSelector, PubSubValueLaneSelector,
+    ValueLaneSelector,
 };
-use crate::InvalidLanes;
 
 // Information about the lanes of the connector. These are computed from the configuration in the `on_start` handler
 // and stored in the lifecycle to be used to start the consumer stream.

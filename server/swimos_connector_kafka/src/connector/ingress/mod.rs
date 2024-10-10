@@ -27,8 +27,9 @@ use swimos_agent::event_handler::{EventHandler, HandlerActionExt, UnitHandler};
 use swimos_api::agent::WarpLaneKind;
 use swimos_connector::deser::MessageView;
 use swimos_connector::ingress::{Lanes, MessageSelector};
+use swimos_connector::selector::SelectorError;
 use swimos_connector::{
-    BaseConnector, ConnectorAgent, ConnectorStream, IngressConnector, IngressContext, SelectorError,
+    BaseConnector, ConnectorAgent, ConnectorStream, IngressConnector, IngressContext,
 };
 use swimos_utilities::trigger;
 use tokio::sync::mpsc;

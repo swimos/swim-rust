@@ -1,8 +1,11 @@
 mod lanes;
 
-use crate::deser::{BoxMessageDeserializer, Deser, MessageView};
-use crate::selector::{PubSubMapLaneSelector, PubSubValueLaneSelector, SelectHandler};
-use crate::{ConnectorAgent, InvalidLanes, Relays, SelectorError};
+use crate::deser::{BoxMessageDeserializer, Deferred, MessageView};
+use crate::selector::{
+    InvalidLanes, PubSubMapLaneSelector, PubSubValueLaneSelector, Relays, SelectHandler,
+    SelectorError,
+};
+use crate::ConnectorAgent;
 use frunk::hlist;
 pub use lanes::*;
 use std::collections::HashSet;
@@ -79,8 +82,8 @@ impl MessageSelector {
 
         {
             let topic = Value::text(message.topic());
-            let key = Deser::new(message.key, key_deserializer);
-            let value = Deser::new(message.payload, value_deserializer);
+            let key = Deferred::new(message.key, key_deserializer);
+            let value = Deferred::new(message.payload, value_deserializer);
             let args = hlist![topic, key, value];
 
             for value_lane in value_lanes {

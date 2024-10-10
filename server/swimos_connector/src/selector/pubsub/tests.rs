@@ -12,15 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use super::{init_regex, SelectorDescriptor};
+use super::{create_init_regex, field_regex, init_regex, SelectorDescriptor};
 use super::{MessageField, SelectorComponent};
 use crate::config::{IngressMapLaneSpec, IngressValueLaneSpec};
-use crate::deser::{Deser, MessageDeserializer, MessagePart, ReconDeserializer};
+use crate::deser::{Deferred, MessageDeserializer, MessagePart, ReconDeserializer};
 use crate::selector::{
-    AttrSelector, BasicSelector, ChainSelector, IdentitySelector, IndexSelector, MapLaneSelector,
-    SelectHandler, SlotSelector, ValueLaneSelector, ValueSelector,
+    parse_selector, AttrSelector, BadSelector, BasicSelector, ChainSelector, IdentitySelector,
+    IndexSelector, InvalidLaneSpec, MapLaneSelector, SelectHandler, SlotSelector,
+    ValueLaneSelector, ValueSelector,
 };
-use crate::{BadSelector, InvalidLaneSpec};
 use swimos_model::{Attr, Item};
 
 use crate::selector::{PubSubSelector, PubSubValueLaneSelector};
@@ -38,7 +38,7 @@ use swimos_model::Value;
 
 #[test]
 fn init_regex_creation() {
-    super::create_init_regex().expect("Creation failed.");
+    create_init_regex().expect("Creation failed.");
 }
 
 #[test]
@@ -54,7 +54,7 @@ fn match_key() {
 
 #[test]
 fn match_payload() {
-    if let Some(captures) = super::init_regex().captures("$payload") {
+    if let Some(captures) = init_regex().captures("$payload") {
         let kind = captures.get(1).expect("Missing capture.");
         assert!(captures.get(2).is_none());
         assert_eq!(kind.as_str(), "$payload");
@@ -65,7 +65,7 @@ fn match_payload() {
 
 #[test]
 fn match_topic() {
-    if let Some(captures) = super::init_regex().captures("$topic") {
+    if let Some(captures) = init_regex().captures("$topic") {
         let kind = captures.get(1).expect("Missing capture.");
         assert!(captures.get(2).is_none());
         assert_eq!(kind.as_str(), "$topic");
@@ -76,7 +76,7 @@ fn match_topic() {
 
 #[test]
 fn match_key_indexed() {
-    if let Some(captures) = super::init_regex().captures("$key[3]") {
+    if let Some(captures) = init_regex().captures("$key[3]") {
         let kind = captures.get(1).expect("Missing capture.");
         let index = captures.get(2).expect("Missing capture.");
         assert_eq!(kind.as_str(), "$key");
@@ -88,7 +88,7 @@ fn match_key_indexed() {
 
 #[test]
 fn match_payload_indexed() {
-    if let Some(captures) = super::init_regex().captures("$payload[0]") {
+    if let Some(captures) = init_regex().captures("$payload[0]") {
         let kind = captures.get(1).expect("Missing capture.");
         let index = captures.get(2).expect("Missing capture.");
         assert_eq!(kind.as_str(), "$payload");
@@ -100,7 +100,7 @@ fn match_payload_indexed() {
 
 #[test]
 fn match_attr() {
-    if let Some(captures) = super::field_regex().captures("@my_attr") {
+    if let Some(captures) = field_regex().captures("@my_attr") {
         let name = captures.get(1).expect("Missing capture.");
         assert!(captures.get(2).is_none());
         assert_eq!(name.as_str(), "@my_attr");
@@ -111,7 +111,7 @@ fn match_attr() {
 
 #[test]
 fn match_attr_indexed() {
-    if let Some(captures) = super::field_regex().captures("@attr[73]") {
+    if let Some(captures) = field_regex().captures("@attr[73]") {
         let name = captures.get(1).expect("Missing capture.");
         let index = captures.get(2).expect("Missing capture.");
         assert_eq!(name.as_str(), "@attr");
@@ -123,7 +123,7 @@ fn match_attr_indexed() {
 
 #[test]
 fn match_slot() {
-    if let Some(captures) = super::field_regex().captures("slot") {
+    if let Some(captures) = field_regex().captures("slot") {
         let name = captures.get(1).expect("Missing capture.");
         assert!(captures.get(2).is_none());
         assert_eq!(name.as_str(), "slot");
@@ -134,7 +134,7 @@ fn match_slot() {
 
 #[test]
 fn match_slot_indexed() {
-    if let Some(captures) = super::field_regex().captures("slot5[123]") {
+    if let Some(captures) = field_regex().captures("slot5[123]") {
         let name = captures.get(1).expect("Missing capture.");
         let index = captures.get(2).expect("Missing capture.");
         assert_eq!(name.as_str(), "slot5");
@@ -146,7 +146,7 @@ fn match_slot_indexed() {
 
 #[test]
 fn match_slot_non_latin() {
-    if let Some(captures) = super::field_regex().captures("اسم[123]") {
+    if let Some(captures) = field_regex().captures("اسم[123]") {
         let name = captures.get(1).expect("Missing capture.");
         let index = captures.get(2).expect("Missing capture.");
         assert_eq!(name.as_str(), "اسم");
@@ -174,16 +174,16 @@ impl<'a> SelectorDescriptor<'a> {
 
 #[test]
 fn parse_simple() {
-    let key = super::parse_selector("$key").expect("Parse failed.");
+    let key = parse_selector("$key").expect("Parse failed.");
     assert_eq!(key, SelectorDescriptor::for_part(MessagePart::Key, None));
 
-    let payload = super::parse_selector("$payload").expect("Parse failed.");
+    let payload = parse_selector("$payload").expect("Parse failed.");
     assert_eq!(
         payload,
         SelectorDescriptor::for_part(MessagePart::Payload, None)
     );
 
-    let indexed = super::parse_selector("$key[2]").expect("Parse failed.");
+    let indexed = parse_selector("$key[2]").expect("Parse failed.");
     assert_eq!(
         indexed,
         SelectorDescriptor::for_part(MessagePart::Key, Some(2))
@@ -192,37 +192,37 @@ fn parse_simple() {
 
 #[test]
 fn parse_topic() {
-    let topic = super::parse_selector("$topic").expect("Parse failed.");
+    let topic = parse_selector("$topic").expect("Parse failed.");
     assert_eq!(topic, SelectorDescriptor::Topic);
 
     assert_eq!(
-        super::parse_selector("$topic[0]"),
+        parse_selector("$topic[0]"),
         Err(BadSelector::TopicWithComponent)
     );
     assert_eq!(
-        super::parse_selector("$topic.slot"),
+        parse_selector("$topic.slot"),
         Err(BadSelector::TopicWithComponent)
     );
 }
 
 #[test]
 fn parse_one_component() {
-    let first = super::parse_selector("$key.@attr").expect("Parse failed.");
+    let first = parse_selector("$key.@attr").expect("Parse failed.");
     let mut expected_first = SelectorDescriptor::for_part(MessagePart::Key, None);
     expected_first.push(SelectorComponent::new(true, "attr", None));
     assert_eq!(first, expected_first);
 
-    let second = super::parse_selector("$payload.slot").expect("Parse failed.");
+    let second = parse_selector("$payload.slot").expect("Parse failed.");
     let mut expected_second = SelectorDescriptor::for_part(MessagePart::Payload, None);
     expected_second.push(SelectorComponent::new(false, "slot", None));
     assert_eq!(second, expected_second);
 
-    let third = super::parse_selector("$key.@attr[3]").expect("Parse failed.");
+    let third = parse_selector("$key.@attr[3]").expect("Parse failed.");
     let mut expected_third = SelectorDescriptor::for_part(MessagePart::Key, None);
     expected_third.push(SelectorComponent::new(true, "attr", Some(3)));
     assert_eq!(third, expected_third);
 
-    let fourth = super::parse_selector("$payload[6].slot[8]").expect("Parse failed.");
+    let fourth = parse_selector("$payload[6].slot[8]").expect("Parse failed.");
     let mut expected_fourth = SelectorDescriptor::for_part(MessagePart::Payload, Some(6));
     expected_fourth.push(SelectorComponent::new(false, "slot", Some(8)));
     assert_eq!(fourth, expected_fourth);
@@ -230,7 +230,7 @@ fn parse_one_component() {
 
 #[test]
 fn multi_component_selector() {
-    let selector = super::parse_selector("$payload.red.@green[7].blue").expect("Parse failed.");
+    let selector = parse_selector("$payload.red.@green[7].blue").expect("Parse failed.");
     let mut expected = SelectorDescriptor::for_part(MessagePart::Payload, None);
     expected.push(SelectorComponent::new(false, "red", None));
     expected.push(SelectorComponent::new(true, "green", Some(7)));
@@ -328,7 +328,7 @@ fn chain_selector() {
 
 #[test]
 fn topic_selector_descriptor() {
-    let selector = super::parse_selector("$topic").expect("Invalid selector.");
+    let selector = parse_selector("$topic").expect("Invalid selector.");
     assert_eq!(selector.field(), MessageField::Topic);
     assert!(selector.selector().is_none());
     assert_eq!(selector.suggested_name(), Some("topic"));
@@ -336,7 +336,7 @@ fn topic_selector_descriptor() {
 
 #[test]
 fn key_selector_descriptor() {
-    let selector = super::parse_selector("$key").expect("Invalid selector.");
+    let selector = parse_selector("$key").expect("Invalid selector.");
     assert_eq!(selector.field(), MessageField::Key);
     assert_eq!(selector.selector(), Some(ChainSelector::from(vec![])));
     assert_eq!(selector.suggested_name(), Some("key"));
@@ -344,7 +344,7 @@ fn key_selector_descriptor() {
 
 #[test]
 fn payload_selector_descriptor() {
-    let selector = super::parse_selector("$payload").expect("Invalid selector.");
+    let selector = parse_selector("$payload").expect("Invalid selector.");
     assert_eq!(selector.field(), MessageField::Payload);
     assert_eq!(selector.selector(), Some(ChainSelector::from(vec![])));
     assert_eq!(selector.suggested_name(), Some("payload"));
@@ -352,7 +352,7 @@ fn payload_selector_descriptor() {
 
 #[test]
 fn indexed_selector_descriptor() {
-    let selector = super::parse_selector("$payload[1]").expect("Invalid selector.");
+    let selector = parse_selector("$payload[1]").expect("Invalid selector.");
     assert_eq!(selector.field(), MessageField::Payload);
     assert_eq!(
         selector.selector(),
@@ -365,7 +365,7 @@ fn indexed_selector_descriptor() {
 
 #[test]
 fn attr_selector_descriptor() {
-    let selector = super::parse_selector("$payload.@attr").expect("Invalid selector.");
+    let selector = parse_selector("$payload.@attr").expect("Invalid selector.");
     assert_eq!(selector.field(), MessageField::Payload);
     assert_eq!(
         selector.selector(),
@@ -378,7 +378,7 @@ fn attr_selector_descriptor() {
 
 #[test]
 fn slot_selector_descriptor() {
-    let selector = super::parse_selector("$payload.slot").expect("Invalid selector.");
+    let selector = parse_selector("$payload.slot").expect("Invalid selector.");
     assert_eq!(selector.field(), MessageField::Payload);
     assert_eq!(
         selector.selector(),
@@ -391,7 +391,7 @@ fn slot_selector_descriptor() {
 
 #[test]
 fn complex_selector_descriptor_named() {
-    let selector = super::parse_selector("$payload.@attr[3].inner").expect("Invalid selector.");
+    let selector = parse_selector("$payload.@attr[3].inner").expect("Invalid selector.");
     assert_eq!(selector.field(), MessageField::Payload);
     assert_eq!(
         selector.selector(),
@@ -406,7 +406,7 @@ fn complex_selector_descriptor_named() {
 
 #[test]
 fn complex_selector_descriptor_unnamed() {
-    let selector = super::parse_selector("$payload.@attr[3].inner[0]").expect("Invalid selector.");
+    let selector = parse_selector("$payload.@attr[3].inner[0]").expect("Invalid selector.");
     assert_eq!(selector.field(), MessageField::Payload);
     assert_eq!(
         selector.selector(),
@@ -513,8 +513,8 @@ fn run_selector(selector: PubSubSelector, expected: Value) {
     let topic = Value::from("topic");
 
     let deserializer = ReconDeserializer.boxed();
-    let key = Deser::new(b"13".as_slice(), &deserializer);
-    let value = Deser::new(b"64.0".as_slice(), &deserializer);
+    let key = Deferred::new(b"13".as_slice(), &deserializer);
+    let value = Deferred::new(b"64.0".as_slice(), &deserializer);
     let args = hlist![topic, key, value];
     let handler = selector.select_handler(&args).unwrap();
     let mut agent = ConnectorAgent::default();

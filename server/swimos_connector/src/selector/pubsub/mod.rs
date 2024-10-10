@@ -12,18 +12,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+mod error;
+mod relay;
 #[cfg(test)]
 mod tests;
 
 use crate::config::{IngressMapLaneSpec, IngressValueLaneSpec};
-use crate::deser::{Deser, MessagePart};
+use crate::deser::{Deferred, MessagePart};
 use crate::selector::{MapLaneSelector, SelectorComponent, ValueLaneSelector};
 use crate::{
     selector::{ChainSelector, Selector, ValueSelector},
-    BadSelector, DeserializationError, InvalidLaneSpec,
+    DeserializationError,
 };
+pub use error::*;
 use frunk::{Coprod, HList};
 use regex::Regex;
+pub use relay::{Relay, Relays};
 use std::sync::OnceLock;
 use swimos_model::Value;
 
@@ -39,7 +43,7 @@ pub type PubSubValueLaneSelector = ValueLaneSelector<PubSubSelector>;
 /// Selector type for Map Lanes.
 pub type PubSubMapLaneSelector = MapLaneSelector<PubSubSelector, PubSubSelector>;
 
-#[derive(Debug, PartialEq, Clone, Eq)]
+#[derive(Debug, PartialEq, Clone, Eq, Default)]
 pub struct TopicSelector;
 
 impl<'a> Selector<'a> for TopicSelector {
@@ -50,7 +54,7 @@ impl<'a> Selector<'a> for TopicSelector {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Eq)]
+#[derive(Debug, PartialEq, Clone, Eq, Default)]
 pub struct KeySelector(ChainSelector);
 
 impl KeySelector {
@@ -59,8 +63,17 @@ impl KeySelector {
     }
 }
 
+impl<I> From<I> for KeySelector
+where
+    I: Into<ChainSelector>,
+{
+    fn from(value: I) -> Self {
+        KeySelector(value.into())
+    }
+}
+
 impl<'a> Selector<'a> for KeySelector {
-    type Arg = Deser<'a>;
+    type Arg = Deferred<'a>;
 
     fn select(&self, from: &'a Self::Arg) -> Result<Option<Value>, DeserializationError> {
         let KeySelector(chain) = self;
@@ -68,7 +81,7 @@ impl<'a> Selector<'a> for KeySelector {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Eq)]
+#[derive(Default, Debug, PartialEq, Clone, Eq)]
 pub struct PayloadSelector(ChainSelector);
 
 impl PayloadSelector {
@@ -77,8 +90,17 @@ impl PayloadSelector {
     }
 }
 
+impl<I> From<I> for PayloadSelector
+where
+    I: Into<ChainSelector>,
+{
+    fn from(value: I) -> Self {
+        PayloadSelector::new(value.into())
+    }
+}
+
 impl<'a> Selector<'a> for PayloadSelector {
-    type Arg = Deser<'a>;
+    type Arg = Deferred<'a>;
 
     fn select(&self, from: &'a Self::Arg) -> Result<Option<Value>, DeserializationError> {
         let PayloadSelector(chain) = self;
@@ -255,7 +277,6 @@ impl<'a> SelectorDescriptor<'a> {
                     }
                 } else if index.is_none() {
                     Some(match part {
-                        // todo: move MessagePart to this module and rework the deserializer
                         MessagePart::Key => "key",
                         MessagePart::Payload => "payload",
                     })

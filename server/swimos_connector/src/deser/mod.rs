@@ -239,15 +239,15 @@ where
     }
 }
 
-pub struct Deser<'a> {
+pub struct Deferred<'a> {
     buf: &'a [u8],
     deser: &'a BoxMessageDeserializer,
     state: RefCell<Option<Value>>,
 }
 
-impl<'a> Deser<'a> {
-    pub fn new(buf: &'a [u8], deser: &'a BoxMessageDeserializer) -> Deser<'a> {
-        Deser {
+impl<'a> Deferred<'a> {
+    pub fn new(buf: &'a [u8], deser: &'a BoxMessageDeserializer) -> Deferred<'a> {
+        Deferred {
             buf,
             deser,
             state: RefCell::new(None),
@@ -255,7 +255,7 @@ impl<'a> Deser<'a> {
     }
 
     pub fn get(&self) -> Result<Value, DeserializationError> {
-        let Deser { buf, deser, state } = self;
+        let Deferred { buf, deser, state } = self;
         if let Some(v) = &*state.borrow() {
             Ok(v.clone())
         } else {
@@ -268,7 +268,7 @@ impl<'a> Deser<'a> {
     where
         F: FnOnce(&Value) -> Option<Value>,
     {
-        let Deser { buf, deser, state } = self;
+        let Deferred { buf, deser, state } = self;
         {
             if let Some(v) = &*state.borrow() {
                 return Ok(f(v));

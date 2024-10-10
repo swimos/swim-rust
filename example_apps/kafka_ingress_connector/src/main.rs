@@ -33,10 +33,7 @@ use swimos::{
     server::{Server, ServerBuilder},
 };
 use swimos_connector::IngressConnectorModel;
-use swimos_connector_kafka::{
-    KafkaIngressConfiguration, KafkaIngressConnector, KafkaIngressSpecification,
-};
-use swimos_recon::parser::parse_recognize;
+use swimos_connector_kafka::{KafkaIngressConfiguration, KafkaIngressConnector};
 
 mod params;
 
@@ -101,8 +98,7 @@ async fn load_config(
     } else {
         CONNECTOR_CONFIG
     };
-    let config = parse_recognize::<KafkaIngressSpecification>(recon, true)?.build()?;
-    Ok(config)
+    KafkaIngressConfiguration::from_str(recon)
 }
 
 pub fn setup_logging() -> Result<(), Box<dyn Error + Send + Sync>> {
