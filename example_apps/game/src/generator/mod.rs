@@ -13,8 +13,6 @@
 // limitations under the License.
 
 pub mod battle;
-pub mod config;
 pub mod game;
-pub mod gamertag;
 pub mod player;
-pub mod round;
+pub mod universe;

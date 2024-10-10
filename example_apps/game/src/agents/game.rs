@@ -14,7 +14,7 @@
 
 use std::{cell::RefCell, collections::VecDeque, time::Duration};
 
-use crate::generator::game::Game;
+use crate::generator::universe::Universe;
 use swimos::agent::{
     agent_lifecycle::HandlerContext,
     event_handler::{EventHandler, HandlerActionExt},
@@ -43,11 +43,6 @@ pub struct GameLifecycle {
 }
 
 impl GameLifecycle {
-    pub fn new() -> Self {
-        GameLifecycle {
-            timestamps: Default::default(),
-        }
-    }
 
     fn update_timestamps(&self, timestamp: u64) -> impl EventHandler<GameAgent> + '_ {
         let context: HandlerContext<GameAgent> = Default::default();
@@ -74,7 +69,7 @@ fn remove_old(to_remove: u64) -> impl EventHandler<GameAgent> {
 impl GameLifecycle {
     #[on_start]
     fn starting(&self, context: HandlerContext<GameAgent>) -> impl EventHandler<GameAgent> + '_ {
-        let mut game = Game::new();
+        let mut universe = Universe::default();
 
         context
             .get_agent_uri()
@@ -83,7 +78,7 @@ impl GameLifecycle {
             })
             .followed_by(
                 context.schedule_repeatedly(Duration::from_secs(3), move || {
-                    Some(generate_match(&mut game, context))
+                    Some(generate_match(&mut universe, context))
                 }),
             )
     }
@@ -101,7 +96,7 @@ impl GameLifecycle {
         context: HandlerContext<GameAgent>,
         match_summary: &MatchSummary,
     ) -> impl EventHandler<GameAgent> + '_ {
-        let summary = match_summary.clone();
+        let summary: MatchSummary = match_summary.clone();
         let ts = summary.start_time;
         let summary_history = match_summary.clone();
         context
@@ -120,14 +115,14 @@ impl GameLifecycle {
 }
 
 fn generate_match(
-    game: &mut Game,
+    universe: &mut Universe,
     context: HandlerContext<GameAgent>,
 ) -> impl EventHandler<GameAgent> {
-    let round = game.generate_round();
+    let game = universe.generate_game();
     context.send_command(
         None,
-        format!("/match/{id}", id = round.id).as_str(),
+        format!("/match/{id}", id = game.id).as_str(),
         "publish",
-        round,
+        game
     )
 }

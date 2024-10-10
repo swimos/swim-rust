@@ -12,23 +12,35 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 use rand::{seq::SliceRandom, Rng};
 
-use crate::generator::{config, player::Player, round::PlayerRound};
+use crate::generator::{player::Player, game::PlayerGame};
+
+pub const TEAMS: [&str; 2] = ["Hubble", "Donut"];
+pub const XP_PER_WIN: usize = 200;
+pub const XP_PER_KILL: usize = 100;
+pub const XP_PER_ASSIST: usize = 50;
+pub const ASSIST_RATIO: f32 = 0.2;
 
 pub struct Battle<'a> {
     team1: Team<'a>,
     team2: Team<'a>,
 }
 
-impl<'a> Battle<'a> {
+impl<'a> From<Vec<&'a mut Player>> for Battle<'a> {
 
-    pub fn new(mut players1: Vec<&mut Player>) -> Battle {
-        let (name1, name2) = config::generate_team_name_pair();
+    fn from(mut players1: Vec<&'a mut Player>) -> Self {
+        let (team1, team2) = generate_team_name_pair();
         let players2 = players1.split_off(players1.len() / 2);
-        Battle { team1: Team::new(name1, players1), team2: Team::new(name2, players2) }
+        Battle { 
+            team1: Team::new(team1, players1), 
+            team2: Team::new(team2, players2)
+        }
     }
+
+}
+
+impl<'a> Battle<'a> {
 
     pub fn play(&mut self) {
         while self.team1.is_alive() && self.team2.is_alive() {
@@ -36,9 +48,10 @@ impl<'a> Battle<'a> {
         }
     }
 
-    pub fn resolve(self) -> Vec<PlayerRound> {
+    pub fn resolve(self) -> Vec<PlayerGame> {
         self.team1.resolve().into_iter().chain(self.team2.resolve()).collect()
     }
+
 }
 
 fn duel(team1: &mut Team, team2: &mut Team) {
@@ -54,43 +67,43 @@ fn duel(team1: &mut Team, team2: &mut Team) {
     if player1_is_winner {
         player1.increment_kills();
         team2.add_dead(player2);
-        if config::generate_is_assist() { team1.assign_random_assist() }
+        if generate_is_assist() { team1.assign_random_assist() }
         team1.add_alive(player1);
     } else {
         player2.increment_kills();
         team1.add_dead(player1);
-        if config::generate_is_assist() { team2.assign_random_assist() }
+        if generate_is_assist() { team2.assign_random_assist() }
         team2.add_alive(player2);
     }
 } 
 
 struct Team<'a> {
     name: &'static str,
-    alive: Vec<PlayerBattleContext<'a>>,
-    dead: Vec<PlayerBattleContext<'a>>,
+    alive: Vec<PlayerBattle<'a>>,
+    dead: Vec<PlayerBattle<'a>>,
 }
 
 impl<'a> Team<'a> {
 
     fn new(name: &'static str, players: Vec<&'a mut Player>) -> Team<'a> {
-        let alive: Vec<PlayerBattleContext> = players.into_iter().map(|player| PlayerBattleContext::from(player)).collect();
+        let alive: Vec<PlayerBattle> = players.into_iter().map(|player| PlayerBattle::from(player)).collect();
         let dead = Vec::with_capacity(alive.len());
         Team { name, alive, dead }
     }
 
     fn is_alive(&self) -> bool {
-        self.alive.is_empty()
+        !self.alive.is_empty()
     }
 
-    fn add_alive(&mut self, player: PlayerBattleContext<'a>) {
+    fn add_alive(&mut self, player: PlayerBattle<'a>) {
         self.alive.push(player);
     }
 
-    fn add_dead(&mut self,  player: PlayerBattleContext<'a>) {
+    fn add_dead(&mut self,  player: PlayerBattle<'a>) {
         self.dead.push(player);
     }
 
-    fn take_random_alive(&mut self) -> PlayerBattleContext<'a> {
+    fn take_random_alive(&mut self) -> PlayerBattle<'a> {
         self.alive.swap_remove(rand::thread_rng().gen_range(0..self.alive.len()))
     }
 
@@ -102,7 +115,7 @@ impl<'a> Team<'a> {
         }
     }
 
-    fn resolve(self) -> Vec<PlayerRound> {
+    fn resolve(self) -> Vec<PlayerGame> {
         let is_winner = self.is_alive();
         self.alive
             .into_iter()
@@ -116,21 +129,21 @@ impl<'a> Team<'a> {
 
 }
 
-struct PlayerBattleContext<'a> {
+struct PlayerBattle<'a> {
     player: &'a mut Player,
     kills: usize,
     assists: usize,
 }
 
-impl<'a> From<&'a mut Player> for PlayerBattleContext<'a> {
+impl<'a> From<&'a mut Player> for PlayerBattle<'a> {
 
     fn from(player: &'a mut Player) -> Self {
-        PlayerBattleContext { player, kills: 0, assists: 0 }
+        PlayerBattle { player, kills: 0, assists: 0 }
     }
 
 } 
 
-impl<'a> PlayerBattleContext<'a> {
+impl<'a> PlayerBattle<'a> {
 
     fn increment_kills(&mut self) {
         self.kills += 1;
@@ -144,20 +157,20 @@ impl<'a> PlayerBattleContext<'a> {
         self.player.ability
     }
 
-    fn resolve(self, team_name: &str, is_winner: bool, is_dead: bool) -> PlayerRound {
+    fn resolve(self, team_name: &str, is_winner: bool, is_dead: bool) -> PlayerGame {
         // Add up xp and award the player
         let mut xp = 0;
         if is_winner {
-            xp += config::XP_PER_WIN;
+            xp += XP_PER_WIN;
         }
-        xp += self.kills * config::XP_PER_KILL;
-        xp += self.assists * config::XP_PER_ASSIST;
+        xp += self.kills * XP_PER_KILL;
+        xp += self.assists * XP_PER_ASSIST;
 
         self.player.add_xp(xp);
 
-        PlayerRound { 
+        PlayerGame { 
             id: self.player.id, 
-            tag: self.player.tag.clone(), 
+            username: self.player.username.clone(), 
             kills: self.kills,
             deaths: if is_dead {1} else {0},
             assists: self.assists,
@@ -171,6 +184,22 @@ impl<'a> PlayerBattleContext<'a> {
 
 }
 
+fn generate_is_assist() -> bool {
+    rand::thread_rng().gen_range(0.0..=1.0) < ASSIST_RATIO
+}
+
+fn generate_team_name_pair() -> (&'static str, &'static str) {
+    let first_team_index = rand::thread_rng().gen_range(0..TEAMS.len());
+    let second_team_index = rand::thread_rng().gen_range(0..(TEAMS.len() - 1));
+
+    if first_team_index != second_team_index {
+        ( TEAMS[first_team_index], TEAMS[second_team_index] )
+    } else {
+        ( TEAMS[first_team_index], TEAMS[TEAMS.len() - 1] )
+    }
+}
+
+
 #[cfg(test)]
 mod tests {
     use std::borrow::BorrowMut;
@@ -183,7 +212,7 @@ mod tests {
         player.xp = 500;
 
         let result = {
-            let mut player_context = PlayerBattleContext::from(&mut player);
+            let mut player_context = PlayerBattle::from(&mut player);
 
             player_context.increment_kills();
             player_context.increment_assists();
@@ -230,7 +259,7 @@ mod tests {
         let mut winner = Player::new(0, 1.0);
         let mut loser = Player::new(1, 0.0);
 
-        let mut battle = Battle::new(vec![winner.borrow_mut(), loser.borrow_mut()]);
+        let mut battle = Battle::from(vec![winner.borrow_mut(), loser.borrow_mut()]);
         battle.play();
         let result = battle.resolve();
 

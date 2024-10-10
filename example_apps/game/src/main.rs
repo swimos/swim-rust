@@ -22,7 +22,7 @@ use game::{
         game::{GameAgent, GameLifecycle},
         leaderboard::{LeaderboardAgent, LeaderboardLifecycle},
         player::{PlayerAgent, PlayerLifecycle},
-        round::{MatchAgent, MatchLifecycle},
+        battle::{MatchAgent, MatchLifecycle},
         team::{TeamAgent, TeamLifecycle},
     },
     ui::ui_server_router,
@@ -138,7 +138,7 @@ pub fn add_routes(
     info!("Adding game route");
     let game_route = RoutePattern::parse_str("/match")?;
     let game_agent = AgentModel::from_fn(GameAgent::default, move || {
-        GameLifecycle::new().into_lifecycle()
+        GameLifecycle::default().into_lifecycle()
     });
     builder = builder.add_route(game_route, game_agent);
 
@@ -161,7 +161,7 @@ pub fn add_routes(
     });
     builder = builder.add_route(player_route, player_agent);
 
-    info!("Adding match routes");
+    info!("Adding match/battle routes");
     let match_route = RoutePattern::parse_str("/match/:id")?;
     let match_agent = AgentModel::new(MatchAgent::default, MatchLifecycle.into_lifecycle());
     builder = builder.add_route(match_route, match_agent);

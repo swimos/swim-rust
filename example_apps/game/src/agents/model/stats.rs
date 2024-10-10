@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::generator::round::{PlayerRound, Round};
+use crate::generator::game::{Game, PlayerGame};
 use std::collections::HashMap;
 use swimos_form::Form;
 
@@ -35,17 +35,17 @@ pub struct MatchSummary {
     pub player_stats: HashMap<usize, MatchStats>,
 }
 
-impl From<Round> for MatchSummary {
-    fn from(round: Round) -> MatchSummary {
+impl From<Game> for MatchSummary {
+    fn from(game: Game) -> MatchSummary {
         MatchSummary {
-            match_id: round.id,
-            duration: round.duration,
-            start_time: round.start_time,
-            end_time: round.end_time,
-            first_kill_time: round.first_kill_time,
-            stats: MatchStats::match_stats_from_round(&round),
-            team_stats: MatchStats::team_stats_from_round(&round),
-            player_stats: MatchStats::player_stats_from_round(&round),
+            match_id: game.id,
+            duration: game.duration,
+            start_time: game.start_time,
+            end_time: game.end_time,
+            first_kill_time: game.first_kill_time,
+            stats: MatchStats::match_stats_from_game(&game),
+            team_stats: MatchStats::team_stats_from_game(&game),
+            player_stats: MatchStats::player_stats_from_game(&game),
         }
     }
 }
@@ -74,18 +74,18 @@ impl MatchStats {
         }
     }
 
-    fn match_stats_from_round(round: &Round) -> MatchStats {
+    fn match_stats_from_game(game: &Game) -> MatchStats {
         let mut stats = MatchStats::default();
-        round
+        game
             .player_results
             .iter()
             .for_each(|player_round| stats.increment(player_round));
         stats
     }
 
-    fn team_stats_from_round(round: &Round) -> HashMap<String, MatchStats> {
+    fn team_stats_from_game(game: &Game) -> HashMap<String, MatchStats> {
         let mut team_stats = HashMap::new();
-        round.player_results.iter().for_each(|player_round| {
+        game.player_results.iter().for_each(|player_round| {
             team_stats
                 .entry(player_round.team.clone())
                 .or_insert(MatchStats::new(
@@ -97,17 +97,17 @@ impl MatchStats {
         team_stats
     }
 
-    fn player_stats_from_round(round: &Round) -> HashMap<usize, MatchStats> {
+    fn player_stats_from_game(game: &Game) -> HashMap<usize, MatchStats> {
         let mut player_stats = HashMap::new();
-        round.player_results.iter().for_each(|player_round| {
-            let mut stats = MatchStats::new(player_round.tag.clone(), player_round.team.clone());
+        game.player_results.iter().for_each(|player_round| {
+            let mut stats = MatchStats::new(player_round.username.clone(), player_round.team.clone());
             stats.increment(player_round);
             player_stats.insert(player_round.id, stats);
         });
         player_stats
     }
 
-    fn increment(&mut self, player_round: &PlayerRound) {
+    fn increment(&mut self, player_round: &PlayerGame) {
         self.kills += player_round.kills;
         self.deaths += player_round.deaths;
         self.assists += player_round.assists;

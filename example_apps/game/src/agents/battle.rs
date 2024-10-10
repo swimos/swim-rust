@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::generator::round::Round;
+use crate::generator::game::Game;
 use swimos::agent::{
     agent_lifecycle::HandlerContext,
     event_handler::{EventHandler, HandlerActionExt, Sequentially},
@@ -30,7 +30,7 @@ pub struct MatchAgent {
     // Summary of the match
     stats: ValueLane<Option<MatchSummary>>,
     // Publish the match
-    publish: CommandLane<Round>,
+    publish: CommandLane<Game>,
 }
 
 #[derive(Clone)]
@@ -39,19 +39,19 @@ pub struct MatchLifecycle;
 #[lifecycle(MatchAgent)]
 impl MatchLifecycle {
     #[on_command(publish)]
-    fn publish_round(
+    fn publish_match(
         &self,
         context: HandlerContext<MatchAgent>,
-        round: &Round,
+        game: &Game,
     ) -> impl EventHandler<MatchAgent> {
-        let round = round.clone();
+        let game = game.clone();
 
         context
             .effect(move || {
-                info!(id = round.id, "New match published.");
-                round
+                info!(id = game.id, "New match published.");
+                game
             })
-            .map(Round::into)
+            .map(Game::into)
             .and_then(move |summary: MatchSummary| {
                 context
                     .set_value(MatchAgent::STATS, Some(summary.clone()))

@@ -18,8 +18,13 @@ use super::stats::PlayerTotals;
 
 type Comparator = fn(&PlayerTotals, &PlayerTotals) -> Ordering;
 
+const TOTAL_KILLS_COMP: for<'a> fn(&'a PlayerTotals, &'a PlayerTotals) -> Ordering = |left, right| left.total_kills.cmp(&right.total_kills);
+const TOTAL_DEATHS_COMP: for<'a> fn(&'a PlayerTotals, &'a PlayerTotals) -> Ordering = |left, right| left.total_deaths.cmp(&right.total_deaths);
+const KD_RATIO_COMP: for<'a> fn(&'a PlayerTotals, &'a PlayerTotals) -> Ordering = |left, right| left.kd_ratio.partial_cmp(&right.kd_ratio).unwrap_or_else(|| left.total_kills.cmp(&right.total_kills));
+const XP_COMP: for<'a> fn(&'a PlayerTotals, &'a PlayerTotals) -> Ordering = |left, right| left.total_xp.cmp(&right.total_xp);
+
 #[derive(Clone)]
-pub struct Leaderboard {
+pub struct PlayerLeaderboard {
     comparator: Comparator,
     // The players ordered by some comparator
     items: Vec<PlayerTotals>,
@@ -27,35 +32,7 @@ pub struct Leaderboard {
     indexes: Vec<Option<usize>>,
 }
 
-impl Leaderboard {
-    pub fn kill_count(capacity: usize) -> Self {
-        Leaderboard::new(
-            capacity,
-            |p1, p2| p1.total_kills.cmp(&p2.total_kills),
-        )
-    }
-
-    pub fn death_count(capacity: usize) -> Self {
-        Leaderboard::new(
-            capacity,
-            |p1, p2| p1.total_deaths.cmp(&p2.total_deaths),
-        )
-    }
-
-    pub fn kd_ratio(capacity: usize) -> Self {
-        Leaderboard::new(
-            capacity,
-            |p1, p2| {
-                p1.kd_ratio
-                    .partial_cmp(&p2.kd_ratio)
-                    .unwrap_or_else(|| p1.total_kills.cmp(&p2.total_kills))
-            },
-        )
-    }
-
-    pub fn xp(capacity: usize) -> Self {
-        Leaderboard::new(capacity, |p1, p2| p1.total_xp.cmp(&p2.total_xp))
-    }
+impl PlayerLeaderboard {
 
     pub fn new(capacity: usize, f: Comparator) -> Self {
         Self {
@@ -63,6 +40,22 @@ impl Leaderboard {
             items: Vec::with_capacity(capacity),
             indexes: vec![None; capacity],
         }
+    }
+
+    pub fn kill_count(capacity: usize) -> Self {
+        PlayerLeaderboard::new(capacity, TOTAL_KILLS_COMP)
+    }
+
+    pub fn death_count(capacity: usize) -> Self {
+        PlayerLeaderboard::new(capacity, TOTAL_DEATHS_COMP)
+    }
+
+    pub fn kd_ratio(capacity: usize) -> Self {
+        PlayerLeaderboard::new(capacity, KD_RATIO_COMP)
+    }
+
+    pub fn xp(capacity: usize) -> Self {
+        PlayerLeaderboard::new(capacity, XP_COMP)
     }
 
     pub fn update(&mut self, player_totals: PlayerTotals) {

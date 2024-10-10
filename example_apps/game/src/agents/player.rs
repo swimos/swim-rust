@@ -14,7 +14,6 @@
 
 use std::{cell::RefCell, collections::VecDeque};
 
-use crate::generator::gamertag;
 use swimos::agent::{
     agent_lifecycle::HandlerContext,
     event_handler::{EventHandler, HandlerActionExt},
@@ -22,6 +21,8 @@ use swimos::agent::{
     lifecycle, projections, AgentLaneModel,
 };
 use tracing::info;
+
+use crate::generator::player::username_from_id;
 
 use super::model::stats::{MatchSummary, PlayerTotals};
 
@@ -104,8 +105,8 @@ impl PlayerLifecycle {
                     .get_parameter("id")
                     .and_then(move |id: Option<String>| {
                         let id: usize = id.unwrap().parse().unwrap();
-                        let tag = gamertag::from_id(id);
-                        context.set_value(PlayerAgent::STATS, PlayerTotals::new(id, tag))
+                        let username = username_from_id(id);
+                        context.set_value(PlayerAgent::STATS, PlayerTotals::new(id, username))
                     }),
             )
             .followed_by(context.get_agent_uri().and_then(move |uri| {

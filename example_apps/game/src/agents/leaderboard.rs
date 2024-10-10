@@ -14,7 +14,6 @@
 
 use std::{cell::RefCell, collections::HashMap, time::Duration};
 
-use crate::generator::config;
 use swimos::{
     agent::{
         agent_lifecycle::HandlerContext,
@@ -26,8 +25,10 @@ use swimos::{
 };
 use tracing::info;
 
+use crate::generator::universe::UNIVERSE_PLAYER_COUNT;
+
 use super::model::{
-    leaderboard::Leaderboard,
+    leaderboard::PlayerLeaderboard,
     stats::{LeaderboardTotals, PlayerTotals},
 };
 
@@ -47,7 +48,7 @@ pub struct LeaderboardAgent {
 
 #[derive(Clone, Default)]
 pub struct LeaderboardLifecycle {
-    leaderboards: RefCell<HashMap<String, Leaderboard>>,
+    leaderboards: RefCell<HashMap<String, PlayerLeaderboard>>,
 }
 
 impl LeaderboardLifecycle {
@@ -55,19 +56,19 @@ impl LeaderboardLifecycle {
         let mut leaderboards = HashMap::new();
         leaderboards.insert(
             "kd".to_string(),
-            Leaderboard::kd_ratio(config::UNIVERSE_PLAYER_COUNT),
+            PlayerLeaderboard::kd_ratio(UNIVERSE_PLAYER_COUNT),
         );
         leaderboards.insert(
             "kc".to_string(),
-            Leaderboard::kill_count(config::UNIVERSE_PLAYER_COUNT),
+            PlayerLeaderboard::kill_count(UNIVERSE_PLAYER_COUNT),
         );
         leaderboards.insert(
             "dc".to_string(),
-            Leaderboard::death_count(config::UNIVERSE_PLAYER_COUNT),
+            PlayerLeaderboard::death_count(UNIVERSE_PLAYER_COUNT),
         );
         leaderboards.insert(
             "xp".to_string(),
-            Leaderboard::xp(config::UNIVERSE_PLAYER_COUNT),
+            PlayerLeaderboard::xp(UNIVERSE_PLAYER_COUNT),
         );
         Self {
             leaderboards: RefCell::new(leaderboards),

@@ -12,42 +12,62 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::time::{SystemTime, UNIX_EPOCH};
+use rand::Rng;
+use rand_distr::Binomial;
+use swimos_form::Form;
+use crate::generator::{battle::Battle, player::Player};
 
-use crate::generator::{player::Player, round::Round};
-use crate::generator::config;
-
-
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Form)]
+#[form(tag = "game", fields_convention = "camel")]
 pub struct Game {
-    players: Vec<Player>,
-    match_id: usize,
+    pub id: usize,
+    pub start_time: u64,
+    pub end_time: u64,
+    pub duration: u64,
+    pub first_kill_time: u64,
+    pub player_results: Vec<PlayerGame>
+}
+
+#[derive(Debug, Clone, Form)]
+#[form(tag = "playerGame", fields_convention = "camel")]
+pub struct PlayerGame {
+    pub id: usize,
+    pub username: String,
+    pub kills: usize,
+    pub deaths: usize,
+    pub assists: usize,
+    pub xp_gained: usize,
+    pub total_xp: usize,
+    pub level: usize,
+    pub winner: bool,
+    pub team: String,
 }
 
 impl Game {
 
-    pub fn new() -> Game {
-        Game { players: config::generate_all_players(), match_id: 0 }
+    pub fn generate(id: usize, players: Vec<&mut Player>) -> Game {
+        // Generate the metadata
+        let end_time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64;
+        let duration = generate_game_duration();
+        let start_time = end_time - duration;
+        let first_kill_time = generate_first_kill_time();
+
+        let mut battle: Battle = players.into();
+        battle.play();
+        let player_results = battle.resolve();
+
+        Game { id, start_time, end_time, duration, first_kill_time, player_results }
     }
 
-    pub fn generate_round(&mut self) -> Round {
+}
 
-        let id = self.match_id;
-        self.match_id += 1;
-        if self.match_id == config::MAX_MATCH_ID {
-            self.match_id = 0;
-        }
+fn generate_game_duration() -> u64 {
+    rand::thread_rng().sample(Binomial::new(30, 0.5).unwrap()) * 60000 +
+    rand::thread_rng().gen_range(0..60000)
+}
 
-        Round::generate(id, self.generate_round_players())
-    }
-    
-    fn generate_round_players(&mut self) -> Vec<&mut Player> {
-        let ids = config::generate_round_player_ids();
-        // TODO: Has to be a better way of doing this? 
-        // Maybe immutable references with mutable interior state?
-        self.players
-            .iter_mut()
-            .filter(|player| ids.contains(&player.id))
-            .collect()
-    }
-
+fn generate_first_kill_time() -> u64 {
+    rand::thread_rng().sample(Binomial::new(120, 0.3).unwrap()) * 1000 +
+    rand::thread_rng().gen_range(0..1000)
 }
