@@ -232,7 +232,7 @@ mod tests {
         assert_eq!(400, result.xp_gained);
         assert_eq!(900, result.total_xp);
         assert_eq!(1, result.level);
-        assert_eq!(true, result.winner);
+        assert!(result.winner);
         assert_eq!("TEST", result.team);
     }
 
@@ -268,7 +268,7 @@ mod tests {
         assert_eq!(300, winner.xp);
         assert_eq!(0, loser.xp);
 
-        let winning_result = result.get(0).unwrap();
+        let winning_result = result.first().unwrap();
         let losing_result = result.get(1).unwrap();
 
         assert_eq!(0, winning_result.id);
@@ -278,7 +278,7 @@ mod tests {
         assert_eq!(300, winning_result.xp_gained);
         assert_eq!(300, winning_result.total_xp);
         assert_eq!(0, winning_result.level);
-        assert_eq!(true, winning_result.winner);
+        assert!(winning_result.winner);
 
         assert_eq!(1, losing_result.id);
         assert_eq!(0, losing_result.kills);
@@ -287,6 +287,6 @@ mod tests {
         assert_eq!(0, losing_result.xp_gained);
         assert_eq!(0, losing_result.total_xp);
         assert_eq!(0, losing_result.level);
-        assert_eq!(false, losing_result.winner);
+        assert!(!losing_result.winner);
     }
 }

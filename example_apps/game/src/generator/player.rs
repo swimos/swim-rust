@@ -111,7 +111,7 @@ mod tests {
 
         assert_eq!(0, player.id);
         assert_eq!("TheBigDog", player.username);
-        assert_eq!(true, player.ability > 0.0);
+        assert!(player.ability > 0.0);
         assert_eq!(0, player.xp);
         assert_eq!(0, player.level);
     }
