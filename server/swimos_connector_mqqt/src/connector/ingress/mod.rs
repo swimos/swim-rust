@@ -65,7 +65,13 @@ impl IngressConnector for MqttIngressConnector {
             .take()
             .ok_or(MqttConnectorError::NotInitialized)?;
 
-        let (client, event_loop) = open_client(configuration)?;
+        let (client, event_loop) = super::open_client(
+            &configuration.url,
+            configuration.keep_alive_secs,
+            configuration.max_packet_size,
+            configuration.client_channel_size,
+            None,
+        )?;
         let sub_task = Box::pin(subscribe(configuration.subscription.clone(), client));
         let pub_stream = SubscriptionStream::new(event_loop, sub_task).into_stream();
         let handler_stream =
@@ -93,29 +99,6 @@ impl IngressConnector for MqttIngressConnector {
         }
         Ok(())
     }
-}
-
-const DEFAULT_CHAN_SIZE: usize = 16;
-
-fn open_client(
-    config: &MqttIngressConfiguration,
-) -> Result<(AsyncClient, EventLoop), MqttConnectorError> {
-    let MqttIngressConfiguration {
-        url,
-        keep_alive_secs,
-        max_packet_size,
-        client_channel_size,
-        ..
-    } = config;
-    let mut opts = MqttOptions::parse_url(url)?;
-    if let Some(t) = *keep_alive_secs {
-        opts.set_keep_alive(Duration::from_secs(t));
-    }
-    if let Some(n) = *max_packet_size {
-        opts.set_max_packet_size(n, n);
-    }
-    let cap = client_channel_size.unwrap_or(DEFAULT_CHAN_SIZE);
-    Ok(AsyncClient::new(opts, cap))
 }
 
 async fn subscribe(sub: Subscription, client: AsyncClient) -> Result<AsyncClient, ClientError> {

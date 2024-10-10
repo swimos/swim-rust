@@ -9,6 +9,7 @@ repository = "https://github.com/swimos/swim-rust/tree/main/server/swimos_connec
 homepage.workspace = true
 
 [dependencies]
+bytes = { workspace = true}
 futures = { workspace = true }
 swimos_api = { workspace = true }
 swimos_utilities = { workspace = true }

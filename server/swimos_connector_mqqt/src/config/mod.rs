@@ -44,7 +44,7 @@ pub struct IngressMapLaneSpec {
 /// Configuration parameters for the MQTT egress connector.
 #[derive(Clone, Debug, Form, PartialEq, Eq)]
 #[form(tag = "mqtt")]
-pub struct MqqtEgressConfiguration {
+pub struct MqttEgressConfiguration {
     /// The MQTT connection Url.
     pub url: String,
     /// The MQTT topic.
@@ -63,13 +63,13 @@ pub struct MqqtEgressConfiguration {
     pub map_downlinks: Vec<EgressDownlinkSpec>,
     pub keep_alive_secs: Option<u64>,
     pub max_packet_size: Option<usize>,
-    pub request_channel_size: Option<usize>,
     pub max_inflight: Option<u32>,
+    pub client_channel_size: Option<usize>,
 }
 
 #[derive(Clone, Debug, Form, PartialEq, Eq)]
 pub struct EgressLaneSpec {
-    name: String,
+    pub name: String,
 }
 
 #[derive(Clone, Debug, Form, PartialEq, Eq)]

@@ -18,7 +18,7 @@ mod error;
 
 pub use config::{
     EgressDownlinkSpec, EgressLaneSpec, IngressMapLaneSpec, IngressValueLaneSpec,
-    MqqtEgressConfiguration, MqttIngressConfiguration, Subscription,
+    MqttEgressConfiguration, MqttIngressConfiguration, Subscription,
 };
 pub use connector::MqttIngressConnector;
 pub use error::{InvalidLanes, MqttConnectorError};
