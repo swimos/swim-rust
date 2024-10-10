@@ -12,4 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod message;
+mod base;
+mod model;
+
+pub use base::*;
+pub use model::*;
+
+#[cfg(feature = "pubsub")]
+mod pubsub;
+
+#[cfg(feature = "pubsub")]
+pub use pubsub::*;

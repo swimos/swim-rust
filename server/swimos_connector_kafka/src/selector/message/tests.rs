@@ -15,15 +15,16 @@
 use std::collections::HashMap;
 
 use swimos_api::address::Address;
+use swimos_connector::deser::Endianness;
 use swimos_model::{Item, Value};
 
 use crate::{
     config::{EgressDownlinkSpec, EgressLaneSpec, KafkaEgressConfiguration, TopicSpecifier},
-    selector::{BasicSelector, ChainSelector, SlotSelector},
-    DataFormat, DownlinkAddress, Endianness, ExtractionSpec, InvalidExtractors, KafkaLogLevel,
+    DataFormat, DownlinkAddress, ExtractionSpec, InvalidExtractors, KafkaLogLevel,
 };
 
 use super::{FieldSelector, KeyOrValue, MessageSelector, MessageSelectors, TopicSelector};
+use swimos_connector::selector::{BasicSelector, ChainSelector, SlotSelector};
 
 const FIXED_TOPIC: &str = "fixed";
 const OTHER_TOPIC: &str = "other";
@@ -108,7 +109,7 @@ fn expected_extractors() -> MessageSelectors {
             None,
             Some(FieldSelector::new(
                 KeyOrValue::Value,
-                ChainSelector::new(vec![BasicSelector::Slot(SlotSelector::for_field("field"))]),
+                ChainSelector::from(vec![BasicSelector::Slot(SlotSelector::for_field("field"))]),
             )),
         ),
     )]
@@ -133,11 +134,11 @@ fn expected_extractors() -> MessageSelectors {
             TopicSelector::Fixed(FIXED_TOPIC.to_string()),
             Some(FieldSelector::new(
                 KeyOrValue::Value,
-                ChainSelector::new(vec![BasicSelector::Slot(SlotSelector::for_field("key"))]),
+                ChainSelector::from(vec![BasicSelector::Slot(SlotSelector::for_field("key"))]),
             )),
             Some(FieldSelector::new(
                 KeyOrValue::Value,
-                ChainSelector::new(vec![BasicSelector::Slot(SlotSelector::for_field(
+                ChainSelector::from(vec![BasicSelector::Slot(SlotSelector::for_field(
                     "payload",
                 ))]),
             )),
@@ -201,7 +202,7 @@ fn field_selector_key() {
 fn field_selector_value() {
     let selector = FieldSelector::new(
         KeyOrValue::Value,
-        ChainSelector::new(vec![BasicSelector::Slot(SlotSelector::for_field(
+        ChainSelector::from(vec![BasicSelector::Slot(SlotSelector::for_field(
             "record_payload",
         ))]),
     );
@@ -243,7 +244,7 @@ fn topic_selector_key() {
 fn topic_selector_value() {
     let selector = TopicSelector::Selector(FieldSelector::new(
         KeyOrValue::Value,
-        ChainSelector::new(vec![BasicSelector::Slot(SlotSelector::for_field(
+        ChainSelector::from(vec![BasicSelector::Slot(SlotSelector::for_field(
             "record_topic",
         ))]),
     ));
@@ -264,7 +265,7 @@ fn message_selector() {
         )),
         Some(FieldSelector::new(
             KeyOrValue::Value,
-            ChainSelector::new(vec![BasicSelector::Slot(SlotSelector::for_field(
+            ChainSelector::from(vec![BasicSelector::Slot(SlotSelector::for_field(
                 "record_payload",
             ))]),
         )),
@@ -288,7 +289,7 @@ fn message_selector_no_key_selector() {
         None,
         Some(FieldSelector::new(
             KeyOrValue::Value,
-            ChainSelector::new(vec![BasicSelector::Slot(SlotSelector::for_field(
+            ChainSelector::from(vec![BasicSelector::Slot(SlotSelector::for_field(
                 "record_payload",
             ))]),
         )),

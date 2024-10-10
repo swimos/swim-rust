@@ -15,15 +15,12 @@
 use swimos_model::{Attr, Item, Value};
 use uuid::Uuid;
 
-use crate::{
-    deser::{
-        F32Deserializer, F64Deserializer, I32Deserializer, I64Deserializer, MessagePart,
-        ReconDeserializer, U32Deserializer, U64Deserializer, UuidDeserializer,
-    },
-    Endianness,
+use crate::deser::{
+    F32Deserializer, F64Deserializer, I32Deserializer, I64Deserializer, MessagePart,
+    ReconDeserializer, U32Deserializer, U64Deserializer, UuidDeserializer,
 };
 
-use super::{MessageDeserializer, MessageView, StringDeserializer};
+use super::{Endianness, MessageDeserializer, MessageView, StringDeserializer};
 
 pub fn view_of(bytes: &[u8], part: MessagePart) -> MessageView<'_> {
     match part {
@@ -47,14 +44,11 @@ fn string_deserializer() {
     let bytes = "hello".as_bytes();
 
     let view = view_of(bytes, MessagePart::Key);
-    assert_eq!(
-        deserializer.deserialize(&view, MessagePart::Key),
-        Ok(Value::text("hello"))
-    );
+    assert_eq!(deserializer.deserialize(view.key), Ok(Value::text("hello")));
 
     let view = view_of(bytes, MessagePart::Payload);
     assert_eq!(
-        deserializer.deserialize(&view, MessagePart::Payload),
+        deserializer.deserialize(view.payload),
         Ok(Value::text("hello"))
     );
 }
@@ -69,33 +63,25 @@ fn i32_deserializer() {
 
     let view = view_of(le_bytes, MessagePart::Key);
     assert_eq!(
-        le_deserializer
-            .deserialize(&view, MessagePart::Key)
-            .expect("Failed."),
+        le_deserializer.deserialize(view.key).expect("Failed."),
         Value::from(567i32)
     );
 
     let view = view_of(le_bytes, MessagePart::Payload);
     assert_eq!(
-        le_deserializer
-            .deserialize(&view, MessagePart::Payload)
-            .expect("Failed."),
+        le_deserializer.deserialize(view.payload).expect("Failed."),
         Value::from(567i32)
     );
 
     let view = view_of(be_bytes, MessagePart::Key);
     assert_eq!(
-        be_deserializer
-            .deserialize(&view, MessagePart::Key)
-            .expect("Failed."),
+        be_deserializer.deserialize(view.key).expect("Failed."),
         Value::from(-874636i32)
     );
 
     let view = view_of(be_bytes, MessagePart::Payload);
     assert_eq!(
-        be_deserializer
-            .deserialize(&view, MessagePart::Payload)
-            .expect("Failed."),
+        be_deserializer.deserialize(view.payload).expect("Failed."),
         Value::from(-874636i32)
     );
 }
@@ -110,33 +96,25 @@ fn i64_deserializer() {
 
     let view = view_of(le_bytes, MessagePart::Key);
     assert_eq!(
-        le_deserializer
-            .deserialize(&view, MessagePart::Key)
-            .expect("Failed."),
+        le_deserializer.deserialize(view.key).expect("Failed."),
         Value::from(7476383847i64)
     );
 
     let view = view_of(le_bytes, MessagePart::Payload);
     assert_eq!(
-        le_deserializer
-            .deserialize(&view, MessagePart::Payload)
-            .expect("Failed."),
+        le_deserializer.deserialize(view.payload).expect("Failed."),
         Value::from(7476383847i64)
     );
 
     let view = view_of(be_bytes, MessagePart::Key);
     assert_eq!(
-        be_deserializer
-            .deserialize(&view, MessagePart::Key)
-            .expect("Failed."),
+        be_deserializer.deserialize(view.key).expect("Failed."),
         Value::from(-84728282872734i64)
     );
 
     let view = view_of(be_bytes, MessagePart::Payload);
     assert_eq!(
-        be_deserializer
-            .deserialize(&view, MessagePart::Payload)
-            .expect("Failed."),
+        be_deserializer.deserialize(view.payload).expect("Failed."),
         Value::from(-84728282872734i64)
     );
 }
@@ -151,33 +129,25 @@ fn u32_deserializer() {
 
     let view = view_of(le_bytes, MessagePart::Key);
     assert_eq!(
-        le_deserializer
-            .deserialize(&view, MessagePart::Key)
-            .expect("Failed."),
+        le_deserializer.deserialize(view.key).expect("Failed."),
         Value::from(567u32)
     );
 
     let view = view_of(le_bytes, MessagePart::Payload);
     assert_eq!(
-        le_deserializer
-            .deserialize(&view, MessagePart::Payload)
-            .expect("Failed."),
+        le_deserializer.deserialize(view.payload).expect("Failed."),
         Value::from(567u32)
     );
 
     let view = view_of(be_bytes, MessagePart::Key);
     assert_eq!(
-        be_deserializer
-            .deserialize(&view, MessagePart::Key)
-            .expect("Failed."),
+        be_deserializer.deserialize(view.key).expect("Failed."),
         Value::from(874636u32)
     );
 
     let view = view_of(be_bytes, MessagePart::Payload);
     assert_eq!(
-        be_deserializer
-            .deserialize(&view, MessagePart::Payload)
-            .expect("Failed."),
+        be_deserializer.deserialize(view.payload).expect("Failed."),
         Value::from(874636u32)
     );
 }
@@ -192,33 +162,25 @@ fn u64_deserializer() {
 
     let view = view_of(le_bytes, MessagePart::Key);
     assert_eq!(
-        le_deserializer
-            .deserialize(&view, MessagePart::Key)
-            .expect("Failed."),
+        le_deserializer.deserialize(view.key).expect("Failed."),
         Value::from(7476383847u64)
     );
 
     let view = view_of(le_bytes, MessagePart::Payload);
     assert_eq!(
-        le_deserializer
-            .deserialize(&view, MessagePart::Payload)
-            .expect("Failed."),
+        le_deserializer.deserialize(view.payload).expect("Failed."),
         Value::from(7476383847u64)
     );
 
     let view = view_of(be_bytes, MessagePart::Key);
     assert_eq!(
-        be_deserializer
-            .deserialize(&view, MessagePart::Key)
-            .expect("Failed."),
+        be_deserializer.deserialize(view.key).expect("Failed."),
         Value::from(84728282872734u64)
     );
 
     let view = view_of(be_bytes, MessagePart::Payload);
     assert_eq!(
-        be_deserializer
-            .deserialize(&view, MessagePart::Payload)
-            .expect("Failed."),
+        be_deserializer.deserialize(view.payload).expect("Failed."),
         Value::from(84728282872734u64)
     );
 }
@@ -233,33 +195,25 @@ fn f64_deserializer() {
 
     let view = view_of(le_bytes, MessagePart::Key);
     assert_eq!(
-        le_deserializer
-            .deserialize(&view, MessagePart::Key)
-            .expect("Failed."),
+        le_deserializer.deserialize(view.key).expect("Failed."),
         Value::from(4.657366e7)
     );
 
     let view = view_of(le_bytes, MessagePart::Payload);
     assert_eq!(
-        le_deserializer
-            .deserialize(&view, MessagePart::Payload)
-            .expect("Failed."),
+        le_deserializer.deserialize(view.payload).expect("Failed."),
         Value::from(4.657366e7)
     );
 
     let view = view_of(be_bytes, MessagePart::Key);
     assert_eq!(
-        be_deserializer
-            .deserialize(&view, MessagePart::Key)
-            .expect("Failed."),
+        be_deserializer.deserialize(view.key).expect("Failed."),
         Value::from(-84.657366e-87)
     );
 
     let view = view_of(be_bytes, MessagePart::Payload);
     assert_eq!(
-        be_deserializer
-            .deserialize(&view, MessagePart::Payload)
-            .expect("Failed."),
+        be_deserializer.deserialize(view.payload).expect("Failed."),
         Value::from(-84.657366e-87)
     );
 }
@@ -274,33 +228,25 @@ fn f32_deserializer() {
 
     let view = view_of(le_bytes, MessagePart::Key);
     assert_eq!(
-        le_deserializer
-            .deserialize(&view, MessagePart::Key)
-            .expect("Failed."),
+        le_deserializer.deserialize(view.key).expect("Failed."),
         Value::from(4.657366e7f32 as f64)
     );
 
     let view = view_of(le_bytes, MessagePart::Payload);
     assert_eq!(
-        le_deserializer
-            .deserialize(&view, MessagePart::Payload)
-            .expect("Failed."),
+        le_deserializer.deserialize(view.payload).expect("Failed."),
         Value::from(4.657366e7f32 as f64)
     );
 
     let view = view_of(be_bytes, MessagePart::Key);
     assert_eq!(
-        be_deserializer
-            .deserialize(&view, MessagePart::Key)
-            .expect("Failed."),
+        be_deserializer.deserialize(view.key).expect("Failed."),
         Value::from(-84.6573e-87f32 as f64)
     );
 
     let view = view_of(be_bytes, MessagePart::Payload);
     assert_eq!(
-        be_deserializer
-            .deserialize(&view, MessagePart::Payload)
-            .expect("Failed."),
+        be_deserializer.deserialize(view.payload).expect("Failed."),
         Value::from(-84.6573e-87f32 as f64)
     );
 }
@@ -316,17 +262,13 @@ fn uuid_deserializer() {
 
     let view = view_of(bytes, MessagePart::Key);
     assert_eq!(
-        deserializer
-            .deserialize(&view, MessagePart::Key)
-            .expect("Failed."),
+        deserializer.deserialize(view.key).expect("Failed."),
         expected
     );
 
     let view = view_of(bytes, MessagePart::Payload);
     assert_eq!(
-        deserializer
-            .deserialize(&view, MessagePart::Payload)
-            .expect("Failed."),
+        deserializer.deserialize(view.payload).expect("Failed."),
         expected
     );
 }
@@ -343,17 +285,13 @@ fn recon_deserializer() {
 
     let view = view_of(bytes, MessagePart::Key);
     assert_eq!(
-        deserializer
-            .deserialize(&view, MessagePart::Key)
-            .expect("Failed."),
+        deserializer.deserialize(view.key).expect("Failed."),
         expected
     );
 
     let view = view_of(bytes, MessagePart::Payload);
     assert_eq!(
-        deserializer
-            .deserialize(&view, MessagePart::Payload)
-            .expect("Failed."),
+        deserializer.deserialize(view.payload).expect("Failed."),
         expected
     );
 }

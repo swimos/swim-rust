@@ -22,7 +22,7 @@ use chrono::{DateTime, Local, NaiveDateTime, TimeDelta, Utc};
 use swimos_form::Form;
 use swimos_model::{BigInt, Blob, Timestamp};
 
-use super::{MessageDeserializer, MessagePart, MessageView};
+use super::MessageDeserializer;
 
 /// Error type for the Avro deserializer.
 #[derive(Error, Debug)]
@@ -187,17 +187,9 @@ impl ValueAcc {
 impl MessageDeserializer for AvroDeserializer {
     type Error = AvroError;
 
-    fn deserialize<'a>(
-        &self,
-        message: &'a MessageView<'a>,
-        part: MessagePart,
-    ) -> Result<Value, Self::Error> {
+    fn deserialize(&self, buf: &[u8]) -> Result<Value, Self::Error> {
         let AvroDeserializer { schema } = self;
-        let payload = match part {
-            MessagePart::Key => message.key(),
-            MessagePart::Payload => message.payload(),
-        };
-        let cursor = Cursor::new(payload);
+        let cursor = Cursor::new(buf);
         let reader = if let Some(schema) = schema {
             apache_avro::Reader::with_schema(schema, cursor)
         } else {

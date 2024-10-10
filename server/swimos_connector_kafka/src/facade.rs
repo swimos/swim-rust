@@ -18,6 +18,7 @@ use std::{
     task::{Context, Poll},
 };
 
+use crate::config::KafkaLogLevel;
 use futures::{Future, FutureExt};
 use rdkafka::{
     config::RDKafkaLogLevel,
@@ -28,9 +29,8 @@ use rdkafka::{
     types::RDKafkaErrorCode,
     ClientConfig, ClientContext, Message, Statistics, TopicPartitionList,
 };
+use swimos_connector::deser::MessageView;
 use tracing::{debug, error, info, warn};
-
-use crate::{config::KafkaLogLevel, deser::MessageView};
 
 pub trait KafkaMessage {
     fn view(&self) -> MessageView<'_>;
