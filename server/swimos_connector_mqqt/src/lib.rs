@@ -15,6 +15,7 @@
 mod config;
 mod connector;
 mod error;
+mod facade;
 
 pub use config::{
     EgressDownlinkSpec, EgressLaneSpec, IngressMapLaneSpec, IngressValueLaneSpec,
