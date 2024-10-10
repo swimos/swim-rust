@@ -18,8 +18,8 @@ mod model;
 pub use base::*;
 pub use model::*;
 
-// #[cfg(feature = "pubsub")]
+#[cfg(feature = "pubsub")]
 mod pubsub;
 
-// #[cfg(feature = "pubsub")]
+#[cfg(feature = "pubsub")]
 pub use pubsub::*;
