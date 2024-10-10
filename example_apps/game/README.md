@@ -1,7 +1,9 @@
 Game Leaderboard Application
 ===================
 
-This is a direct port of the Swim game application that can be found [here](https://github.com/swimos/demos).
+Swim server that simultes a game universe and matches between players. Results of matches are aggregated and a real-time global leaderboard agent is maintained.
+
+This is a direct port of the Java Swim game application that can be found [here](https://github.com/swimos/demos).
 
 Running
 -------
