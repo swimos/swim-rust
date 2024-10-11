@@ -39,8 +39,8 @@ impl UiConfig {
 pub fn ui_server_router(port: u16) -> Router {
     Router::new()
         .route("/index.html", get(index_html))
-        .route("/dist/main/swimos-transit.js", get(transit_js))
-        .route("/dist/main/swimos-transit.js.map", get(transit_js_map))
+        .route("/dist/main/swim-transit.js", get(transit_js))
+        .route("/dist/main/swim-transit.js.map", get(transit_js_map))
         .with_state(UiConfig { port })
 }
 
@@ -49,7 +49,7 @@ const INDEX: &str = "ui/index.html";
 async fn index_html(State(UiConfig { port }): State<UiConfig>) -> impl IntoResponse {
     if let Ok(file) = File::open(INDEX).await {
         let lines = LinesStream::new(BufReader::new(file).lines()).map_ok(move |mut line| {
-            if line == "const portParam = baseUri.port();" {
+            if line.contains("const portParam = baseUri.port();") {
                 format!("const portParam = {};\n", port)
             } else {
                 line.push('\n');
@@ -78,7 +78,7 @@ async fn index_html(State(UiConfig { port }): State<UiConfig>) -> impl IntoRespo
 
 async fn transit_js() -> impl IntoResponse {
     let headers = [(header::CONTENT_TYPE, JS.clone())];
-    (headers, load_file("dist/main/swimos-transit.js").await)
+    (headers, load_file("dist/main/swim-transit.js").await)
 }
 
 static HTML: HeaderValue = HeaderValue::from_static("text/html; charset=utf-8");
@@ -86,7 +86,7 @@ static JS: HeaderValue = HeaderValue::from_static("application/json");
 
 async fn transit_js_map() -> impl IntoResponse {
     let headers = [(header::CONTENT_TYPE, JS.clone())];
-    (headers, load_file("dist/main/swimos-transit.js.map").await)
+    (headers, load_file("dist/main/swim-transit.js.map").await)
 }
 
 async fn load_file(path: &str) -> impl IntoResponse {
