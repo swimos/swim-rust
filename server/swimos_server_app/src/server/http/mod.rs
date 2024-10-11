@@ -378,7 +378,7 @@ where
 }
 
 /// Returns whether to validate the upgrade's requested subprotocol. Users may disable this check
-/// by setting WS_NO_PROTOCOL_CHECK=true if they are running a legacy version of Swim which would be
+/// by setting WS_NO_SUBPROTOCOL_CHECK=true if they are running a legacy version of Swim which would be
 /// incompatible with this version. If the environment variable has not been set or it is invalid
 /// then the subprotocol will still be verified and a log entry will be emitted.
 ///
