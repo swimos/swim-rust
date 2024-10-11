@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use axum::http::{header, HeaderValue};
-use axum::{body::StreamBody, http::StatusCode, response::IntoResponse, routing::get, Router};
+use axum::{body::Body, http::StatusCode, response::IntoResponse, routing::get, Router};
 use futures::TryFutureExt;
 use tokio::fs::File;
 use tokio_util::io::ReaderStream;
@@ -65,7 +65,7 @@ async fn load_file(path: &str) -> impl IntoResponse {
         .await
     {
         let headers = [(header::CONTENT_LENGTH, HeaderValue::from(len))];
-        Ok((headers, StreamBody::new(ReaderStream::new(file))))
+        Ok((headers, Body::from_stream(ReaderStream::new(file))))
     } else {
         Err((StatusCode::NOT_FOUND, format!("File not found: {}", target)))
     }

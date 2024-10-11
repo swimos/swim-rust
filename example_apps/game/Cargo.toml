@@ -6,14 +6,15 @@ edition = "2021"
 [dependencies]
 swimos = { path = "../../swimos", features = ["server", "agent"] }
 swimos_form = { path = "../../api/swimos_form" }
+swimos_utilities = { workspace = true, features = ["trigger"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal", "fs"]}
 futures = { workspace = true }
 example-util = { path = "../example_util" }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 clap = { workspace = true, features = ["derive"]}
-axum = { version = "0.6.20", features = ["tokio", "http1"]}
 tokio-stream = { workspace = true, features = ["io-util"]}
 tokio-util = { workspace = true, features = ["io"]}
 rand = { workspace = true }
 rand_distr = { workspace = true }
+axum = { workspace = true, features = ["tokio", "http1"] }

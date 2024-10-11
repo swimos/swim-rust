@@ -12,7 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{error::Error, net::SocketAddr, pin::pin, str::FromStr, sync::Arc, time::Duration};
+use std::future::IntoFuture;
+use std::str::FromStr;
+use std::{error::Error, net::SocketAddr, pin::pin, sync::Arc, time::Duration};
 
 use clap::Parser;
 use example_util::{example_filter, manage_handle_report};
@@ -32,6 +34,8 @@ use swimos::{
     route::{RoutePattern, RouteUri},
     server::{Server, ServerBuilder, ServerHandle},
 };
+use swimos_utilities::trigger::trigger;
+use tokio::net::TcpListener;
 use tokio::sync::{oneshot, Notify};
 use tracing::info;
 use tracing_subscriber::filter::LevelFilter;
@@ -190,20 +194,24 @@ async fn ui_server(
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     if let Ok(addr) = swim_addr_rx.await {
         let app = ui_server_router(addr.port());
+        let bind_to: SocketAddr = format!("0.0.0.0:{}", port.unwrap_or_default()).parse()?;
+        let (stop_tx, stop_rx) = trigger();
 
-        let bind_to = format!("0.0.0.0:{}", port.unwrap_or_default()).parse()?;
+        let listener = TcpListener::bind(bind_to).await?;
+        let ui_addr = listener.local_addr()?;
+        println!("UI bound to: {}", ui_addr);
 
-        let server = axum::Server::try_bind(&bind_to)?.serve(app.into_make_service());
-        let ui_addr = server.local_addr();
-        info!("UI bound to: {}", ui_addr);
-        let stop_tx = Arc::new(Notify::new());
-        let stop_rx = stop_tx.clone();
-        let server_task = pin!(server.with_graceful_shutdown(stop_rx.notified()));
+        let server =
+            axum::serve(listener, app.into_make_service()).with_graceful_shutdown(async move {
+                let _ = stop_rx.await;
+            });
+
+        let server_task = pin!(server.into_future());
         let shutdown_notified = pin!(shutdown_signal.notified());
         match select(server_task, shutdown_notified).await {
             Either::Left((result, _)) => result?,
             Either::Right((_, server)) => {
-                stop_tx.notify_one();
+                assert!(stop_tx.trigger());
                 tokio::time::timeout(shutdown_timeout, server).await??;
             }
         }
