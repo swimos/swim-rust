@@ -20,6 +20,7 @@ use rumqttc::{
     AsyncClient, ClientError, ConnectionError, Event, EventLoop, Incoming, MqttOptions, Publish,
     QoS, SubscribeFilter,
 };
+use swimos_utilities::byte_channel::BudgetedFutureExt;
 use tracing::trace;
 
 use crate::Subscription;
@@ -114,7 +115,7 @@ impl MqttConsumer<Publish> for EventLoop {
     fn into_stream(self) -> impl Stream<Item = Result<Publish, ConnectionError>> + Send + 'static {
         unfold(self, |mut consumer| async move {
             let outcome = loop {
-                match consumer.poll().await {
+                match consumer.poll().consuming().await {
                     Ok(Event::Incoming(Incoming::Publish(msg))) => break Some(Ok(msg)),
                     Err(ConnectionError::RequestsDone) => break None,
                     Err(err) => break Some(Err(err)),
@@ -163,7 +164,7 @@ impl PublisherDriver for EventLoop {
 
 async fn drive_events(mut event_loop: EventLoop) -> Result<(), ConnectionError> {
     loop {
-        match event_loop.poll().await {
+        match event_loop.poll().consuming().await {
             Ok(Event::Outgoing(event)) => {
                 trace!(event = ?event, "Outgoing MQTT event.");
             }
