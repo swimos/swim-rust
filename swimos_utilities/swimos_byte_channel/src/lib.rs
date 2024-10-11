@@ -38,4 +38,4 @@ mod coop;
 pub use channel::{are_connected, byte_channel, ByteReader, ByteWriter};
 
 #[cfg(feature = "coop")]
-pub use coop::{BudgetedFutureExt, RunWithBudget};
+pub use coop::{BudgetConsumer, BudgetedFutureExt, RunWithBudget};
