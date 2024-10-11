@@ -19,7 +19,7 @@ use std::{
     task::{Context, Poll},
 };
 
-use futures::Future;
+use futures::{ready, Future};
 use pin_project::pin_project;
 
 #[cfg(test)]
@@ -131,5 +131,21 @@ impl<F: Future> Future for RunWithBudget<F> {
         let projected = self.project();
         set_budget(projected.budget.get());
         projected.fut.poll(cx)
+    }
+}
+
+#[pin_project]
+pub struct BudgetConsumer<F> {
+    #[pin] 
+    fut: F,
+}
+
+impl<F: Future> Future for BudgetConsumer<F> {
+    type Output = F::Output;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        ready!(consume_budget(cx));
+        let projected = self.project();
+        track_progress(projected.fut.poll(cx))
     }
 }
