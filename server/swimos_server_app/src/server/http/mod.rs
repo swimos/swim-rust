@@ -38,6 +38,7 @@ use ratchet::{
     WebSocketStream,
 };
 use ratchet_core::server::UpgradeRequestParts;
+use std::env::{var, VarError};
 use std::{
     marker::PhantomData,
     net::SocketAddr,
@@ -61,6 +62,7 @@ use tokio::{
     sync::mpsc,
     time::{sleep, Sleep},
 };
+use tracing::{debug, warn};
 
 mod resolver;
 #[cfg(test)]
@@ -375,6 +377,37 @@ where
     }
 }
 
+/// Returns whether to validate the upgrade's requested subprotocol. Users may disable this check
+/// by setting WS_NO_PROTOCOL_CHECK=true if they are running a legacy version of Swim which would be
+/// incompatible with this version. If the environment variable has not been set or it is invalid
+/// then the subprotocol will still be verified and a log entry will be emitted.
+///
+/// Defaults to `true`.
+fn validate_subprotocol() -> bool {
+    match var("WS_NO_SUBPROTOCOL_CHECK") {
+        Ok(s) => match s.as_str() {
+            "true" => {
+                debug!("Skipping subprotocol check due to WS_NO_SUBPROTOCOL_CHECK=true");
+                false
+            }
+            "false" => true,
+            s => {
+                warn!("WS_NO_SUBPROTOCOL_CHECK set to an invalid value. Ignoring. Should be 'true' or 'false': {}", s);
+                true
+            }
+        },
+        Err(VarError::NotPresent) => true,
+        Err(VarError::NotUnicode(value)) => {
+            let value = value.to_string_lossy();
+            warn!(
+                "WS_NO_SUBPROTOCOL_CHECK set to non-Unicode value. Ignoring: {}",
+                value
+            );
+            true
+        }
+    }
+}
+
 /// Perform the websocket negotiation and assign the upgrade future to the target parameter.
 fn perform_upgrade<Ext, Sock, B>(
     config: WebSocketConfig,
@@ -392,7 +425,7 @@ where
 {
     match result {
         Ok(parts) => {
-            if parts.subprotocol.is_none() {
+            if parts.subprotocol.is_none() && validate_subprotocol() {
                 // We can only speak warp0 so fail the upgrade.
                 let response = swimos_http::fail_upgrade("Failed to negotiate warp0 subprotocol");
                 (response, None)
