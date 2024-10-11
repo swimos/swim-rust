@@ -12,13 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{cell::RefCell, future::Future, time::Duration};
+use std::{cell::RefCell, future::Future};
 
-use futures::{stream::unfold, Stream, StreamExt};
-use rumqttc::{
-    AsyncClient, ClientError, Event, EventLoop, Incoming, MqttOptions, Publish, QoS,
-    SubscribeFilter,
-};
+use futures::{stream::unfold, Stream, StreamExt, TryStream, TryStreamExt};
+use rumqttc::ClientError;
 use swimos_agent::{
     agent_lifecycle::HandlerContext,
     event_handler::{EventHandler, UnitHandler},
@@ -31,15 +28,17 @@ use swimos_utilities::trigger::Sender;
 
 use crate::{
     error::{InvalidLanes, MqttConnectorError},
+    facade::{ConsumerFactory, MqttConsumer, MqttMessage, MqttSubscriber},
     MqttIngressConfiguration, Subscription,
 };
 
-pub struct MqttIngressConnector {
+pub struct MqttIngressConnector<F> {
+    factory: F,
     configuration: MqttIngressConfiguration,
     lanes: RefCell<Option<ConnectorLanes>>,
 }
 
-impl BaseConnector for MqttIngressConnector {
+impl<F> BaseConnector for MqttIngressConnector<F> {
     fn on_start(&self, init_complete: Sender) -> impl EventHandler<ConnectorAgent> + '_ {
         let context: HandlerContext<ConnectorAgent> = Default::default();
         context.effect(move || {
@@ -52,11 +51,15 @@ impl BaseConnector for MqttIngressConnector {
     }
 }
 
-impl IngressConnector for MqttIngressConnector {
+impl<F> IngressConnector for MqttIngressConnector<F>
+where
+    F: ConsumerFactory,
+{
     type Error = MqttConnectorError;
 
     fn create_stream(&self) -> Result<impl ConnectorStream<Self::Error>, Self::Error> {
         let MqttIngressConnector {
+            factory,
             configuration,
             lanes,
         } = self;
@@ -65,15 +68,17 @@ impl IngressConnector for MqttIngressConnector {
             .take()
             .ok_or(MqttConnectorError::NotInitialized)?;
 
-        let (client, event_loop) = super::open_client(
+        let (client, consumer) = super::open_client2(
+            factory,
             &configuration.url,
             configuration.keep_alive_secs,
             configuration.max_packet_size,
-            configuration.client_channel_size,
             None,
         )?;
-        let sub_task = Box::pin(subscribe(configuration.subscription.clone(), client));
-        let pub_stream = SubscriptionStream::new(event_loop, sub_task).into_stream();
+
+        let sub_task = Box::pin(client.subscribe(configuration.subscription.clone()));
+        let pub_stream =
+            SubscriptionStream::new(Box::pin(consumer.into_stream()), sub_task).into_stream();
         let handler_stream =
             pub_stream.map(move |result| result.map(|publish| lanes.handle_message(publish)));
 
@@ -84,6 +89,7 @@ impl IngressConnector for MqttIngressConnector {
         let MqttIngressConnector {
             configuration,
             lanes,
+            ..
         } = self;
         *lanes.borrow_mut() = Some(ConnectorLanes::try_from(configuration)?);
         let MqttIngressConfiguration {
@@ -101,91 +107,78 @@ impl IngressConnector for MqttIngressConnector {
     }
 }
 
-async fn subscribe(sub: Subscription, client: AsyncClient) -> Result<AsyncClient, ClientError> {
-    match sub {
-        Subscription::Topic(topic) => {
-            client.subscribe(topic, QoS::AtLeastOnce).await?;
-        }
-        Subscription::Topics(topics) => {
-            for topic in topics {
-                client.subscribe(topic, QoS::AtLeastOnce).await?;
-            }
-        }
-        Subscription::Filters(filters) => {
-            let sub_filters = filters
-                .into_iter()
-                .map(|s| SubscribeFilter::new(s, QoS::AtLeastOnce));
-            client.subscribe_many(sub_filters).await?;
-        }
-    }
-    Ok(client)
-}
-
-pub enum SubscriptionState<F> {
+pub enum SubscriptionState<F, AC> {
     Subscribing { sub_task: F },
-    Running { _client: AsyncClient },
+    Running { _client: AC },
 }
 
-pub struct SubscriptionStream<F> {
-    state: SubscriptionState<F>,
-    event_loop: EventLoop,
+pub struct SubscriptionStream<F, AC, S> {
+    state: SubscriptionState<F, AC>,
+    consumer_stream: S,
 }
 
-impl<F> SubscriptionStream<F>
+impl<F, S, AC> SubscriptionStream<F, AC, S>
 where
-    F: Future<Output = Result<AsyncClient, ClientError>> + Unpin + Send + 'static,
+    F: Future<Output = Result<AC, ClientError>> + Unpin + Send + 'static,
+    S: TryStream + Unpin + Send + 'static,
+    S::Error: Into<MqttConnectorError>,
+    AC: Send + 'static,
 {
-    fn new(event_loop: EventLoop, sub_task: F) -> Self {
+    fn new(consumer_stream: S, sub_task: F) -> Self {
         SubscriptionStream {
             state: SubscriptionState::Subscribing { sub_task },
-            event_loop,
+            consumer_stream,
         }
     }
 
-    fn into_stream(
-        self,
-    ) -> impl Stream<Item = Result<Publish, MqttConnectorError>> + Send + 'static {
+    fn into_stream(self) -> impl Stream<Item = Result<S::Ok, MqttConnectorError>> + Send + 'static {
         unfold(self, |mut s| async move {
             let result = s.next().await;
-            Some((result, s))
+            result.map(move |r| (r, s))
         })
     }
 
-    async fn next(&mut self) -> Result<Publish, MqttConnectorError> {
-        let SubscriptionStream { state, event_loop } = self;
-        let publish = loop {
+    async fn next(&mut self) -> Option<Result<S::Ok, MqttConnectorError>> {
+        let SubscriptionStream {
+            state,
+            consumer_stream,
+        } = self;
+        loop {
             match state {
                 SubscriptionState::Subscribing { sub_task } => {
                     tokio::select! {
                         biased;
                         result = sub_task => {
-                            *state = SubscriptionState::Running { _client: result? };
-                        }
-                        result = event_loop.poll() => {
-                            if let Event::Incoming(Incoming::Publish(publish)) = result? {
-                                break publish;
+                            match result {
+                                Ok(client) => {
+                                    *state = SubscriptionState::Running { _client: client };
+                                },
+                                Err(err) => break Some(Err(err.into())),
                             }
+                        }
+                        result = consumer_stream.try_next() => {
+                            break result.map_err(Into::into).transpose();
                         }
                     }
                 }
                 SubscriptionState::Running { .. } => {
-                    if let Event::Incoming(Incoming::Publish(publish)) = event_loop.poll().await? {
-                        break publish;
-                    }
+                    break consumer_stream
+                        .try_next()
+                        .await
+                        .map_err(Into::into)
+                        .transpose();
                 }
             }
-        };
-
-        Ok(publish)
+        }
     }
 }
 
 struct ConnectorLanes {}
 
 impl ConnectorLanes {
-    fn handle_message(
+    fn handle_message<M: MqttMessage>(
         &self,
-        publish: Publish,
+        publish: M,
     ) -> impl EventHandler<ConnectorAgent> + Send + 'static {
         UnitHandler::default()
     }
