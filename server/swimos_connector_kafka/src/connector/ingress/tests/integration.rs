@@ -18,30 +18,28 @@ use std::{
     time::Duration,
 };
 
+use super::setup_agent;
+use crate::connector::test_util::run_handler_with_futures;
+use crate::{
+    config::KafkaLogLevel,
+    connector::ingress::{message_to_handler, Lanes, MessageSelector, MessageState, MessageTasks},
+    error::KafkaConnectorError,
+    facade::{ConsumerFactory, KafkaConsumer, KafkaMessage},
+    DataFormat, KafkaIngressConfiguration, KafkaIngressConnector,
+};
 use futures::{future::join, TryStreamExt};
 use parking_lot::Mutex;
 use rand::{rngs::ThreadRng, Rng};
 use rdkafka::error::KafkaError;
 use swimos_agent::agent_model::{AgentSpec, ItemDescriptor, ItemFlags};
 use swimos_api::agent::WarpLaneKind;
+use swimos_connector::config::{IngressMapLaneSpec, IngressValueLaneSpec};
+use swimos_connector::deser::{MessageDeserializer, MessageView, ReconDeserializer};
 use swimos_connector::{BaseConnector, ConnectorAgent, IngressConnector, IngressContext};
 use swimos_model::{Item, Value};
 use swimos_recon::print_recon_compact;
 use swimos_utilities::trigger;
 use tokio::sync::mpsc;
-
-use crate::{
-    config::KafkaLogLevel,
-    connector::ingress::{message_to_handler, Lanes, MessageSelector, MessageState, MessageTasks},
-    deser::{MessageDeserializer, MessageView, ReconDeserializer},
-    error::KafkaConnectorError,
-    facade::{ConsumerFactory, KafkaConsumer, KafkaMessage},
-    DataFormat, IngressMapLaneSpec, IngressValueLaneSpec, KafkaIngressConfiguration,
-    KafkaIngressConnector,
-};
-
-use super::setup_agent;
-use crate::connector::test_util::run_handler_with_futures;
 
 fn props() -> HashMap<String, String> {
     [("key".to_string(), "value".to_string())]
@@ -64,6 +62,7 @@ fn make_config() -> KafkaIngressConfiguration {
         key_deserializer: DataFormat::Recon,
         payload_deserializer: DataFormat::Recon,
         topics: vec!["topic".to_string()],
+        relays: Default::default(),
     }
 }
 
@@ -276,8 +275,12 @@ async fn message_state() {
     let lanes =
         Lanes::try_from_lane_specs(&value_specs, &map_specs).expect("Invalid specifications.");
 
-    let selector =
-        MessageSelector::new(ReconDeserializer.boxed(), ReconDeserializer.boxed(), lanes);
+    let selector = MessageSelector::new(
+        ReconDeserializer.boxed(),
+        ReconDeserializer.boxed(),
+        lanes,
+        Default::default(),
+    );
 
     let (tx, mut rx) = mpsc::channel(1);
     let message_state = MessageState::new(mock_consumer, selector, message_to_handler, tx);
@@ -349,8 +352,12 @@ async fn message_tasks_stream() {
         let lanes =
             Lanes::try_from_lane_specs(&value_specs, &map_specs).expect("Invalid specifications.");
 
-        let selector =
-            MessageSelector::new(ReconDeserializer.boxed(), ReconDeserializer.boxed(), lanes);
+        let selector = MessageSelector::new(
+            ReconDeserializer.boxed(),
+            ReconDeserializer.boxed(),
+            lanes,
+            Default::default(),
+        );
 
         let (tx, rx) = mpsc::channel(1);
         let message_state = MessageState::new(mock_consumer, selector, message_to_handler, tx);

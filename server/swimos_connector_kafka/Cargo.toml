@@ -10,8 +10,8 @@ homepage.workspace = true
 
 [features]
 default = []
-json = ["dep:serde_json"]
-avro = ["dep:apache-avro", "dep:chrono"]
+json = ["swimos_connector/json"]
+avro = ["swimos_connector/json", "dep:apache-avro"]
 
 [dependencies]
 futures = { workspace = true }
@@ -25,12 +25,9 @@ swimos_agent = { workspace = true }
 tracing = { workspace = true }
 uuid = { workspace = true }
 rdkafka = { workspace = true, features = ["cmake-build", "tokio"] }
-serde_json = { workspace = true, optional = true }
-apache-avro = { workspace = true, optional = true}
-chrono = { workspace = true, optional = true }
+apache-avro = { workspace = true, optional = true }
 thiserror = { workspace = true }
-swimos_connector = { workspace = true }
-regex = { workspace = true }
+swimos_connector = { workspace = true, features = ["pubsub"] }
 frunk = { workspace = true }
 bytes = { workspace = true }
 

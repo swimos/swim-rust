@@ -17,12 +17,11 @@ use std::collections::HashMap;
 use swimos_api::{address::Address, agent::WarpLaneKind};
 use swimos_connector::EgressContext;
 
+use super::open_downlinks;
 use crate::{
     config::{EgressDownlinkSpec, KafkaEgressConfiguration, TopicSpecifier},
     DataFormat, ExtractionSpec, KafkaLogLevel,
 };
-
-use super::open_downlinks;
 
 #[cfg(feature = "json")]
 mod end_to_end;

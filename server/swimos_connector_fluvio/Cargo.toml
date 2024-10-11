@@ -1,0 +1,30 @@
+[package]
+name = "swimos_connector_fluvio"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+description = "SwimOS Connector for Fluvio"
+repository = "https://github.com/swimos/swim-rust/tree/main/server/swimos_connector_fluvio"
+
+[features]
+default = []
+json = ["swimos_connector/json"]
+avro = ["swimos_connector/json"]
+
+[dependencies]
+fluvio = { workspace = true }
+futures = { workspace = true }
+swimos_api = { workspace = true }
+swimos_utilities = { workspace = true }
+swimos_model = { workspace = true }
+swimos_form = { workspace = true }
+swimos_recon = { workspace = true }
+tokio = { workspace = true, features = ["sync", "macros", "fs"] }
+swimos_agent = { workspace = true }
+tracing = { workspace = true }
+serde_json = { workspace = true, optional = true }
+apache-avro = { workspace = true, optional = true }
+swimos_connector = { workspace = true, features = ["pubsub"] }
+thiserror = { workspace = true }

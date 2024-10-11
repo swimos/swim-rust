@@ -14,21 +14,16 @@
 
 mod config;
 mod connector;
-mod deser;
 mod error;
 mod facade;
 mod selector;
-mod ser;
 
 pub use config::{
-    DataFormat, EgressDownlinkSpec, EgressLaneSpec, ExtractionSpec, IngressMapLaneSpec,
-    IngressValueLaneSpec, KafkaEgressConfiguration, KafkaIngressConfiguration, KafkaLogLevel,
-    TopicSpecifier,
+    DataFormat, EgressDownlinkSpec, EgressLaneSpec, ExtractionSpec, KafkaEgressConfiguration,
+    KafkaIngressConfiguration, KafkaLogLevel, TopicSpecifier,
 };
 pub use connector::{KafkaEgressConnector, KafkaIngressConnector};
-pub use deser::Endianness;
 pub use error::{
-    BadSelector, DeserializationError, DoubleInitialization, InvalidExtractor, InvalidExtractors,
-    InvalidLaneSpec, InvalidLanes, KafkaConnectorError, KafkaSenderError, LaneSelectorError,
-    LoadError, SerializationError,
+    DoubleInitialization, InvalidExtractor, InvalidExtractors, KafkaConnectorError,
+    KafkaSenderError,
 };

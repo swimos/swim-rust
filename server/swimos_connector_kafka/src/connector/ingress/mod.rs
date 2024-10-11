@@ -16,27 +16,24 @@
 mod tests;
 
 use std::cell::RefCell;
-use std::collections::HashSet;
 
-use crate::config::KafkaIngressConfiguration;
-use crate::deser::{BoxMessageDeserializer, MessagePart, MessageView};
-use crate::error::{KafkaConnectorError, LaneSelectorError};
+use super::ConnHandlerContext;
+use crate::error::KafkaConnectorError;
 use crate::facade::{ConsumerFactory, KafkaConsumer, KafkaFactory, KafkaMessage};
-use crate::selector::{Computed, MapLaneSelector, ValueLaneSelector};
-use crate::{IngressMapLaneSpec, IngressValueLaneSpec, InvalidLanes};
+use crate::KafkaIngressConfiguration;
 use futures::{stream::unfold, Future};
-use swimos_agent::event_handler::{EventHandler, HandlerActionExt, Sequentially, UnitHandler};
+use swimos_agent::agent_lifecycle::HandlerContext;
+use swimos_agent::event_handler::{EventHandler, HandlerActionExt, UnitHandler};
 use swimos_api::agent::WarpLaneKind;
-use swimos_model::Value;
-use swimos_utilities::trigger;
-use tokio::sync::mpsc;
-use tracing::{debug, error, info, trace};
-
+use swimos_connector::deser::MessageView;
+use swimos_connector::ingress::{Lanes, MessageSelector};
+use swimos_connector::selector::SelectorError;
 use swimos_connector::{
     BaseConnector, ConnectorAgent, ConnectorStream, IngressConnector, IngressContext,
 };
-
-use super::ConnHandlerContext;
+use swimos_utilities::trigger;
+use tokio::sync::mpsc;
+use tracing::{debug, error, info};
 
 /// A [connector](IngressConnector) to ingest a stream of Kafka messages into a Swim application. This should be used to
 /// provide a lifecycle for a [connector agent](ConnectorAgent).
@@ -120,12 +117,14 @@ where
 
         let key_deser_cpy = configuration.key_deserializer.clone();
         let payload_deser_cpy = configuration.payload_deserializer.clone();
+        let relays = configuration.relays.clone();
         let lanes = lanes.take();
+
         let consumer_task = Box::pin(async move {
             debug!(key = ?key_deser_cpy, payload = ?payload_deser_cpy, "Attempting to load message deserializers.");
             let key_deser = key_deser_cpy.load_deserializer().await?;
             let payload_deser = payload_deser_cpy.load_deserializer().await?;
-            let selector = MessageSelector::new(key_deser, payload_deser, lanes);
+            let selector = MessageSelector::new(key_deser, payload_deser, lanes, relays);
             let state = MessageState::new(consumer, selector, message_to_handler, tx);
             state.consume_messages(None).await
         });
@@ -141,12 +140,12 @@ where
             ..
         } = self;
         let mut guard = lanes.borrow_mut();
-        match Lanes::try_from(configuration) {
+        match Lanes::try_from_lane_specs(&configuration.value_lanes, &configuration.map_lanes) {
             Ok(lanes_from_conf) => {
-                for lane_spec in &lanes_from_conf.value_lanes {
+                for lane_spec in lanes_from_conf.value_lanes() {
                     context.open_lane(lane_spec.name(), WarpLaneKind::Value);
                 }
-                for lane_spec in &lanes_from_conf.map_lanes {
+                for lane_spec in lanes_from_conf.map_lanes() {
                     context.open_lane(lane_spec.name(), WarpLaneKind::Map);
                 }
                 *guard = lanes_from_conf;
@@ -164,8 +163,13 @@ fn message_to_handler<'a>(
     selector: &'a MessageSelector,
     message: &'a MessageView<'a>,
     trigger_tx: trigger::Sender,
-) -> Result<impl EventHandler<ConnectorAgent> + Send + 'static, LaneSelectorError> {
-    selector.handle_message(message, trigger_tx)
+) -> Result<impl EventHandler<ConnectorAgent> + Send + 'static, SelectorError> {
+    let handler_context = HandlerContext::default();
+    selector.handle_message(message).map(|handler| {
+        handler.followed_by(handler_context.effect(move || {
+            let _ = trigger_tx.trigger();
+        }))
+    })
 }
 
 // Consumes the Kafka messages and converts them into event handlers.
@@ -183,7 +187,7 @@ where
             &'a MessageSelector,
             &'a MessageView<'a>,
             trigger::Sender,
-        ) -> Result<H, LaneSelectorError>
+        ) -> Result<H, SelectorError>
         + Send
         + 'static,
     H: EventHandler<ConnectorAgent> + Send + 'static,
@@ -230,7 +234,7 @@ where
             let message = consumer.recv().await?;
             let view = message.view();
             let (trigger_tx, trigger_rx) = trigger::trigger();
-            // We need to keep a borrow on the receiver in order to be bale to commit it. However, we don't want
+            // We need to keep a borrow on the receiver in order to be able to commit it. However, we don't want
             // to do this until after we know the handler has been run. The handler cannot be executed within the
             // as it requires access to the agent state. Therefore, we send it out via an MPSC channel and
             // wait for a signal to indicate that it has been handled.
@@ -305,131 +309,5 @@ where
         } else {
             None
         }
-    }
-}
-
-// Information about the lanes of the connector. These are computed from the configuration in the `on_start` handler
-// and stored in the lifecycle to be used to start the consumer stream.
-#[derive(Debug, Default, Clone)]
-struct Lanes {
-    value_lanes: Vec<ValueLaneSelector>,
-    map_lanes: Vec<MapLaneSelector>,
-}
-
-impl TryFrom<&KafkaIngressConfiguration> for Lanes {
-    type Error = InvalidLanes;
-
-    fn try_from(value: &KafkaIngressConfiguration) -> Result<Self, Self::Error> {
-        let KafkaIngressConfiguration {
-            value_lanes,
-            map_lanes,
-            ..
-        } = value;
-        Lanes::try_from_lane_specs(value_lanes, map_lanes)
-    }
-}
-
-impl Lanes {
-    fn try_from_lane_specs(
-        value_lanes: &[IngressValueLaneSpec],
-        map_lanes: &[IngressMapLaneSpec],
-    ) -> Result<Self, InvalidLanes> {
-        let value_selectors = value_lanes
-            .iter()
-            .map(ValueLaneSelector::try_from)
-            .collect::<Result<Vec<_>, _>>()?;
-        let map_selectors = map_lanes
-            .iter()
-            .map(MapLaneSelector::try_from)
-            .collect::<Result<Vec<_>, _>>()?;
-        check_selectors(&value_selectors, &map_selectors)?;
-        Ok(Lanes {
-            value_lanes: value_selectors,
-            map_lanes: map_selectors,
-        })
-    }
-}
-
-fn check_selectors(
-    value_selectors: &[ValueLaneSelector],
-    map_selectors: &[MapLaneSelector],
-) -> Result<(), InvalidLanes> {
-    let mut names = HashSet::new();
-    for value_selector in value_selectors {
-        let name = value_selector.name();
-        if names.contains(name) {
-            return Err(InvalidLanes::NameCollision(name.to_string()));
-        } else {
-            names.insert(name);
-        }
-    }
-    for map_selector in map_selectors {
-        let name = map_selector.name();
-        if names.contains(name) {
-            return Err(InvalidLanes::NameCollision(name.to_string()));
-        } else {
-            names.insert(name);
-        }
-    }
-    Ok(())
-}
-
-// Uses the information about the lanes of the agent to convert Kafka messages into event handlers that update the lanes.
-struct MessageSelector {
-    key_deserializer: BoxMessageDeserializer,
-    value_deserializer: BoxMessageDeserializer,
-    lanes: Lanes,
-}
-
-impl MessageSelector {
-    pub fn new(
-        key_deserializer: BoxMessageDeserializer,
-        value_deserializer: BoxMessageDeserializer,
-        lanes: Lanes,
-    ) -> Self {
-        MessageSelector {
-            key_deserializer,
-            value_deserializer,
-            lanes,
-        }
-    }
-
-    fn handle_message<'a>(
-        &self,
-        message: &'a MessageView<'a>,
-        on_done: trigger::Sender,
-    ) -> Result<impl EventHandler<ConnectorAgent> + Send + 'static, LaneSelectorError> {
-        let MessageSelector {
-            key_deserializer,
-            value_deserializer,
-            lanes,
-        } = self;
-        let Lanes {
-            value_lanes,
-            map_lanes,
-            ..
-        } = lanes;
-        trace!(topic = { message.topic() }, "Handling a Kafka message.");
-        let mut value_lane_handlers = Vec::with_capacity(value_lanes.len());
-        let mut map_lane_handlers = Vec::with_capacity(map_lanes.len());
-        {
-            let topic = Value::text(message.topic());
-            let mut key = Computed::new(|| key_deserializer.deserialize(message, MessagePart::Key));
-            let mut value =
-                Computed::new(|| value_deserializer.deserialize(message, MessagePart::Payload));
-
-            for value_lane in value_lanes {
-                value_lane_handlers.push(value_lane.select_handler(&topic, &mut key, &mut value)?);
-            }
-            for map_lane in map_lanes {
-                map_lane_handlers.push(map_lane.select_handler(&topic, &mut key, &mut value)?);
-            }
-        }
-        let handler_context = ConnHandlerContext::default();
-        Ok(Sequentially::new(value_lane_handlers)
-            .followed_by(Sequentially::new(map_lane_handlers))
-            .followed_by(handler_context.effect(move || {
-                let _ = on_done.trigger();
-            })))
     }
 }

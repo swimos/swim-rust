@@ -14,21 +14,19 @@
 
 use swimos_form::Form;
 
-use crate::{
-    deser::{
-        BoxMessageDeserializer, BytesDeserializer, F32Deserializer, F64Deserializer,
-        I32Deserializer, I64Deserializer, MessageDeserializer, ReconDeserializer,
-        StringDeserializer, U32Deserializer, U64Deserializer, UuidDeserializer,
-    },
-    ser::{
-        BytesSerializer, F32Serializer, F64Serializer, I32Serializer, I64Serializer,
-        MessageSerializer, ReconSerializer, SharedMessageSerializer, StringSerializer,
-        U32Serializer, U64Serializer, UuidSerializer,
-    },
-    Endianness, LoadError,
+use crate::deser::{
+    BoxMessageDeserializer, BytesDeserializer, Endianness, F32Deserializer, F64Deserializer,
+    I32Deserializer, I64Deserializer, MessageDeserializer, ReconDeserializer, StringDeserializer,
+    U32Deserializer, U64Deserializer, UuidDeserializer,
 };
+use crate::ser::{
+    BytesSerializer, F32Serializer, F64Serializer, I32Serializer, I64Serializer, MessageSerializer,
+    ReconSerializer, SharedMessageSerializer, StringSerializer, U32Serializer, U64Serializer,
+    UuidSerializer,
+};
+use crate::LoadError;
 
-/// Supported deserialization formats to use to interpret a component of a Kafka message.
+/// Supported deserialization formats to use to interpret a component of a message.
 #[derive(Clone, Form, Debug, Default, PartialEq, Eq)]
 pub enum DataFormat {
     #[default]

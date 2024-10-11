@@ -29,9 +29,10 @@ mod json;
 #[cfg(feature = "json")]
 pub use json::JsonSerializer;
 
-use crate::{Endianness, SerializationError};
+use crate::deser::Endianness;
+use crate::SerializationError;
 
-/// A serializer that will attempt to produce a component of a Kafka message from a [value](Value).
+/// A serializer that will attempt to produce a component of a message from a [value](Value).
 pub trait MessageSerializer {
     /// Attempt to serialize the value to a buffer.
     ///
