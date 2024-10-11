@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{cell::RefCell, collections::HashMap, future::Future};
+use std::{cell::RefCell, collections::HashMap, future::Future, time::Duration};
 
 use bytes::{BufMut, BytesMut};
-use futures::future::Ready;
-use rumqttc::{AsyncClient, ConnectionError, Event, EventLoop, QoS};
+use futures::{future::Ready, FutureExt};
+use rumqttc::{ConnectionError, Event, EventLoop, MqttOptions};
 use std::io::Write;
 use swimos_agent::{
     agent_lifecycle::HandlerContext,
@@ -32,34 +32,63 @@ use swimos_recon::print_recon_compact;
 use swimos_utilities::trigger;
 use tracing::trace;
 
-use crate::{MqttConnectorError, MqttEgressConfiguration};
+use crate::{
+    facade::{MqttFactory, MqttPublisher, PublisherDriver, PublisherFactory},
+    MqttConnectorError, MqttEgressConfiguration,
+};
 
-pub struct MqttEgressConnector {
+use super::DEFAULT_CHANNEL_SIZE;
+
+pub struct MqttEgressConnector<F: PublisherFactory> {
+    factory: F,
     configuration: MqttEgressConfiguration,
-    inner: RefCell<Option<Inner>>,
+    inner: RefCell<Option<Inner<F>>>,
 }
 
-struct Inner {
-    sender: MqttSender,
-    event_loop: Option<EventLoop>,
+impl<F: PublisherFactory> MqttEgressConnector<F> {
+    fn new(factory: F, configuration: MqttEgressConfiguration) -> Self {
+        MqttEgressConnector {
+            factory,
+            configuration,
+            inner: Default::default(),
+        }
+    }
 }
 
-impl BaseConnector for MqttEgressConnector {
+impl MqttEgressConnector<MqttFactory> {
+    pub fn for_config(configuration: MqttEgressConfiguration) -> Self {
+        let channel_size = configuration
+            .client_channel_size
+            .unwrap_or(DEFAULT_CHANNEL_SIZE);
+        MqttEgressConnector::new(MqttFactory::new(channel_size), configuration)
+    }
+}
+
+struct Inner<F: PublisherFactory> {
+    sender: MqttSender<F::Publisher>,
+    driver: Option<F::Driver>,
+}
+
+impl<F> BaseConnector for MqttEgressConnector<F>
+where
+    F: PublisherFactory,
+{
     fn on_start(&self, init_complete: trigger::Sender) -> impl EventHandler<ConnectorAgent> + '_ {
         let MqttEgressConnector { inner, .. } = self;
         let context: HandlerContext<ConnectorAgent> = Default::default();
         let mut guard = inner.borrow_mut();
-        let event_loop_result = guard
+        let driver_result = guard
             .as_mut()
-            .and_then(|inner| inner.event_loop.take())
+            .and_then(|inner| inner.driver.take())
             .ok_or(MqttConnectorError::NotInitialized);
         context
-            .value(event_loop_result)
+            .value(driver_result)
             .try_handler()
-            .and_then(move |event_loop| {
+            .and_then(move |driver: F::Driver| {
                 context.suspend(async move {
                     let _ = init_complete.trigger();
-                    drive_events(event_loop).await
+                    let result = PublisherDriver::into_future(driver).await;
+                    context.value(result).try_handler()
                 })
             })
     }
@@ -70,39 +99,43 @@ impl BaseConnector for MqttEgressConnector {
 }
 
 #[derive(Debug)]
-pub struct MqttSender {
-    client: AsyncClient,
+pub struct MqttSender<P> {
+    publisher: P,
     retain: bool,
     buffer: RefCell<BytesMut>,
 }
 
-impl MqttSender {
-    fn new(client: AsyncClient) -> Self {
+impl<P> MqttSender<P> {
+    fn new(publisher: P) -> Self {
         MqttSender {
-            client,
+            publisher,
             retain: false,
             buffer: Default::default(),
         }
     }
 }
 
-impl Clone for MqttSender {
+impl<P: Clone> Clone for MqttSender<P> {
     fn clone(&self) -> Self {
         Self {
-            client: self.client.clone(),
+            publisher: self.publisher.clone(),
             retain: self.retain,
             buffer: Default::default(),
         }
     }
 }
 
-impl EgressConnector for MqttEgressConnector {
+impl<F> EgressConnector for MqttEgressConnector<F>
+where
+    F: PublisherFactory,
+{
     type Error = MqttConnectorError;
 
-    type Sender = MqttSender;
+    type Sender = MqttSender<F::Publisher>;
 
     fn initialize(&self, context: &mut dyn EgressContext) -> Result<(), Self::Error> {
         let MqttEgressConnector {
+            factory,
             configuration,
             inner,
         } = self;
@@ -130,17 +163,17 @@ impl EgressConnector for MqttEgressConnector {
         for downlink in map_downlinks {
             context.open_map_downlink(downlink.address.borrow_parts());
         }
-        let (client, event_loop) = super::open_client(
+        let (publisher, driver) = open_client(
+            factory,
             url,
             *keep_alive_secs,
             *max_packet_size,
-            *client_channel_size,
             *max_inflight,
         )?;
         let mut guard = inner.borrow_mut();
         *guard = Some(Inner {
-            sender: MqttSender::new(client),
-            event_loop: Some(event_loop),
+            sender: MqttSender::new(publisher),
+            driver: Some(driver),
         });
         Ok(())
     }
@@ -160,7 +193,10 @@ impl EgressConnector for MqttEgressConnector {
 type NoResponse =
     Option<SendResult<Ready<Result<UnitHandler, MqttConnectorError>>, MqttConnectorError>>;
 
-impl EgressConnectorSender<MqttConnectorError> for MqttSender {
+impl<P> EgressConnectorSender<MqttConnectorError> for MqttSender<P>
+where
+    P: MqttPublisher + Send,
+{
     fn send(
         &self,
         source: MessageSource<'_>,
@@ -180,7 +216,10 @@ impl EgressConnectorSender<MqttConnectorError> for MqttSender {
     }
 }
 
-impl MqttSender {
+impl<P> MqttSender<P>
+where
+    P: MqttPublisher,
+{
     fn select_topic<'a>(
         &'a self,
         source: MessageSource<'_>,
@@ -206,7 +245,7 @@ impl MqttSender {
         value: &Value,
     ) -> impl Future<Output = Result<UnitHandler, MqttConnectorError>> + Send + 'static {
         let MqttSender {
-            client,
+            publisher,
             retain,
             buffer,
         } = self;
@@ -221,13 +260,10 @@ impl MqttSender {
         };
         let topic_string = topic.to_string();
         let retain_msg = *retain;
-        let client_cpy = client.clone();
-        async move {
-            let result = client_cpy
-                .publish_bytes(topic_string, QoS::AtLeastOnce, retain_msg, bytes)
-                .await;
-            result.map(|_| UnitHandler::default()).map_err(Into::into)
-        }
+        let publisher_cpy = publisher.clone();
+        let fut = publisher_cpy.publish(topic_string, bytes, retain_msg);
+
+        fut.map(|result| result.map(|_| UnitHandler::default()).map_err(Into::into))
     }
 }
 
@@ -246,4 +282,28 @@ async fn drive_events(
     };
     let context: HandlerContext<ConnectorAgent> = Default::default();
     context.value(result).try_handler()
+}
+
+fn open_client<F>(
+    factory: &F,
+    url: &str,
+    keep_alive_secs: Option<u64>,
+    max_packet_size: Option<usize>,
+    max_inflight: Option<u32>,
+) -> Result<(F::Publisher, F::Driver), MqttConnectorError>
+where
+    F: PublisherFactory,
+{
+    let mut opts = MqttOptions::parse_url(url)?;
+    if let Some(t) = keep_alive_secs {
+        opts.set_keep_alive(Duration::from_secs(t));
+    }
+    if let Some(n) = max_packet_size {
+        opts.set_max_packet_size(n, n);
+    }
+    if let Some(n) = max_inflight {
+        let max = u16::try_from(n).unwrap_or(u16::MAX);
+        opts.set_inflight(max);
+    }
+    Ok(factory.create(opts))
 }

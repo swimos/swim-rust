@@ -15,57 +15,7 @@
 mod egress;
 mod ingress;
 
-use std::time::Duration;
-
+pub use egress::{MqttEgressConnector, MqttSender};
 pub use ingress::MqttIngressConnector;
-use rumqttc::{AsyncClient, EventLoop, MqttOptions};
 
-use crate::{facade::ConsumerFactory, MqttConnectorError};
-
-const DEFAULT_CHAN_SIZE: usize = 16;
-
-fn open_client(
-    url: &str,
-    keep_alive_secs: Option<u64>,
-    max_packet_size: Option<usize>,
-    client_channel_size: Option<usize>,
-    max_inflight: Option<u32>,
-) -> Result<(AsyncClient, EventLoop), MqttConnectorError> {
-    let mut opts = MqttOptions::parse_url(url)?;
-    if let Some(t) = keep_alive_secs {
-        opts.set_keep_alive(Duration::from_secs(t));
-    }
-    if let Some(n) = max_packet_size {
-        opts.set_max_packet_size(n, n);
-    }
-    if let Some(n) = max_inflight {
-        let max = u16::try_from(n).unwrap_or(u16::MAX);
-        opts.set_inflight(max);
-    }
-    let cap = client_channel_size.unwrap_or(DEFAULT_CHAN_SIZE);
-    Ok(AsyncClient::new(opts, cap))
-}
-
-fn open_client2<F>(
-    factory: &F,
-    url: &str,
-    keep_alive_secs: Option<u64>,
-    max_packet_size: Option<usize>,
-    max_inflight: Option<u32>,
-) -> Result<(F::Subscriber, F::Consumer), MqttConnectorError>
-where
-    F: ConsumerFactory,
-{
-    let mut opts = MqttOptions::parse_url(url)?;
-    if let Some(t) = keep_alive_secs {
-        opts.set_keep_alive(Duration::from_secs(t));
-    }
-    if let Some(n) = max_packet_size {
-        opts.set_max_packet_size(n, n);
-    }
-    if let Some(n) = max_inflight {
-        let max = u16::try_from(n).unwrap_or(u16::MAX);
-        opts.set_inflight(max);
-    }
-    Ok(factory.create(opts))
-}
+const DEFAULT_CHANNEL_SIZE: usize = 16;

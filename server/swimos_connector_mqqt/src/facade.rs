@@ -40,9 +40,9 @@ pub trait MqttConsumer<Message> {
     fn into_stream(self) -> impl Stream<Item = Result<Message, ConnectionError>> + Send + 'static;
 }
 
-pub trait MqttPublisher {
+pub trait MqttPublisher: Clone {
     fn publish(
-        &self,
+        self,
         topic: String,
         payload: Bytes,
         retain: bool,
@@ -148,23 +148,10 @@ impl PublisherFactory for MqttFactory {
     }
 }
 
-pub struct ClientPublisher {
-    client: AsyncClient,
-    retain: bool,
-}
-
 impl MqttPublisher for AsyncClient {
-    fn publish(
-        &self,
-        topic: String,
-        payload: Bytes,
-        retain: bool,
-    ) -> impl Future<Output = Result<(), ClientError>> + Send + 'static {
-        let cpy = self.clone();
-        async move {
-            cpy.publish_bytes(topic, QoS::AtLeastOnce, retain, payload)
-                .await
-        }
+    async fn publish(self, topic: String, payload: Bytes, retain: bool) -> Result<(), ClientError> {
+        self.publish_bytes(topic, QoS::AtLeastOnce, retain, payload)
+            .await
     }
 }
 

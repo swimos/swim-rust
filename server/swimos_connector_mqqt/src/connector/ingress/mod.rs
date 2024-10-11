@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{cell::RefCell, future::Future};
+use std::{cell::RefCell, future::Future, time::Duration};
 
 use futures::{stream::unfold, Stream, StreamExt, TryStream, TryStreamExt};
-use rumqttc::ClientError;
+use rumqttc::{ClientError, MqttOptions};
 use swimos_agent::{
     agent_lifecycle::HandlerContext,
     event_handler::{EventHandler, UnitHandler},
@@ -28,14 +28,35 @@ use swimos_utilities::trigger::Sender;
 
 use crate::{
     error::{InvalidLanes, MqttConnectorError},
-    facade::{ConsumerFactory, MqttConsumer, MqttMessage, MqttSubscriber},
-    MqttIngressConfiguration, Subscription,
+    facade::{ConsumerFactory, MqttConsumer, MqttFactory, MqttMessage, MqttSubscriber},
+    MqttIngressConfiguration,
 };
+
+use super::DEFAULT_CHANNEL_SIZE;
 
 pub struct MqttIngressConnector<F> {
     factory: F,
     configuration: MqttIngressConfiguration,
     lanes: RefCell<Option<ConnectorLanes>>,
+}
+
+impl<F> MqttIngressConnector<F> {
+    fn new(factory: F, configuration: MqttIngressConfiguration) -> Self {
+        MqttIngressConnector {
+            factory,
+            configuration,
+            lanes: Default::default(),
+        }
+    }
+}
+
+impl MqttIngressConnector<MqttFactory> {
+    pub fn for_config(configuration: MqttIngressConfiguration) -> Self {
+        let channel_size = configuration
+            .client_channel_size
+            .unwrap_or(DEFAULT_CHANNEL_SIZE);
+        MqttIngressConnector::new(MqttFactory::new(channel_size), configuration)
+    }
 }
 
 impl<F> BaseConnector for MqttIngressConnector<F> {
@@ -68,7 +89,7 @@ where
             .take()
             .ok_or(MqttConnectorError::NotInitialized)?;
 
-        let (client, consumer) = super::open_client2(
+        let (client, consumer) = open_client(
             factory,
             &configuration.url,
             configuration.keep_alive_secs,
@@ -190,4 +211,28 @@ impl TryFrom<&MqttIngressConfiguration> for ConnectorLanes {
     fn try_from(value: &MqttIngressConfiguration) -> Result<Self, Self::Error> {
         Ok(ConnectorLanes {})
     }
+}
+
+fn open_client<F>(
+    factory: &F,
+    url: &str,
+    keep_alive_secs: Option<u64>,
+    max_packet_size: Option<usize>,
+    max_inflight: Option<u32>,
+) -> Result<(F::Subscriber, F::Consumer), MqttConnectorError>
+where
+    F: ConsumerFactory,
+{
+    let mut opts = MqttOptions::parse_url(url)?;
+    if let Some(t) = keep_alive_secs {
+        opts.set_keep_alive(Duration::from_secs(t));
+    }
+    if let Some(n) = max_packet_size {
+        opts.set_max_packet_size(n, n);
+    }
+    if let Some(n) = max_inflight {
+        let max = u16::try_from(n).unwrap_or(u16::MAX);
+        opts.set_inflight(max);
+    }
+    Ok(factory.create(opts))
 }

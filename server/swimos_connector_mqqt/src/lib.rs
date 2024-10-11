@@ -21,5 +21,5 @@ pub use config::{
     EgressDownlinkSpec, EgressLaneSpec, IngressMapLaneSpec, IngressValueLaneSpec,
     MqttEgressConfiguration, MqttIngressConfiguration, Subscription,
 };
-pub use connector::MqttIngressConnector;
+pub use connector::{MqttEgressConnector, MqttIngressConnector, MqttSender};
 pub use error::{InvalidLanes, MqttConnectorError};
