@@ -13,13 +13,18 @@
 // limitations under the License.
 
 use rumqttc::{ClientError, ConnectionError, OptionError};
-use swimos_connector::selector::{BadSelector, InvalidLaneSpec, InvalidLanes};
+use swimos_connector::{
+    selector::{BadSelector, InvalidLaneSpec, InvalidLanes, SelectorError},
+    LoadError,
+};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum MqttConnectorError {
     #[error("The connector was not initialized correctly.")]
     NotInitialized,
+    #[error(transparent)]
+    Configuration(#[from] LoadError),
     #[error(transparent)]
     Lanes(#[from] InvalidLanes),
     #[error(transparent)]
@@ -28,6 +33,8 @@ pub enum MqttConnectorError {
     Client(#[from] ClientError),
     #[error(transparent)]
     Connection(#[from] ConnectionError),
+    #[error(transparent)]
+    Selection(#[from] SelectorError),
 }
 
 impl From<BadSelector> for MqttConnectorError {

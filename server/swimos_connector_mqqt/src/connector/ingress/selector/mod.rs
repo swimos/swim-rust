@@ -5,8 +5,7 @@ use swimos_connector::{
     deser::{BoxMessageDeserializer, Deferred},
     selector::{
         BadSelector, InvalidLaneSpec, InvalidLanes, KeySelector, MapLaneSelector, PayloadSelector,
-        PubSubMapLaneSelector, PubSubSelector, PubSubValueLaneSelector, Relays, SelectHandler,
-        SelectorError, TopicSelector, ValueLaneSelector,
+        PubSubSelector, SelectHandler, SelectorError, TopicSelector, ValueLaneSelector,
     },
     ConnectorAgent,
 };
@@ -77,21 +76,25 @@ fn try_from_map_selector(
 pub struct MqttMessageSelector {
     payload_deserializer: BoxMessageDeserializer,
     lanes: Lanes,
-    relays: Relays,
+    //relays: Relays,
 }
 
 impl MqttMessageSelector {
-    pub fn new(payload_deserializer: BoxMessageDeserializer, lanes: Lanes, relays: Relays) -> Self {
+    pub fn new(
+        payload_deserializer: BoxMessageDeserializer,
+        lanes: Lanes,
+        //relays: Relays
+    ) -> Self {
         MqttMessageSelector {
             payload_deserializer,
             lanes,
-            relays,
+            //relays,
         }
     }
 
-    pub fn handle_message<'a, M>(
+    pub fn handle_message<M>(
         &self,
-        message: &'a M,
+        message: &M,
     ) -> Result<impl EventHandler<ConnectorAgent> + Send + 'static, SelectorError>
     where
         M: MqttMessage + 'static,
@@ -99,7 +102,7 @@ impl MqttMessageSelector {
         let MqttMessageSelector {
             payload_deserializer,
             lanes,
-            relays,
+            //relays,
         } = self;
 
         let value_lanes = lanes.value_lanes();

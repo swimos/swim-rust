@@ -16,7 +16,7 @@ use std::{cell::RefCell, collections::HashMap, future::Future, time::Duration};
 
 use bytes::{BufMut, BytesMut};
 use futures::{future::Ready, FutureExt};
-use rumqttc::{ConnectionError, Event, EventLoop, MqttOptions};
+use rumqttc::MqttOptions;
 use std::io::Write;
 use swimos_agent::{
     agent_lifecycle::HandlerContext,
@@ -30,7 +30,6 @@ use swimos_connector::{
 use swimos_model::Value;
 use swimos_recon::print_recon_compact;
 use swimos_utilities::trigger;
-use tracing::trace;
 
 use crate::{
     facade::{MqttFactory, MqttPublisher, PublisherDriver, PublisherFactory},
@@ -264,23 +263,6 @@ where
 
         fut.map(|result| result.map(|_| UnitHandler::default()).map_err(Into::into))
     }
-}
-
-async fn drive_events(
-    mut event_loop: EventLoop,
-) -> impl EventHandler<ConnectorAgent> + Send + 'static {
-    let result = loop {
-        match event_loop.poll().await {
-            Ok(Event::Outgoing(event)) => {
-                trace!(event = ?event, "Outgoing MQTT event.");
-            }
-            Err(ConnectionError::RequestsDone) => break Ok(()),
-            Err(err) => break Err(err),
-            _ => {}
-        }
-    };
-    let context: HandlerContext<ConnectorAgent> = Default::default();
-    context.value(result).try_handler()
 }
 
 fn open_client<F>(

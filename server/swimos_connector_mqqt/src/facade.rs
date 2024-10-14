@@ -51,7 +51,7 @@ pub trait MqttPublisher: Clone {
 }
 
 pub trait ConsumerFactory {
-    type Message: MqttMessage;
+    type Message: MqttMessage + 'static;
     type Subscriber: MqttSubscriber + Send + 'static;
     type Consumer: MqttConsumer<Self::Message> + Send + 'static;
 

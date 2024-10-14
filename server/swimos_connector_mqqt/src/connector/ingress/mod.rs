@@ -14,8 +14,11 @@
 
 use std::{cell::RefCell, future::Future, time::Duration};
 
-use futures::{stream::unfold, Stream, StreamExt, TryStream, TryStreamExt};
-use rumqttc::{ClientError, MqttOptions, Publish};
+use futures::{
+    stream::{once, unfold},
+    Stream, StreamExt, TryStream, TryStreamExt,
+};
+use rumqttc::{ClientError, MqttOptions};
 use selector::Lanes;
 use swimos_agent::{
     agent_lifecycle::HandlerContext,
@@ -23,9 +26,8 @@ use swimos_agent::{
 };
 use swimos_api::agent::WarpLaneKind;
 use swimos_connector::{
-    deser::MessageView,
-    selector::{BadSelector, InvalidLaneSpec, InvalidLanes, KeySelector},
-    BaseConnector, ConnectorAgent, ConnectorStream, IngressConnector, IngressContext,
+    config::format::DataFormat, BaseConnector, ConnectorAgent, ConnectorStream, IngressConnector,
+    IngressContext,
 };
 use swimos_utilities::trigger::Sender;
 use tracing::error;
@@ -33,7 +35,7 @@ use tracing::error;
 use crate::{
     error::MqttConnectorError,
     facade::{ConsumerFactory, MqttConsumer, MqttFactory, MqttMessage, MqttSubscriber},
-    MqttIngressConfiguration,
+    MqttIngressConfiguration, Subscription,
 };
 
 mod selector;
@@ -101,11 +103,17 @@ where
             None,
         )?;
 
-        let sub_task = Box::pin(client.subscribe(configuration.subscription.clone()));
-        let pub_stream =
-            SubscriptionStream::new(Box::pin(consumer.into_stream()), sub_task).into_stream();
-        let handler_stream =
-            pub_stream.map(move |result| result.map(|publish| handle_message(&lanes, publish)));
+        let handler_stream_fut = create_handler_stream(
+            client,
+            consumer,
+            configuration.payload_deserializer.clone(),
+            configuration.subscription.clone(),
+            lanes,
+        );
+        let handler_stream = once(handler_stream_fut).try_flatten();
+
+        //let handler_stream =
+        //    pub_stream.map(move |result| result.map(|publish| handle_message(&lanes, publish)));
 
         Ok(Box::pin(handler_stream))
     }
@@ -134,6 +142,34 @@ where
         }
         Ok(())
     }
+}
+
+async fn create_handler_stream<M, Client, Consumer>(
+    client: Client,
+    consumer: Consumer,
+    format: DataFormat,
+    subscription: Subscription,
+    lanes: Lanes,
+) -> Result<impl ConnectorStream<MqttConnectorError>, MqttConnectorError>
+where
+    M: MqttMessage + 'static,
+    Client: MqttSubscriber + Send + 'static,
+    Consumer: MqttConsumer<M> + Send + 'static,
+{
+    let sub_task = Box::pin(client.subscribe(subscription));
+    let pub_stream =
+        SubscriptionStream::new(Box::pin(consumer.into_stream()), sub_task).into_stream();
+
+    let msg_deser = format.load_deserializer().await?;
+    let message_sel = selector::MqttMessageSelector::new(msg_deser, lanes);
+    let handlers = pub_stream.map(move |result| {
+        result.and_then(|message| {
+            message_sel
+                .handle_message(&message)
+                .map_err(MqttConnectorError::Selection)
+        })
+    });
+    Ok(Box::pin(handlers))
 }
 
 pub enum SubscriptionState<F, AC> {
@@ -202,15 +238,6 @@ where
     }
 }
 
-fn handle_message<M: MqttMessage>(
-    lanes: &Lanes,
-    publish: M,
-) -> impl EventHandler<ConnectorAgent> + Send + 'static {
-    let view = view(&publish);
-
-    UnitHandler::default()
-}
-
 fn open_client<F>(
     factory: &F,
     url: &str,
@@ -233,12 +260,4 @@ where
         opts.set_inflight(max);
     }
     Ok(factory.create(opts))
-}
-
-fn view<M: MqttMessage>(message: &M) -> MessageView<'_> {
-    MessageView {
-        topic: message.topic(),
-        key: &[],
-        payload: message.payload(),
-    }
 }
