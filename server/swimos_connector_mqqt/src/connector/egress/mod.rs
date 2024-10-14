@@ -148,7 +148,6 @@ where
             keep_alive_secs,
             max_packet_size,
             max_inflight,
-            client_channel_size,
             ..
         } = configuration;
         for lane in value_lanes {

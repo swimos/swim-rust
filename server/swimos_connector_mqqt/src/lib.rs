@@ -18,8 +18,8 @@ mod error;
 mod facade;
 
 pub use config::{
-    EgressDownlinkSpec, EgressLaneSpec, IngressMapLaneSpec, IngressValueLaneSpec,
-    MqttEgressConfiguration, MqttIngressConfiguration, Subscription,
+    EgressDownlinkSpec, EgressLaneSpec, MqttEgressConfiguration, MqttIngressConfiguration,
+    Subscription,
 };
 pub use connector::{MqttEgressConnector, MqttIngressConnector, MqttSender};
-pub use error::{InvalidLanes, MqttConnectorError};
+pub use error::MqttConnectorError;

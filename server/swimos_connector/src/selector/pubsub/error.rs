@@ -68,6 +68,9 @@ pub enum BadSelector {
     /// The root of a selector must be a valid component of a message.
     #[error("Invalid root selector (must be one of '$key' or '$payload' with an optional index or '$topic').")]
     InvalidRoot,
+    /// Not all pub-sub connectors have messages containing all of the selector roots.
+    #[error("The connector does not support the specified selector root.")]
+    UnsupportedRoot,
     /// A component of the descriptor did not describe a valid selector.
     #[error(
         "Invalid component selector (must be an attribute or slot name with an optional index)."

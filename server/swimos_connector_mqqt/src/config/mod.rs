@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use swimos_api::address::Address;
+use swimos_connector::config::{format::DataFormat, IngressMapLaneSpec, IngressValueLaneSpec};
 use swimos_form::Form;
 
 /// Configuration parameters for the MQTT ingress connector.
@@ -21,25 +22,19 @@ use swimos_form::Form;
 pub struct MqttIngressConfiguration {
     /// The MQTT connection Url.
     pub url: String,
-    /// Specifications for the value lanes to define for the connector.
+    /// Specifications for the value lanes to define for the connector. This includes a pattern to define a selector
+    /// that will pick out values to set to that lane, from a MQTT message.
     pub value_lanes: Vec<IngressValueLaneSpec>,
-    /// Specifications for the map lanes to define for the connector.
+    /// Specifications for the map lanes to define for the connector. This includes a pattern to define a selector
+    /// that will pick out updates to apply to that lane, from a MQTT message.
     pub map_lanes: Vec<IngressMapLaneSpec>,
+    /// Deserialization format to use to interpret the contents of the payloads of the MQTT messages.
+    pub payload_deserializer: DataFormat,
     /// The MQTT topics to subscribe to.
     pub subscription: Subscription,
     pub keep_alive_secs: Option<u64>,
     pub max_packet_size: Option<usize>,
     pub client_channel_size: Option<usize>,
-}
-
-#[derive(Clone, Debug, Form, PartialEq, Eq)]
-pub struct IngressValueLaneSpec {
-    pub name: String,
-}
-
-#[derive(Clone, Debug, Form, PartialEq, Eq)]
-pub struct IngressMapLaneSpec {
-    pub name: String,
 }
 
 /// Configuration parameters for the MQTT egress connector.

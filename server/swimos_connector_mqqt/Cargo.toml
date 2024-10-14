@@ -22,6 +22,7 @@ tracing = { workspace = true }
 rumqttc = { workspace = true, features = ["url"]}
 thiserror = { workspace = true }
 swimos_connector = { workspace = true }
+frunk = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt"] }

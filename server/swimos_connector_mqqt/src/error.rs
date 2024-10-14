@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use rumqttc::{ClientError, ConnectionError, OptionError};
+use swimos_connector::selector::{BadSelector, InvalidLaneSpec, InvalidLanes};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -29,8 +30,8 @@ pub enum MqttConnectorError {
     Connection(#[from] ConnectionError),
 }
 
-#[derive(Debug, Error)]
-pub enum InvalidLanes {
-    #[error("Duplicate lane name.")]
-    NameCollision,
+impl From<BadSelector> for MqttConnectorError {
+    fn from(err: BadSelector) -> Self {
+        MqttConnectorError::Lanes(InvalidLanes::Spec(InvalidLaneSpec::Selector(err)))
+    }
 }

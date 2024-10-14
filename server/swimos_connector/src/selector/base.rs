@@ -71,8 +71,29 @@ impl<S> ValueLaneSelector<S> {
         self.required
     }
 
+    pub fn selector(&self) -> &S {
+        &self.selector
+    }
+
     pub fn into_selector(self) -> S {
         self.selector
+    }
+
+    pub fn try_map_selector<S2, E, F>(self, f: F) -> Result<ValueLaneSelector<S2>, E>
+    where
+        F: FnOnce(S) -> Result<S2, E>,
+    {
+        let ValueLaneSelector {
+            name,
+            selector,
+            required,
+        } = self;
+        let transformed = f(selector)?;
+        Ok(ValueLaneSelector {
+            name,
+            selector: transformed,
+            required,
+        })
     }
 }
 
@@ -384,6 +405,42 @@ impl<K, V> MapLaneSelector<K, V> {
             ..
         } = self;
         (key_selector, value_selector)
+    }
+
+    pub fn selectors(&self) -> (&K, &V) {
+        let MapLaneSelector {
+            key_selector,
+            value_selector,
+            ..
+        } = self;
+        (key_selector, value_selector)
+    }
+
+    pub fn try_map_selectors<K2, V2, E, F1, F2>(
+        self,
+        fk: F1,
+        fv: F2,
+    ) -> Result<MapLaneSelector<K2, V2>, E>
+    where
+        F1: FnOnce(K) -> Result<K2, E>,
+        F2: FnOnce(V) -> Result<V2, E>,
+    {
+        let MapLaneSelector {
+            name,
+            key_selector,
+            value_selector,
+            required,
+            remove_when_no_value,
+        } = self;
+        let key_transformed = fk(key_selector)?;
+        let value_transformed = fv(value_selector)?;
+        Ok(MapLaneSelector {
+            name,
+            key_selector: key_transformed,
+            value_selector: value_transformed,
+            required,
+            remove_when_no_value,
+        })
     }
 }
 

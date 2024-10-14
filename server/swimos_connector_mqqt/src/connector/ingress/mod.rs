@@ -15,29 +15,35 @@
 use std::{cell::RefCell, future::Future, time::Duration};
 
 use futures::{stream::unfold, Stream, StreamExt, TryStream, TryStreamExt};
-use rumqttc::{ClientError, MqttOptions};
+use rumqttc::{ClientError, MqttOptions, Publish};
+use selector::Lanes;
 use swimos_agent::{
     agent_lifecycle::HandlerContext,
     event_handler::{EventHandler, UnitHandler},
 };
 use swimos_api::agent::WarpLaneKind;
 use swimos_connector::{
+    deser::MessageView,
+    selector::{BadSelector, InvalidLaneSpec, InvalidLanes, KeySelector},
     BaseConnector, ConnectorAgent, ConnectorStream, IngressConnector, IngressContext,
 };
 use swimos_utilities::trigger::Sender;
+use tracing::error;
 
 use crate::{
-    error::{InvalidLanes, MqttConnectorError},
+    error::MqttConnectorError,
     facade::{ConsumerFactory, MqttConsumer, MqttFactory, MqttMessage, MqttSubscriber},
     MqttIngressConfiguration,
 };
+
+mod selector;
 
 use super::DEFAULT_CHANNEL_SIZE;
 
 pub struct MqttIngressConnector<F> {
     factory: F,
     configuration: MqttIngressConfiguration,
-    lanes: RefCell<Option<ConnectorLanes>>,
+    lanes: RefCell<Lanes>,
 }
 
 impl<F> MqttIngressConnector<F> {
@@ -84,10 +90,8 @@ where
             configuration,
             lanes,
         } = self;
-        let lanes = lanes
-            .borrow_mut()
-            .take()
-            .ok_or(MqttConnectorError::NotInitialized)?;
+
+        let lanes = std::mem::take(&mut *lanes.borrow_mut());
 
         let (client, consumer) = open_client(
             factory,
@@ -101,7 +105,7 @@ where
         let pub_stream =
             SubscriptionStream::new(Box::pin(consumer.into_stream()), sub_task).into_stream();
         let handler_stream =
-            pub_stream.map(move |result| result.map(|publish| lanes.handle_message(publish)));
+            pub_stream.map(move |result| result.map(|publish| handle_message(&lanes, publish)));
 
         Ok(Box::pin(handler_stream))
     }
@@ -112,17 +116,21 @@ where
             lanes,
             ..
         } = self;
-        *lanes.borrow_mut() = Some(ConnectorLanes::try_from(configuration)?);
-        let MqttIngressConfiguration {
-            value_lanes,
-            map_lanes,
-            ..
-        } = configuration;
-        for lane in value_lanes {
-            context.open_lane(&lane.name, WarpLaneKind::Value);
-        }
-        for lane in map_lanes {
-            context.open_lane(&lane.name, WarpLaneKind::Map);
+        let mut guard = lanes.borrow_mut();
+        match Lanes::try_from_lane_specs(&configuration.value_lanes, &configuration.map_lanes) {
+            Ok(lanes_from_conf) => {
+                for lane_spec in lanes_from_conf.value_lanes() {
+                    context.open_lane(lane_spec.name(), WarpLaneKind::Value);
+                }
+                for lane_spec in lanes_from_conf.map_lanes() {
+                    context.open_lane(lane_spec.name(), WarpLaneKind::Map);
+                }
+                *guard = lanes_from_conf;
+            }
+            Err(err) => {
+                error!(error = %err, "Failed to create lanes for a MQTT connector.");
+                return Err(err.into());
+            }
         }
         Ok(())
     }
@@ -194,23 +202,13 @@ where
     }
 }
 
-struct ConnectorLanes {}
+fn handle_message<M: MqttMessage>(
+    lanes: &Lanes,
+    publish: M,
+) -> impl EventHandler<ConnectorAgent> + Send + 'static {
+    let view = view(&publish);
 
-impl ConnectorLanes {
-    fn handle_message<M: MqttMessage>(
-        &self,
-        publish: M,
-    ) -> impl EventHandler<ConnectorAgent> + Send + 'static {
-        UnitHandler::default()
-    }
-}
-
-impl TryFrom<&MqttIngressConfiguration> for ConnectorLanes {
-    type Error = InvalidLanes;
-
-    fn try_from(value: &MqttIngressConfiguration) -> Result<Self, Self::Error> {
-        Ok(ConnectorLanes {})
-    }
+    UnitHandler::default()
 }
 
 fn open_client<F>(
@@ -235,4 +233,12 @@ where
         opts.set_inflight(max);
     }
     Ok(factory.create(opts))
+}
+
+fn view<M: MqttMessage>(message: &M) -> MessageView<'_> {
+    MessageView {
+        topic: message.topic(),
+        key: &[],
+        payload: message.payload(),
+    }
 }
