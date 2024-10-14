@@ -65,7 +65,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         None
     };
 
-    let server_task = tokio::spawn(run_swim_server(addr_tx, bind_to));
+    let server_task = tokio::spawn(run_swim_server(addr_tx, shutdown_tx, bind_to));
 
     if include_ui {
         let ui_task = tokio::spawn(ui_server(addr_rx, shutdown_rx, SHUTDOWN_TIMEOUT, ui_port));
@@ -109,6 +109,7 @@ fn configure_logging() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
 async fn run_swim_server(
     bound: oneshot::Sender<SocketAddr>,
+    shutdown_tx: Arc<Notify>,
     bind_to: Option<SocketAddr>,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     let mut builder = ServerBuilder::with_plane_name("Game Plane");
@@ -130,6 +131,8 @@ async fn run_swim_server(
     let shutdown = start_agents_and_wait(handle, Some(bound));
 
     let (_, result) = futures::future::join(shutdown, task).await;
+
+    shutdown_tx.notify_one();
 
     result?;
     info!("Server stopped successfully.");
