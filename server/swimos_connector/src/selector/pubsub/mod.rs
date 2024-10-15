@@ -20,6 +20,7 @@ mod tests;
 use crate::config::{IngressMapLaneSpec, IngressValueLaneSpec};
 use crate::deser::{Deferred, MessagePart};
 use crate::selector::{MapLaneSelector, SelectorComponent, ValueLaneSelector};
+use crate::BadSelector;
 use crate::{
     selector::{ChainSelector, Selector, ValueSelector},
     DeserializationError,

@@ -31,7 +31,10 @@ pub use connector::{
     EgressConnectorSender, EgressContext, IngressConnector, IngressContext, MessageSource,
     SendResult,
 };
-pub use error::{ConnectorInitError, DeserializationError, LoadError, SerializationError};
+pub use error::{
+    BadSelector, ConnectorInitError, DeserializationError, InvalidExtractor, InvalidExtractors,
+    LoadError, SerializationError,
+};
 pub use generic::{ConnectorAgent, MapLaneSelectorFn, ValueLaneSelectorFn};
 pub use lifecycle::{EgressConnectorLifecycle, IngressConnectorLifecycle};
 pub use route::{EgressConnectorModel, IngressConnectorModel};

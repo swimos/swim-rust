@@ -23,7 +23,4 @@ pub use config::{
     KafkaIngressConfiguration, KafkaLogLevel, TopicSpecifier,
 };
 pub use connector::{KafkaEgressConnector, KafkaIngressConnector};
-pub use error::{
-    DoubleInitialization, InvalidExtractor, InvalidExtractors, KafkaConnectorError,
-    KafkaSenderError,
-};
+pub use error::{DoubleInitialization, KafkaConnectorError, KafkaSenderError};

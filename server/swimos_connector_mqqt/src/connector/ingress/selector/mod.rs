@@ -4,10 +4,10 @@ use swimos_connector::{
     config::{IngressMapLaneSpec, IngressValueLaneSpec},
     deser::{BoxMessageDeserializer, Deferred},
     selector::{
-        BadSelector, InvalidLaneSpec, InvalidLanes, KeySelector, MapLaneSelector, PayloadSelector,
+        InvalidLaneSpec, InvalidLanes, KeySelector, MapLaneSelector, PayloadSelector,
         PubSubSelector, SelectHandler, SelectorError, TopicSelector, ValueLaneSelector,
     },
-    ConnectorAgent,
+    BadSelector, ConnectorAgent,
 };
 use swimos_model::Value;
 use tracing::trace;

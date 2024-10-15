@@ -14,8 +14,8 @@
 
 use rumqttc::{ClientError, ConnectionError, OptionError};
 use swimos_connector::{
-    selector::{BadSelector, InvalidLaneSpec, InvalidLanes, SelectorError},
-    LoadError,
+    selector::{InvalidLaneSpec, InvalidLanes, SelectorError},
+    BadSelector, LoadError, SerializationError,
 };
 use thiserror::Error;
 
@@ -35,6 +35,8 @@ pub enum MqttConnectorError {
     Connection(#[from] ConnectionError),
     #[error(transparent)]
     Selection(#[from] SelectorError),
+    #[error(transparent)]
+    Serialization(#[from] SerializationError),
 }
 
 impl From<BadSelector> for MqttConnectorError {

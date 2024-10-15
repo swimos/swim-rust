@@ -12,9 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::DeserializationError;
-use std::num::ParseIntError;
-use swimos_recon::parser::ParseError;
+use crate::{BadSelector, DeserializationError};
 use thiserror::Error;
 
 /// Errors that can be produced attempting to select components of a Message.
@@ -54,44 +52,4 @@ pub enum InvalidLanes {
     /// There are lane descriptors with the same name.
     #[error("The lane name {0} occurs more than once.")]
     NameCollision(String),
-}
-
-/// Error type for an invalid selector descriptor.
-#[derive(Clone, Error, Debug, PartialEq, Eq)]
-pub enum BadSelector {
-    /// An empty string does not describe a valid selector.
-    #[error("Selector strings cannot be empty.")]
-    EmptySelector,
-    /// A selector component may not be empty.
-    #[error("Selector components cannot be empty.")]
-    EmptyComponent,
-    /// The root of a selector must be a valid component of a message.
-    #[error("Invalid root selector (must be one of '$key' or '$payload' with an optional index or '$topic').")]
-    InvalidRoot,
-    /// Not all pub-sub connectors have messages containing all of the selector roots.
-    #[error("The connector does not support the specified selector root.")]
-    UnsupportedRoot,
-    /// A component of the descriptor did not describe a valid selector.
-    #[error(
-        "Invalid component selector (must be an attribute or slot name with an optional index)."
-    )]
-    InvalidComponent,
-    /// The index for an index selector was too large for usize.
-    #[error("An index specified was not a valid usize.")]
-    IndexOutOfRange,
-    /// The topic root cannot have any other components.
-    #[error("The topic does not have components.")]
-    TopicWithComponent,
-    /// A provided lane/node/payload selector was malformed.
-    #[error("The selector formed an invalid path.")]
-    InvalidPath,
-    /// Invalid Recon was specified for a payload selector.
-    #[error("Failed to parse Recon value for selector payload")]
-    InvalidRecon(#[from] ParseError),
-}
-
-impl From<ParseIntError> for BadSelector {
-    fn from(_value: ParseIntError) -> Self {
-        BadSelector::IndexOutOfRange
-    }
 }

@@ -12,36 +12,38 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{cell::RefCell, collections::HashMap, future::Future, time::Duration};
+use std::{cell::RefCell, collections::HashMap, future::Future, sync::Arc, time::Duration};
 
-use bytes::{BufMut, BytesMut};
+use bytes::BytesMut;
 use futures::{future::Ready, FutureExt};
-use rumqttc::MqttOptions;
-use std::io::Write;
+use rumqttc::{ClientError, MqttOptions};
+use selector::MessageSelectors;
 use swimos_agent::{
     agent_lifecycle::HandlerContext,
     event_handler::{EventHandler, HandlerActionExt, TryHandlerActionExt, UnitHandler},
 };
 use swimos_api::agent::WarpLaneKind;
 use swimos_connector::{
-    BaseConnector, ConnectorAgent, ConnectorFuture, EgressConnector, EgressConnectorSender,
-    EgressContext, MessageSource, SendResult,
+    ser::SharedMessageSerializer, BaseConnector, ConnectorAgent, ConnectorFuture, EgressConnector,
+    EgressConnectorSender, EgressContext, LoadError, MessageSource, SendResult, SerializationError,
 };
 use swimos_model::Value;
-use swimos_recon::print_recon_compact;
 use swimos_utilities::trigger;
+use tokio::sync::oneshot;
 
 use crate::{
     facade::{MqttFactory, MqttPublisher, PublisherDriver, PublisherFactory},
     MqttConnectorError, MqttEgressConfiguration,
 };
 
+mod selector;
+
 use super::DEFAULT_CHANNEL_SIZE;
 
 pub struct MqttEgressConnector<F: PublisherFactory> {
     factory: F,
     configuration: MqttEgressConfiguration,
-    inner: RefCell<Option<Inner<F>>>,
+    inner: RefCell<Option<ConnectorState<F>>>,
 }
 
 impl<F: PublisherFactory> MqttEgressConnector<F> {
@@ -63,9 +65,48 @@ impl MqttEgressConnector<MqttFactory> {
     }
 }
 
-struct Inner<F: PublisherFactory> {
-    sender: MqttSender<F::Publisher>,
+struct ConnectorState<F: PublisherFactory> {
+    ser_tx: Option<oneshot::Sender<SharedMessageSerializer>>,
+    serializer: Serializer,
+    selectors: Arc<MessageSelectors>,
+    sender: F::Publisher,
     driver: Option<F::Driver>,
+}
+
+impl<F: PublisherFactory> ConnectorState<F> {
+    fn new(extractors: Arc<MessageSelectors>, sender: F::Publisher, driver: F::Driver) -> Self {
+        let (ser_tx, ser_rx) = oneshot::channel();
+        ConnectorState {
+            ser_tx: Some(ser_tx),
+            serializer: Serializer::Pending(ser_rx),
+            selectors: extractors,
+            sender,
+            driver: Some(driver),
+        }
+    }
+}
+
+enum Serializer {
+    Pending(oneshot::Receiver<SharedMessageSerializer>),
+    Loaded(SharedMessageSerializer),
+}
+
+impl Serializer {
+    fn get(&mut self) -> Option<&SharedMessageSerializer> {
+        match self {
+            Serializer::Pending(rx) => match rx.try_recv() {
+                Ok(ser) => {
+                    *self = Serializer::Loaded(ser);
+                    match self {
+                        Self::Loaded(loaded) => Some(loaded),
+                        _ => None,
+                    }
+                }
+                _ => None,
+            },
+            Serializer::Loaded(loaded) => Some(loaded),
+        }
+    }
 }
 
 impl<F> BaseConnector for MqttEgressConnector<F>
@@ -73,23 +114,43 @@ where
     F: PublisherFactory,
 {
     fn on_start(&self, init_complete: trigger::Sender) -> impl EventHandler<ConnectorAgent> + '_ {
-        let MqttEgressConnector { inner, .. } = self;
+        let MqttEgressConnector {
+            inner,
+            configuration,
+            ..
+        } = self;
         let context: HandlerContext<ConnectorAgent> = Default::default();
         let mut guard = inner.borrow_mut();
-        let driver_result = guard
-            .as_mut()
-            .and_then(|inner| inner.driver.take())
-            .ok_or(MqttConnectorError::NotInitialized);
-        context
-            .value(driver_result)
-            .try_handler()
-            .and_then(move |driver: F::Driver| {
-                context.suspend(async move {
-                    let _ = init_complete.trigger();
-                    let result = PublisherDriver::into_future(driver).await;
-                    context.value(result).try_handler()
+        let ConnectorState { ser_tx, driver, .. } = guard.as_mut().expect("Not initialized.");
+
+        let ser_tx = ser_tx.take().expect("Sender taken twice.");
+        let ser_fmt = configuration.payload_serializer.clone();
+        let load_ser = async move { ser_fmt.load_serializer().await };
+        let ser_fut = load_ser.map(move |loaded| {
+            context
+                .effect(move || match ser_tx.send(loaded?) {
+                    Ok(_) => {
+                        init_complete.trigger();
+                        Ok(())
+                    }
+                    Err(_) => Err(LoadError::Cancelled),
                 })
-            })
+                .try_handler()
+        });
+        let suspend_ser = context.suspend(ser_fut);
+
+        let driver_result = driver.take().ok_or(MqttConnectorError::NotInitialized);
+        let suspend_driver =
+            context
+                .value(driver_result)
+                .try_handler()
+                .and_then(move |driver: F::Driver| {
+                    context.suspend(async move {
+                        let result = PublisherDriver::into_future(driver).await;
+                        context.value(result).try_handler()
+                    })
+                });
+        suspend_ser.followed_by(suspend_driver)
     }
 
     fn on_stop(&self) -> impl EventHandler<ConnectorAgent> + '_ {
@@ -97,29 +158,23 @@ where
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone)]
 pub struct MqttSender<P> {
-    publisher: P,
+    publisher: SerializingPublisher<P>,
+    selectors: Arc<MessageSelectors>,
     retain: bool,
-    buffer: RefCell<BytesMut>,
 }
 
 impl<P> MqttSender<P> {
-    fn new(publisher: P) -> Self {
+    fn new(
+        publisher: P,
+        selectors: Arc<MessageSelectors>,
+        payload_format: SharedMessageSerializer,
+    ) -> Self {
         MqttSender {
-            publisher,
+            publisher: SerializingPublisher::new(publisher, payload_format),
+            selectors,
             retain: false,
-            buffer: Default::default(),
-        }
-    }
-}
-
-impl<P: Clone> Clone for MqttSender<P> {
-    fn clone(&self) -> Self {
-        Self {
-            publisher: self.publisher.clone(),
-            retain: self.retain,
-            buffer: Default::default(),
         }
     }
 }
@@ -169,10 +224,7 @@ where
             *max_inflight,
         )?;
         let mut guard = inner.borrow_mut();
-        *guard = Some(Inner {
-            sender: MqttSender::new(publisher),
-            driver: Some(driver),
-        });
+        *guard = Some(ConnectorState::new(Default::default(), publisher, driver));
         Ok(())
     }
 
@@ -180,11 +232,16 @@ where
         &self,
         _agent_params: &HashMap<String, String>,
     ) -> Result<Self::Sender, Self::Error> {
-        self.inner
-            .borrow()
-            .as_ref()
-            .ok_or(MqttConnectorError::NotInitialized)
-            .map(|inner| inner.sender.clone())
+        let mut guard = self.inner.borrow_mut();
+        let state = guard.as_mut().ok_or(MqttConnectorError::NotInitialized)?;
+        let publisher = state.sender.clone();
+        let payload_format = state
+            .serializer
+            .get()
+            .ok_or(MqttConnectorError::NotInitialized)?
+            .clone();
+        let selectors = state.selectors.clone();
+        Ok(MqttSender::new(publisher, selectors, payload_format))
     }
 }
 
@@ -193,7 +250,7 @@ type NoResponse =
 
 impl<P> EgressConnectorSender<MqttConnectorError> for MqttSender<P>
 where
-    P: MqttPublisher + Send,
+    P: MqttPublisher + Send + 'static,
 {
     fn send(
         &self,
@@ -216,15 +273,18 @@ where
 
 impl<P> MqttSender<P>
 where
-    P: MqttPublisher,
+    P: MqttPublisher + 'static,
 {
     fn select_topic<'a>(
         &'a self,
         source: MessageSource<'_>,
         key: Option<&'a Value>,
         value: &'a Value,
-    ) -> &str {
-        todo!()
+    ) -> Option<&str> {
+        let MqttSender { selectors, .. } = self;
+        selectors
+            .select_source(source)
+            .and_then(|selector| selector.select_topic(key, value))
     }
 
     fn select_payload<'a>(
@@ -233,7 +293,11 @@ where
         key: Option<&'a Value>,
         value: &'a Value,
     ) -> &Value {
-        todo!()
+        let MqttSender { selectors, .. } = self;
+        selectors
+            .select_source(source)
+            .and_then(|selector| selector.select_payload(key, value))
+            .unwrap_or(&Value::Extant)
     }
 
     fn publish(
@@ -243,25 +307,19 @@ where
         value: &Value,
     ) -> impl Future<Output = Result<UnitHandler, MqttConnectorError>> + Send + 'static {
         let MqttSender {
-            publisher,
-            retain,
-            buffer,
+            publisher, retain, ..
         } = self;
-        let topic = self.select_topic(source, key, value);
+        let topic = self.select_topic(source, key, value).unwrap();
         let payload = self.select_payload(source, key, value);
-        let bytes = {
-            let mut guard = buffer.borrow_mut();
-            let mut writer = (&mut *guard).writer();
-            write!(&mut writer, "{}", print_recon_compact(&payload))
-                .expect("Serailization should be infallible.");
-            guard.split().freeze()
-        };
+
         let topic_string = topic.to_string();
         let retain_msg = *retain;
-        let publisher_cpy = publisher.clone();
-        let fut = publisher_cpy.publish(topic_string, bytes, retain_msg);
 
-        fut.map(|result| result.map(|_| UnitHandler::default()).map_err(Into::into))
+        let fut_result = publisher.publish(topic_string, payload, retain_msg);
+        async move {
+            fut_result?.await?;
+            Ok(UnitHandler::default())
+        }
     }
 }
 
@@ -287,4 +345,56 @@ where
         opts.set_inflight(max);
     }
     Ok(factory.create(opts))
+}
+
+struct SerializingPublisher<P> {
+    publisher: P,
+    payload_format: SharedMessageSerializer,
+    buffer: RefCell<BytesMut>,
+}
+
+impl<P: Clone> Clone for SerializingPublisher<P> {
+    fn clone(&self) -> Self {
+        Self {
+            publisher: self.publisher.clone(),
+            payload_format: self.payload_format.clone(),
+            buffer: Default::default(),
+        }
+    }
+}
+
+impl<P> SerializingPublisher<P> {
+    fn new(publisher: P, payload_format: SharedMessageSerializer) -> Self {
+        SerializingPublisher {
+            publisher,
+            payload_format,
+            buffer: Default::default(),
+        }
+    }
+}
+
+impl<P> SerializingPublisher<P>
+where
+    P: MqttPublisher + 'static,
+{
+    fn publish(
+        &self,
+        topic: String,
+        payload: &Value,
+        retain: bool,
+    ) -> Result<impl Future<Output = Result<(), ClientError>> + Send + 'static, SerializationError>
+    {
+        let SerializingPublisher {
+            publisher,
+            payload_format,
+            buffer,
+        } = self;
+        let mut guard = buffer.borrow_mut();
+        let payload_buffer = &mut *guard;
+        payload_buffer.clear();
+        payload_format.serialize(payload, payload_buffer)?;
+        Ok(publisher
+            .clone()
+            .publish(topic, payload_buffer.split().freeze(), retain))
+    }
 }

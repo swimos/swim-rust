@@ -43,8 +43,8 @@ pub struct MqttIngressConfiguration {
 pub struct MqttEgressConfiguration {
     /// The MQTT connection Url.
     pub url: String,
-    /// The MQTT topic.
-    pub topic: String,
+    /// The fixed MQTT topic for messages that do not specify one.
+    pub fixed_topic: Option<String>,
     /// Descriptors for the value lanes of the connector agent and how to extract messages
     /// from them to send to the egress sink.
     pub value_lanes: Vec<EgressLaneSpec>,
@@ -54,6 +54,8 @@ pub struct MqttEgressConfiguration {
     /// Descriptors for the value downlinks (to remote lanes) of the connector agent and how to extract messages
     /// from the received events to send to the egress sink.
     pub value_downlinks: Vec<EgressDownlinkSpec>,
+    /// Serialization format to use when writing payloads.
+    pub payload_serializer: DataFormat,
     /// Descriptors for the map downlinks (to remote lanes) of the connector agent and how to extract messages
     /// from the received events to send to the egress sink.
     pub map_downlinks: Vec<EgressDownlinkSpec>,
@@ -63,14 +65,39 @@ pub struct MqttEgressConfiguration {
     pub client_channel_size: Option<usize>,
 }
 
+/// Instructions to derive the topic for a Kafka message from a value posted to a lane.
+#[derive(Clone, Form, Debug, Default, PartialEq, Eq)]
+pub enum TopicSpecifier {
+    /// Use the fixed topic specified by the parent configuration.
+    #[default]
+    Fixed,
+    /// Use a single, specified topic.
+    Specified(#[form(header_body)] String),
+    /// Use a selector to choose the topic from the value.
+    Selector(#[form(header_body)] String),
+}
+
+#[derive(Clone, Debug, Default, Form, PartialEq, Eq)]
+pub struct ExtractionSpec {
+    /// Chooses the topic for a value set to this lane.
+    pub topic_specifier: TopicSpecifier,
+    /// A selector for for the payload of the message. If not specified, the entire value will be used.
+    pub payload_selector: Option<String>,
+}
+
 #[derive(Clone, Debug, Form, PartialEq, Eq)]
 pub struct EgressLaneSpec {
+    /// A name to use for the lane.
     pub name: String,
+    /// Specification for extracting the Kafka message from the lane events.
+    pub extractor: ExtractionSpec,
 }
 
 #[derive(Clone, Debug, Form, PartialEq, Eq)]
 pub struct EgressDownlinkSpec {
     pub address: Address<String>,
+    /// Specification for extracting the Kafka message from the downlink events.
+    pub extractor: ExtractionSpec,
 }
 
 #[derive(Clone, Debug, Form, PartialEq, Eq)]

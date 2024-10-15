@@ -15,11 +15,14 @@
 #[cfg(test)]
 mod tests;
 
-use crate::selector::{PubSubSelectorArgs, Selector, SelectorError};
+use crate::{
+    selector::{PubSubSelectorArgs, Selector, SelectorError},
+    BadSelector,
+};
 use frunk::Coprod;
 use swimos_model::Value;
 
-use crate::selector::{parse_selector, BadSelector, PubSubSelector};
+use crate::selector::{parse_selector, PubSubSelector};
 use regex::Regex;
 use std::{slice::Iter, str::FromStr, sync::OnceLock};
 use swimos_agent::event_handler::{Discard, SendCommand};

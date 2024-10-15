@@ -1,4 +1,7 @@
-use crate::selector::{BadSelector, Relay, Relays};
+use crate::{
+    selector::{Relay, Relays},
+    BadSelector,
+};
 use swimos_form::Form;
 
 /// Specification of a value lane for the connector.

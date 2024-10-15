@@ -17,10 +17,11 @@ use super::{MessageField, SelectorComponent};
 use crate::config::{IngressMapLaneSpec, IngressValueLaneSpec};
 use crate::deser::{Deferred, MessageDeserializer, MessagePart, ReconDeserializer};
 use crate::selector::{
-    parse_selector, AttrSelector, BadSelector, BasicSelector, ChainSelector, IdentitySelector,
-    IndexSelector, InvalidLaneSpec, MapLaneSelector, SelectHandler, SlotSelector,
-    ValueLaneSelector, ValueSelector,
+    parse_selector, AttrSelector, BasicSelector, ChainSelector, IdentitySelector, IndexSelector,
+    InvalidLaneSpec, MapLaneSelector, SelectHandler, SlotSelector, ValueLaneSelector,
+    ValueSelector,
 };
+use crate::BadSelector;
 use swimos_model::{Attr, Item};
 
 use crate::selector::{PubSubSelector, PubSubValueLaneSelector};

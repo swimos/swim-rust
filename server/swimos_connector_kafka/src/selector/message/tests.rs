@@ -15,12 +15,12 @@
 use std::collections::HashMap;
 
 use swimos_api::address::Address;
-use swimos_connector::deser::Endianness;
+use swimos_connector::{deser::Endianness, InvalidExtractors};
 use swimos_model::{Item, Value};
 
 use crate::{
     config::{EgressDownlinkSpec, EgressLaneSpec, KafkaEgressConfiguration, TopicSpecifier},
-    DataFormat, ExtractionSpec, InvalidExtractors, KafkaLogLevel,
+    DataFormat, ExtractionSpec, KafkaLogLevel,
 };
 
 use super::{FieldSelector, KeyOrValue, MessageSelector, MessageSelectors, TopicSelector};

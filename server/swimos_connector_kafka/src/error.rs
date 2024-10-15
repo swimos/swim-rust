@@ -13,8 +13,7 @@
 // limitations under the License.
 
 use rdkafka::error::KafkaError;
-use swimos_api::address::Address;
-use swimos_connector::selector::{BadSelector, InvalidLanes, SelectorError};
+use swimos_connector::selector::{InvalidLanes, SelectorError};
 use swimos_connector::{LoadError, SerializationError};
 use thiserror::Error;
 
@@ -35,31 +34,6 @@ pub enum KafkaConnectorError {
     Lane(#[from] SelectorError),
     #[error("A message was not handled properly and so could not be committed.")]
     MessageNotHandled,
-}
-
-/// Error type for an invalid egress extractor specification.
-#[derive(Clone, Debug, Error, PartialEq, Eq)]
-pub enum InvalidExtractor {
-    /// A string describing a selector was invalid.
-    #[error(transparent)]
-    Selector(#[from] BadSelector),
-    /// No topic specified for an extractor.
-    #[error("An extractor did not provide a topic and no global topic was specified.")]
-    NoTopic,
-}
-
-/// Error type produced for invalid egress extractors.
-#[derive(Clone, Debug, Error, PartialEq, Eq)]
-pub enum InvalidExtractors {
-    /// The specification of an extractor was not valid.
-    #[error(transparent)]
-    Spec(#[from] InvalidExtractor),
-    /// There are lane extractors with the same name.
-    #[error("The lane name {0} occurs more than once.")]
-    NameCollision(String),
-    /// There are downlink extractors with the same address.
-    #[error("The downlink address {0} occurs more than once.")]
-    AddressCollision(Address<String>),
 }
 
 #[derive(Clone, Copy, Default, Debug, PartialEq, Eq, Error)]

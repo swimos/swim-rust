@@ -20,48 +20,29 @@ use std::{
 use swimos_api::address::Address;
 use swimos_connector::{
     selector::{ChainSelector, RawSelectorDescriptor, SelectorComponent, ValueSelector},
-    BadSelector, InvalidExtractor, InvalidExtractors,
+    BadSelector, InvalidExtractor, InvalidExtractors, MessageSource,
 };
 use swimos_model::Value;
 
-use crate::config::{
-    EgressDownlinkSpec, EgressLaneSpec, ExtractionSpec, KafkaEgressConfiguration, TopicSpecifier,
+use crate::{
+    config::{ExtractionSpec, TopicSpecifier},
+    EgressDownlinkSpec, EgressLaneSpec, MqttEgressConfiguration,
 };
-
-#[cfg(test)]
-mod tests;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MessageSelector {
     topic: TopicSelector,
-    key: Option<FieldSelector>,
     payload: Option<FieldSelector>,
 }
 
 impl MessageSelector {
-    pub fn new(
-        topic: TopicSelector,
-        key: Option<FieldSelector>,
-        payload: Option<FieldSelector>,
-    ) -> Self {
-        MessageSelector {
-            topic,
-            key,
-            payload,
-        }
+    pub fn new(topic: TopicSelector, payload: Option<FieldSelector>) -> Self {
+        MessageSelector { topic, payload }
     }
 
     pub fn select_topic<'a>(&'a self, key: Option<&'a Value>, value: &'a Value) -> Option<&'a str> {
         let MessageSelector { topic, .. } = self;
         topic.select(key, value)
-    }
-
-    pub fn select_key<'a>(&self, key: Option<&'a Value>, value: &'a Value) -> Option<&'a Value> {
-        let MessageSelector { key: key_sel, .. } = self;
-        match key_sel {
-            Some(sel) => sel.select(key, value),
-            None => None,
-        }
     }
 
     pub fn select_payload<'a>(
@@ -139,22 +120,17 @@ impl<'a> From<FieldSelectorSpec<'a>> for FieldSelector {
 
 impl<'a> From<MessageSelectorSpec<'a>> for MessageSelector {
     fn from(value: MessageSelectorSpec<'a>) -> Self {
-        let MessageSelectorSpec {
-            topic,
-            key,
-            payload,
-        } = value;
+        let MessageSelectorSpec { topic, payload } = value;
         let topic = match topic {
             TopicSelectorSpec::Fixed(s) => TopicSelector::Fixed(s.to_string()),
             TopicSelectorSpec::Selector(spec) => TopicSelector::Selector(spec.into()),
         };
-        MessageSelector::new(topic, key.map(Into::into), payload.map(Into::into))
+        MessageSelector::new(topic, payload.map(Into::into))
     }
 }
 
 struct MessageSelectorSpec<'a> {
     topic: TopicSelectorSpec<'a>,
-    key: Option<FieldSelectorSpec<'a>>,
     payload: Option<FieldSelectorSpec<'a>>,
 }
 
@@ -211,7 +187,6 @@ impl<'a> MessageSelectorSpec<'a> {
     ) -> Result<Self, InvalidExtractor> {
         let ExtractionSpec {
             topic_specifier,
-            key_selector,
             payload_selector,
         } = spec;
         let topic = match topic_specifier {
@@ -227,23 +202,15 @@ impl<'a> MessageSelectorSpec<'a> {
                 TopicSelectorSpec::Selector(parse_field_selector(s.as_str())?)
             }
         };
-        let key = key_selector
-            .as_ref()
-            .map(|s| parse_field_selector(s))
-            .transpose()?;
         let payload = payload_selector
             .as_ref()
             .map(|s| parse_field_selector(s))
             .transpose()?;
-        Ok(MessageSelectorSpec {
-            topic,
-            key,
-            payload,
-        })
+        Ok(MessageSelectorSpec { topic, payload })
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct MessageSelectors {
     value_lanes: HashMap<String, MessageSelector>,
     map_lanes: HashMap<String, MessageSelector>,
@@ -269,11 +236,26 @@ impl MessageSelectors {
     }
 }
 
-impl TryFrom<&KafkaEgressConfiguration> for MessageSelectors {
+impl MessageSelectors {
+    pub fn select_source(&self, source: MessageSource<'_>) -> Option<&MessageSelector> {
+        match source {
+            MessageSource::Lane(name) => self
+                .value_lanes()
+                .get(name)
+                .or_else(|| self.map_lanes().get(name)),
+            MessageSource::Downlink(addr) => self
+                .value_downlinks()
+                .get(addr)
+                .or_else(|| self.map_downlinks().get(addr)),
+        }
+    }
+}
+
+impl TryFrom<&MqttEgressConfiguration> for MessageSelectors {
     type Error = InvalidExtractors;
 
-    fn try_from(value: &KafkaEgressConfiguration) -> Result<Self, Self::Error> {
-        let KafkaEgressConfiguration {
+    fn try_from(value: &MqttEgressConfiguration) -> Result<Self, Self::Error> {
+        let MqttEgressConfiguration {
             fixed_topic,
             value_lanes,
             map_lanes,
