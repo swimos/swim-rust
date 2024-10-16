@@ -11,7 +11,7 @@ Running
 The application can be run (from the root directory of the game project) with:
 
 ```
-cargo run --bin game -- --port 9001 --include-ui --ui-port 9002
+WS_NO_SUBPROTOCOL_CHECK=true cargo run --bin game -- --port 9001 --include-ui --ui-port 9002
 ```
 
 The swim server will run on the port specified with `--port` and the web UI will be available at the port specified with `--ui-port`. Either of these can be omitted which will cause them to bind to any available port.
