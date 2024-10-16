@@ -1,0 +1,17 @@
+[package]
+name = "swimos_connector_util"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+
+[dependencies]
+swimos_agent = { workspace = true }
+swimos_api = { workspace = true }
+futures = { workspace = true }
+bytes = { workspace = true }
+swimos_form = { workspace = true }
+swimos_utilities = { workspace = true, features = ["text"] }
+swimos_model = { workspace = true }
+tokio = { workspace = true, features = ["time"] }

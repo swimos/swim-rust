@@ -14,28 +14,14 @@
 
 use swimos_model::{Item, Value};
 
-use crate::deser::{tests::view_of, JsonDeserializer, MessageDeserializer, MessagePart};
+use crate::deser::{JsonDeserializer, MessageDeserializer};
 
 #[test]
 fn json_deserializer() {
-    let deserializer = JsonDeserializer;
+    let deserializer = JsonDeserializer.boxed();
 
     let bytes: &[u8] = "{ \"a\": 1, \"b\": true}".as_bytes();
     let expected = Value::Record(vec![], vec![Item::slot("a", 1), Item::slot("b", true)]);
 
-    let view = view_of(bytes, MessagePart::Key);
-    assert_eq!(
-        deserializer
-            .deserialize(&view, MessagePart::Key)
-            .expect("Failed."),
-        expected
-    );
-
-    let view = view_of(bytes, MessagePart::Payload);
-    assert_eq!(
-        deserializer
-            .deserialize(&view, MessagePart::Payload)
-            .expect("Failed."),
-        expected
-    );
+    assert_eq!(deserializer.deserialize(bytes).expect("Failed."), expected);
 }

@@ -33,18 +33,16 @@ use swimos_connector::{
     BaseConnector, ConnectorAgent, EgressConnector, EgressConnectorSender, EgressContext,
     MessageSource, SendResult,
 };
+use swimos_connector_util::{run_handler_with_futures, run_handler_with_futures_dl};
 use swimos_model::{Item, Value};
 use swimos_recon::print_recon_compact;
 use swimos_utilities::trigger;
 
+use crate::selector::message::MessageSelector;
 use crate::{
     config::{EgressDownlinkSpec, EgressLaneSpec, KafkaEgressConfiguration, TopicSpecifier},
-    connector::{
-        egress::{ConnectorState, KafkaEgressConnector},
-        test_util::{run_handler_with_futures, run_handler_with_futures_dl},
-    },
+    connector::egress::{ConnectorState, KafkaEgressConnector},
     facade::{KafkaProducer, ProduceResult, ProducerFactory},
-    selector::MessageSelector,
     DataFormat, DownlinkAddress, ExtractionSpec, KafkaLogLevel,
 };
 

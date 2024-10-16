@@ -17,15 +17,21 @@ mod error;
 mod generic;
 mod lifecycle;
 mod route;
-
 #[cfg(test)]
 mod test_support;
+
+pub mod config;
+pub mod deser;
+pub mod ingress;
+pub mod selector;
+pub mod ser;
+
 pub use connector::{
     BaseConnector, ConnectorFuture, ConnectorHandler, ConnectorStream, EgressConnector,
     EgressConnectorSender, EgressContext, IngressConnector, IngressContext, MessageSource,
     SendResult,
 };
-pub use error::ConnectorInitError;
+pub use error::{ConnectorInitError, DeserializationError, LoadError, SerializationError};
 pub use generic::{ConnectorAgent, MapLaneSelectorFn, ValueLaneSelectorFn};
 pub use lifecycle::{EgressConnectorLifecycle, IngressConnectorLifecycle};
 pub use route::{EgressConnectorModel, IngressConnectorModel};

@@ -13,14 +13,15 @@
 // limitations under the License.
 
 use crate::{
-    connector::test_util::create_kafka_props, DataFormat, Endianness, IngressMapLaneSpec,
-    IngressValueLaneSpec, KafkaIngressConfiguration, KafkaIngressConnector, KafkaLogLevel,
+    connector::test_util::create_kafka_props, DataFormat, KafkaIngressConfiguration,
+    KafkaIngressConnector, KafkaLogLevel,
 };
 use futures::{future::join, TryStreamExt};
+use swimos_connector::config::{IngressMapLaneSpec, IngressValueLaneSpec};
+use swimos_connector::deser::Endianness;
 use swimos_connector::{BaseConnector, ConnectorAgent, IngressConnector};
+use swimos_connector_util::{run_handler, run_handler_with_futures, TestSpawner};
 use swimos_utilities::trigger;
-
-use crate::connector::test_util::{run_handler, run_handler_with_futures, TestSpawner};
 
 fn make_config() -> KafkaIngressConfiguration {
     KafkaIngressConfiguration {
@@ -37,6 +38,7 @@ fn make_config() -> KafkaIngressConfiguration {
         key_deserializer: DataFormat::Int32(Endianness::BigEndian),
         payload_deserializer: DataFormat::Json,
         topics: vec!["cellular-integer-json".to_string()],
+        relays: Default::default(),
     }
 }
 
