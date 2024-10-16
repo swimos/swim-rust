@@ -49,7 +49,7 @@ impl<S> LaneSelector<S> {
     /// # Arguments
     /// * `segment` - the selector for the lane.
     /// * `pattern` - the pattern which the selector represents. Used to build an error message if
-    /// the selector fails.
+    ///   the selector fails.
     pub fn new(segment: Segment<S>, pattern: String) -> LaneSelector<S> {
         LaneSelector { segment, pattern }
     }
@@ -114,7 +114,7 @@ impl<S> NodeSelector<S> {
     /// # Arguments
     /// * `segment` - the selector for the node.
     /// * `pattern` - the pattern which the selector represents. Used to build an error message if
-    /// the selector fails.
+    ///   the selector fails.
     pub fn new(pattern: String, segments: Vec<Segment<S>>) -> NodeSelector<S> {
         NodeSelector { pattern, segments }
     }
@@ -193,7 +193,7 @@ impl<S> RelayPayloadSelector<S> {
     /// # Arguments
     /// * `segment` - the selector for the payload.
     /// * `pattern` - the pattern that this selector represents. Used to build an error
-    /// message if the selector fails.
+    ///   message if the selector fails.
     /// * `required` - whether the selector must succeed. If this is true and the selector fails, then
     ///   the connector will terminate.
     pub fn value(
@@ -213,9 +213,9 @@ impl<S> RelayPayloadSelector<S> {
     /// * `key_segment` - the key selector for the payload.
     /// * `value_segment` - the value selector for the payload.
     /// * `key_pattern` - the key pattern that this selector represents. Used to build an error message
-    ///  if the key selector fails.
+    ///   if the key selector fails.
     /// * `value_segment` - the value pattern that this selector represents. Used to build an error
-    /// message if the value selector fails.
+    ///   message if the value selector fails.
     /// * `remove_when_no_value` - if the value selector fails to select, then it will emit a map
     ///   remove command to remove the corresponding entry.
     /// * `required` - whether the selector must succeed. If this is true and the selector fails, then

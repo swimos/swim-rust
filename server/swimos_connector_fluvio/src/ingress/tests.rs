@@ -49,7 +49,7 @@ impl IngressContext for TestIngressContext {
 fn make_config() -> FluvioIngressConfiguration {
     FluvioIngressConfiguration {
         topic: "topic".to_string(),
-        fluvio: fluvio::FluvioConfig::load().unwrap(),
+        fluvio: fluvio::FluvioConfig::new("127.0.0.1:9000"),
         partition: 0,
         offset: Offset::beginning(),
         value_lanes: vec![IngressValueLaneSpec::new(None, "$key", true)],

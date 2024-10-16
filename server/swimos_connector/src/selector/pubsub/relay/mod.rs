@@ -158,9 +158,9 @@ impl TryFrom<Segment<PubSubSelector>> for PayloadSegment<PubSubSelector> {
 ///
 /// # Arguments
 /// * `pattern` - the selector pattern to parse. This may be defined as a Recon [`Value`] which may
-///  be used as the key or value for the messaage to send to the lane.
+///   be used as the key or value for the messaage to send to the lane.
 /// * `required` - whether the selector must succeed. If this is true and the selector fails, then
-///  the connector will terminate.
+///   the connector will terminate.
 ///
 /// Both key and value selectors may define a Recon [`Value`] which may be used as the key or value
 /// for the message to send to the lane.
@@ -181,7 +181,7 @@ pub fn parse_value_selector(
 /// * `key_pattern` - the key selector pattern to parse.
 /// * `value_pattern` - the key selector pattern to parse.
 /// * `required` - whether the selector must succeed. If this is true and the selector fails, then
-///  the connector will terminate.
+///   the connector will terminate.
 /// * `remove_when_no_value` - if the value selector fails to select, then it will emit a map
 ///   remove command to remove the corresponding entry.
 ///

@@ -37,7 +37,7 @@ pub trait Selector<A> {
     fn select(&self, from: &mut A) -> Result<Option<Value>, DeserializationError>;
 }
 
-impl<'a, L, R, Head, Tail> Selector<HCons<Head, Tail>> for Coproduct<L, R>
+impl<L, R, Head, Tail> Selector<HCons<Head, Tail>> for Coproduct<L, R>
 where
     L: Selector<Head>,
     R: Selector<Tail>,
@@ -51,7 +51,7 @@ where
     }
 }
 
-impl<'a> Selector<HNil> for CNil {
+impl Selector<HNil> for CNil {
     fn select(&self, _from: &mut HNil) -> Result<Option<Value>, DeserializationError> {
         Ok(None)
     }
