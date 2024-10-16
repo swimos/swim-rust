@@ -29,6 +29,7 @@ pub use error::*;
 use frunk::{Coprod, HList};
 use regex::Regex;
 pub use relay::{Relay, Relays};
+use std::borrow::Cow;
 use std::sync::OnceLock;
 use swimos_model::Value;
 
@@ -357,4 +358,100 @@ impl TryFrom<&IngressMapLaneSpec> for PubSubMapLaneSelector {
             *remove_when_no_value,
         ))
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum KeyOrValue {
+    Key,
+    Value,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FieldExtractor {
+    part: KeyOrValue,
+    selector: ChainSelector,
+}
+
+impl FieldExtractor {
+    pub fn new(part: KeyOrValue, selector: ChainSelector) -> Self {
+        FieldExtractor { part, selector }
+    }
+
+    pub fn select<'a>(&self, key: Option<&'a Value>, value: &'a Value) -> Option<&'a Value> {
+        let FieldExtractor { part, selector } = self;
+        match part {
+            KeyOrValue::Key => key.and_then(|k| selector.select_value(k)),
+            KeyOrValue::Value => selector.select_value(value),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum TopicExtractor {
+    Fixed(String),
+    Selector(FieldExtractor),
+}
+
+impl TopicExtractor {
+    pub fn select<'a>(&'a self, key: Option<&'a Value>, value: &'a Value) -> Option<&'a str> {
+        match self {
+            TopicExtractor::Fixed(s) => Some(s.as_str()),
+            TopicExtractor::Selector(sel) => match sel.select(key, value) {
+                Some(Value::Text(s)) => Some(s.as_str()),
+                _ => None,
+            },
+        }
+    }
+}
+
+pub enum TopicExtractorSpec<'a> {
+    Fixed(Cow<'a, str>),
+    Selector(FieldExtractorSpec<'a>),
+}
+
+impl<'a> From<FieldExtractorSpec<'a>> for FieldExtractor {
+    fn from(value: FieldExtractorSpec<'a>) -> Self {
+        let FieldExtractorSpec {
+            part,
+            index,
+            components,
+        } = value;
+        FieldExtractor::new(part, ChainSelector::new(index, &components))
+    }
+}
+
+pub struct FieldExtractorSpec<'a> {
+    part: KeyOrValue,
+    index: Option<usize>,
+    components: Vec<SelectorComponent<'a>>,
+}
+
+impl<'a> TryFrom<RawSelectorDescriptor<'a>> for FieldExtractorSpec<'a> {
+    type Error = BadSelector;
+
+    fn try_from(value: RawSelectorDescriptor<'a>) -> Result<Self, Self::Error> {
+        let RawSelectorDescriptor {
+            part,
+            index,
+            components,
+        } = value;
+        match part {
+            "$key" => Ok(FieldExtractorSpec {
+                part: KeyOrValue::Key,
+                index,
+                components,
+            }),
+            "$value" => Ok(FieldExtractorSpec {
+                part: KeyOrValue::Value,
+                index,
+                components,
+            }),
+            _ => Err(BadSelector::InvalidRoot),
+        }
+    }
+}
+
+/// Attempt to parse a field selector from a string.
+pub fn parse_field_selector(descriptor: &str) -> Result<FieldExtractorSpec<'_>, BadSelector> {
+    RawSelectorDescriptor::try_from(descriptor)?.try_into()
 }

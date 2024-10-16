@@ -15,7 +15,7 @@
 use std::{cell::RefCell, collections::HashMap, sync::Arc, time::Duration};
 
 use super::ConnHandlerContext;
-use crate::selector::message::{MessageSelector, MessageSelectors};
+use crate::selector::message::MessageSelectors;
 use crate::{
     config::KafkaEgressConfiguration,
     facade::{KafkaFactory, KafkaProducer, ProduceResult, ProducerFactory},
@@ -255,21 +255,6 @@ fn open_downlinks(config: &KafkaEgressConfiguration, context: &mut dyn EgressCon
     }
     for map_dl in map_downlinks {
         context.open_map_downlink(map_dl.address.borrow_parts());
-    }
-}
-
-impl MessageSelectors {
-    pub fn select_source(&self, source: MessageSource<'_>) -> Option<&MessageSelector> {
-        match source {
-            MessageSource::Lane(name) => self
-                .value_lanes()
-                .get(name)
-                .or_else(|| self.map_lanes().get(name)),
-            MessageSource::Downlink(addr) => self
-                .value_downlinks()
-                .get(addr)
-                .or_else(|| self.map_downlinks().get(addr)),
-        }
     }
 }
 

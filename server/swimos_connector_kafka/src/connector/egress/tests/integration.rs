@@ -327,23 +327,23 @@ async fn connector_on_start() {
     let selector =
         MessageSelector::try_from_ext_spec(&ExtractionSpec::default(), Some(FIXED)).unwrap();
     assert_eq!(
-        extractors.value_lanes(),
+        &extractors.value_lanes,
         &[(VALUE_LANE.to_string(), selector.clone())]
             .into_iter()
             .collect()
     );
     assert_eq!(
-        extractors.map_lanes(),
+        &extractors.map_lanes,
         &[(MAP_LANE.to_string(), selector.clone())]
             .into_iter()
             .collect()
     );
     assert_eq!(
-        extractors.value_downlinks(),
+        &extractors.value_downlinks,
         &[(addr1(), selector.clone())].into_iter().collect()
     );
     assert_eq!(
-        extractors.map_downlinks(),
+        &extractors.map_downlinks,
         &[(addr2(), selector)].into_iter().collect()
     );
 }
