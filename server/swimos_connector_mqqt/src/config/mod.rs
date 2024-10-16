@@ -35,6 +35,7 @@ pub struct MqttIngressConfiguration {
     pub keep_alive_secs: Option<u64>,
     pub max_packet_size: Option<usize>,
     pub client_channel_size: Option<usize>,
+    pub credentials: Option<Credentials>,
 }
 
 /// Configuration parameters for the MQTT egress connector.
@@ -63,6 +64,13 @@ pub struct MqttEgressConfiguration {
     pub max_packet_size: Option<usize>,
     pub max_inflight: Option<u32>,
     pub client_channel_size: Option<usize>,
+    pub credentials: Option<Credentials>,
+}
+
+#[derive(Clone, Debug, Form, PartialEq, Eq)]
+pub struct Credentials {
+    pub username: String,
+    pub password: String,
 }
 
 /// Instructions to derive the topic for a Kafka message from a value posted to a lane.

@@ -32,6 +32,7 @@ use swimos_utilities::trigger;
 use tokio::sync::oneshot;
 
 use crate::{
+    config::Credentials,
     facade::{MqttFactory, MqttPublisher, PublisherDriver, PublisherFactory},
     MqttConnectorError, MqttEgressConfiguration,
 };
@@ -202,6 +203,7 @@ where
             keep_alive_secs,
             max_packet_size,
             max_inflight,
+            credentials,
             ..
         } = configuration;
         for lane in value_lanes {
@@ -222,6 +224,7 @@ where
             *keep_alive_secs,
             *max_packet_size,
             *max_inflight,
+            credentials.clone(),
         )?;
         let mut guard = inner.borrow_mut();
         *guard = Some(ConnectorState::new(Default::default(), publisher, driver));
@@ -329,6 +332,7 @@ fn open_client<F>(
     keep_alive_secs: Option<u64>,
     max_packet_size: Option<usize>,
     max_inflight: Option<u32>,
+    credentials: Option<Credentials>,
 ) -> Result<(F::Publisher, F::Driver), MqttConnectorError>
 where
     F: PublisherFactory,
@@ -343,6 +347,9 @@ where
     if let Some(n) = max_inflight {
         let max = u16::try_from(n).unwrap_or(u16::MAX);
         opts.set_inflight(max);
+    }
+    if let Some(Credentials { username, password }) = credentials {
+        opts.set_credentials(username, password);
     }
     Ok(factory.create(opts))
 }

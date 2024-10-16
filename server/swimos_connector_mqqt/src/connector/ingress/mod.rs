@@ -33,6 +33,7 @@ use swimos_utilities::trigger::Sender;
 use tracing::error;
 
 use crate::{
+    config::Credentials,
     error::MqttConnectorError,
     facade::{ConsumerFactory, MqttConsumer, MqttFactory, MqttMessage, MqttSubscriber},
     MqttIngressConfiguration, Subscription,
@@ -101,6 +102,7 @@ where
             configuration.keep_alive_secs,
             configuration.max_packet_size,
             None,
+            configuration.credentials.clone(),
         )?;
 
         let handler_stream_fut = create_handler_stream(
@@ -244,6 +246,7 @@ fn open_client<F>(
     keep_alive_secs: Option<u64>,
     max_packet_size: Option<usize>,
     max_inflight: Option<u32>,
+    credentials: Option<Credentials>,
 ) -> Result<(F::Subscriber, F::Consumer), MqttConnectorError>
 where
     F: ConsumerFactory,
@@ -258,6 +261,9 @@ where
     if let Some(n) = max_inflight {
         let max = u16::try_from(n).unwrap_or(u16::MAX);
         opts.set_inflight(max);
+    }
+    if let Some(Credentials { username, password }) = credentials {
+        opts.set_credentials(username, password);
     }
     Ok(factory.create(opts))
 }
