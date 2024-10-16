@@ -163,7 +163,7 @@ pub struct RelayPayloadSelector<S> {
     required: bool,
 }
 
-/// A payload selector model. When called, will either yield a [`Value`] or delegate to [`S`].
+/// A payload selector model. When called, will either yield a [`Value`] or delegate to `S`.
 #[derive(Debug, Clone, PartialEq)]
 pub enum PayloadSegment<S> {
     /// Yield a value.
