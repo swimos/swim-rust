@@ -27,17 +27,15 @@ use crate::{
 pub use error::*;
 use frunk::{Coprod, HList};
 use regex::Regex;
-pub use relay::{Relay, Relays};
+pub use relay::{
+    parse_lane_selector, parse_map_selector, parse_node_selector, parse_value_selector,
+};
 use std::sync::OnceLock;
 use swimos_model::Value;
 
 /// Canonical selector for pub-sub type connectors.
 pub type PubSubSelector = Coprod!(TopicSelector, KeySelector, PayloadSelector);
-pub type PubSubSelectorArgs<'a> = HList!(
-    <TopicSelector as Selector<'a>>::Arg,
-    <KeySelector as Selector<'a>>::Arg,
-    <PayloadSelector as Selector<'a>>::Arg
-);
+pub type PubSubSelectorArgs<'a> = HList!(Value, Deferred<'a>, Deferred<'a>);
 /// Selector type for Value Lanes.
 pub type PubSubValueLaneSelector = ValueLaneSelector<PubSubSelector>;
 /// Selector type for Map Lanes.
@@ -46,10 +44,8 @@ pub type PubSubMapLaneSelector = MapLaneSelector<PubSubSelector, PubSubSelector>
 #[derive(Debug, PartialEq, Clone, Eq, Default)]
 pub struct TopicSelector;
 
-impl<'a> Selector<'a> for TopicSelector {
-    type Arg = Value;
-
-    fn select(&self, from: &'a Self::Arg) -> Result<Option<Value>, DeserializationError> {
+impl Selector<Value> for TopicSelector {
+    fn select(&self, from: &mut Value) -> Result<Option<Value>, DeserializationError> {
         Ok(Some(from.clone()))
     }
 }
@@ -72,10 +68,8 @@ where
     }
 }
 
-impl<'a> Selector<'a> for KeySelector {
-    type Arg = Deferred<'a>;
-
-    fn select(&self, from: &'a Self::Arg) -> Result<Option<Value>, DeserializationError> {
+impl Selector<Deferred<'_>> for KeySelector {
+    fn select(&self, from: &mut Deferred<'_>) -> Result<Option<Value>, DeserializationError> {
         let KeySelector(chain) = self;
         from.with(|val| ValueSelector::select_value(chain, val).cloned())
     }
@@ -99,10 +93,8 @@ where
     }
 }
 
-impl<'a> Selector<'a> for PayloadSelector {
-    type Arg = Deferred<'a>;
-
-    fn select(&self, from: &'a Self::Arg) -> Result<Option<Value>, DeserializationError> {
+impl Selector<Deferred<'_>> for PayloadSelector {
+    fn select(&self, from: &mut Deferred<'_>) -> Result<Option<Value>, DeserializationError> {
         let PayloadSelector(chain) = self;
         from.with(|val| ValueSelector::select_value(chain, val).cloned())
     }

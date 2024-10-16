@@ -31,54 +31,34 @@ pub trait ValueSelector: Debug {
 
 /// A dynamic selector which attempts to choose some sub-component of a [`Value`] from some
 /// arguments, matching against a pattern, returning nothing if the pattern does not match.
-pub trait Selector<'a> {
-    /// The arguments this selector accepts.
-    type Arg;
-
+pub trait Selector<A> {
     /// Attempt to select some sub-component of the provided [`Value`] from the arguments this
     /// selector accepts.
-    fn select(&self, from: &'a Self::Arg) -> Result<Option<Value>, DeserializationError>;
+    fn select(&self, from: &mut A) -> Result<Option<Value>, DeserializationError>;
 }
 
-// // Bridge from Selector -> ValueSelector traits.
-// impl<'a, V> Selector<'a> for V
-// where
-//     V: ValueSelector,
-// {
-//     type Arg = Value;
-//
-//     fn select(&self, from: &'a Self::Arg) -> Result<Option<Value>, DeserializationError> {
-//         // Delegate this operation to the ValueSelector.
-//         Ok(V::select_value(self, from).cloned())
-//     }
-// }
-
-impl<'a, L, R, Head, Tail> Selector<'a> for Coproduct<L, R>
+impl<'a, L, R, Head, Tail> Selector<HCons<Head, Tail>> for Coproduct<L, R>
 where
-    L: Selector<'a, Arg = Head>,
-    R: Selector<'a, Arg = Tail>,
+    L: Selector<Head>,
+    R: Selector<Tail>,
     Tail: HList,
 {
-    type Arg = HCons<Head, Tail>;
-
-    fn select(&self, from: &'a Self::Arg) -> Result<Option<Value>, DeserializationError> {
+    fn select(&self, from: &mut HCons<Head, Tail>) -> Result<Option<Value>, DeserializationError> {
         match self {
-            Coproduct::Inl(l) => l.select(&from.head),
-            Coproduct::Inr(r) => r.select(&from.tail),
+            Coproduct::Inl(l) => l.select(&mut from.head),
+            Coproduct::Inr(r) => r.select(&mut from.tail),
         }
     }
 }
 
-impl<'a> Selector<'a> for CNil {
-    type Arg = HNil;
-
-    fn select(&self, _from: &'a Self::Arg) -> Result<Option<Value>, DeserializationError> {
+impl<'a> Selector<HNil> for CNil {
+    fn select(&self, _from: &mut HNil) -> Result<Option<Value>, DeserializationError> {
         Ok(None)
     }
 }
 
-pub trait SelectHandler<'a, A> {
+pub trait SelectHandler<A> {
     type Handler: HandlerAction<ConnectorAgent, Completion = ()> + 'static;
 
-    fn select_handler(&self, args: &'a A) -> Result<Self::Handler, SelectorError>;
+    fn select_handler(&self, args: &mut A) -> Result<Self::Handler, SelectorError>;
 }

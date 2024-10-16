@@ -13,17 +13,16 @@
 // limitations under the License.
 
 use crate::selector::pubsub::relay::{
-    Inner, LaneSelector, NodeSelector, PayloadSegment, PayloadSelector, Segment,
+    parse_lane_selector, parse_node_selector, parse_value_selector, LaneSelector, NodeSelector,
+    PayloadSegment, RelayPayloadSelector, Segment,
 };
-use crate::selector::PayloadSelector as ValueSelector;
-use crate::selector::{KeySelector, PubSubSelector, TopicSelector};
-use std::str::FromStr;
+use crate::selector::{KeySelector, PayloadSelector, PubSubSelector, TopicSelector};
 use swimos_model::Value;
 
 #[test]
 fn parse_lane() {
-    fn ok(pattern: &str, expected: LaneSelector) {
-        match LaneSelector::from_str(pattern) {
+    fn ok(pattern: &str, expected: LaneSelector<PubSubSelector>) {
+        match parse_lane_selector(pattern) {
             Ok(actual) => {
                 assert_eq!(expected, actual);
             }
@@ -34,7 +33,7 @@ fn parse_lane() {
     }
 
     fn err(pattern: &str) {
-        if let Ok(actual) = LaneSelector::from_str(pattern) {
+        if let Ok(actual) = parse_lane_selector(pattern) {
             panic!(
                 "Expected parse error from pattern {}, but got {:?}",
                 pattern, actual
@@ -44,31 +43,28 @@ fn parse_lane() {
 
     ok(
         "lane",
-        LaneSelector {
-            segment: Segment::Static("lane".to_string()),
-            pattern: "lane".to_string(),
-        },
+        LaneSelector::new(Segment::Static("lane".to_string()), "lane".to_string()),
     );
     ok(
         "$key",
-        LaneSelector {
-            segment: Segment::Selector(PubSubSelector::inject(KeySelector::default())),
-            pattern: "$key".to_string(),
-        },
+        LaneSelector::new(
+            Segment::Selector(PubSubSelector::inject(KeySelector::default())),
+            "$key".to_string(),
+        ),
     );
     ok(
         "$payload",
-        LaneSelector {
-            segment: Segment::Selector(PubSubSelector::inject(ValueSelector::default())),
-            pattern: "$payload".to_string(),
-        },
+        LaneSelector::new(
+            Segment::Selector(PubSubSelector::inject(PayloadSelector::default())),
+            "$payload".to_string(),
+        ),
     );
     ok(
         "$topic",
-        LaneSelector {
-            segment: Segment::Selector(PubSubSelector::inject(TopicSelector)),
-            pattern: "$topic".to_string(),
-        },
+        LaneSelector::new(
+            Segment::Selector(PubSubSelector::inject(TopicSelector)),
+            "$topic".to_string(),
+        ),
     );
     err("$donut");
     err("a string with words");
@@ -96,8 +92,8 @@ fn parse_lane() {
 
 #[test]
 fn parse_node() {
-    fn ok(pattern: &str, expected: NodeSelector) {
-        match NodeSelector::from_str(pattern) {
+    fn ok(pattern: &str, expected: NodeSelector<PubSubSelector>) {
+        match parse_node_selector(pattern) {
             Ok(actual) => {
                 assert_eq!(expected, actual);
             }
@@ -108,7 +104,7 @@ fn parse_node() {
     }
 
     fn err(pattern: &str) {
-        if let Ok(actual) = NodeSelector::from_str(pattern) {
+        if let Ok(actual) = parse_node_selector(pattern) {
             panic!(
                 "Expected parse error from pattern {}, but got {:?}",
                 pattern, actual
@@ -117,47 +113,47 @@ fn parse_node() {
     }
     ok(
         "/lane",
-        NodeSelector {
-            segments: vec![Segment::Static("/lane".to_string())],
-            pattern: "/lane".to_string(),
-        },
+        NodeSelector::new(
+            "/lane".to_string(),
+            vec![Segment::Static("/lane".to_string())],
+        ),
     );
     ok(
         "/lane/sub/path",
-        NodeSelector {
-            segments: vec![Segment::Static("/lane/sub/path".to_string())],
-            pattern: "/lane/sub/path".to_string(),
-        },
+        NodeSelector::new(
+            "/lane/sub/path".to_string(),
+            vec![Segment::Static("/lane/sub/path".to_string())],
+        ),
     );
     ok(
         "/node/$key",
-        NodeSelector {
-            segments: vec![
+        NodeSelector::new(
+            "/node/$key".to_string(),
+            vec![
                 Segment::Static("/node/".to_string()),
                 Segment::Selector(PubSubSelector::inject(KeySelector::default())),
             ],
-            pattern: "/node/$key".to_string(),
-        },
+        ),
     );
     ok(
         "/node/$payload",
-        NodeSelector {
-            segments: vec![
+        NodeSelector::new(
+            "/node/$payload".to_string(),
+            vec![
                 Segment::Static("/node/".to_string()),
-                Segment::Selector(PubSubSelector::inject(ValueSelector::default())),
+                Segment::Selector(PubSubSelector::inject(PayloadSelector::default())),
             ],
-            pattern: "/node/$payload".to_string(),
-        },
+        ),
     );
     ok(
         "/node/$topic",
-        NodeSelector {
-            segments: vec![
+        NodeSelector::new(
+            "/node/$topic".to_string(),
+            vec![
                 Segment::Static("/node/".to_string()),
                 Segment::Selector(PubSubSelector::inject(TopicSelector)),
             ],
-            pattern: "/node/$topic".to_string(),
-        },
+        ),
     );
     err("/");
     err("//");
@@ -174,8 +170,8 @@ fn parse_node() {
 
 #[test]
 fn parse_payload() {
-    fn value_ok(pattern: &str, expected: PayloadSelector) {
-        match PayloadSelector::value(pattern, true) {
+    fn value_ok(pattern: &str, expected: RelayPayloadSelector<PubSubSelector>) {
+        match parse_value_selector(pattern, true) {
             Ok(actual) => {
                 assert_eq!(expected, actual);
             }
@@ -187,42 +183,34 @@ fn parse_payload() {
 
     value_ok(
         "blah",
-        PayloadSelector {
-            inner: Inner::Value {
-                pattern: "blah".to_string(),
-                segment: PayloadSegment::Value(Value::from("blah")),
-            },
-            required: true,
-        },
+        RelayPayloadSelector::value(
+            PayloadSegment::Value(Value::from("blah")),
+            "blah".to_string(),
+            true,
+        ),
     );
     value_ok(
         "$key",
-        PayloadSelector {
-            inner: Inner::Value {
-                pattern: "$key".to_string(),
-                segment: PayloadSegment::Selector(PubSubSelector::inject(KeySelector::default())),
-            },
-            required: true,
-        },
+        RelayPayloadSelector::value(
+            PayloadSegment::Selector(PubSubSelector::inject(KeySelector::default())),
+            "$key".to_string(),
+            true,
+        ),
     );
     value_ok(
         "$payload",
-        PayloadSelector {
-            inner: Inner::Value {
-                pattern: "$payload".to_string(),
-                segment: PayloadSegment::Selector(PubSubSelector::inject(ValueSelector::default())),
-            },
-            required: true,
-        },
+        RelayPayloadSelector::value(
+            PayloadSegment::Selector(PubSubSelector::inject(PayloadSelector::default())),
+            "$payload".to_string(),
+            true,
+        ),
     );
     value_ok(
         "$topic",
-        PayloadSelector {
-            inner: Inner::Value {
-                pattern: "$topic".to_string(),
-                segment: PayloadSegment::Selector(PubSubSelector::inject(TopicSelector)),
-            },
-            required: true,
-        },
+        RelayPayloadSelector::value(
+            PayloadSegment::Selector(PubSubSelector::inject(TopicSelector)),
+            "$topic".to_string(),
+            true,
+        ),
     );
 }

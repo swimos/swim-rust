@@ -26,8 +26,8 @@ use swimos_agent::agent_lifecycle::HandlerContext;
 use swimos_agent::event_handler::{EventHandler, HandlerActionExt, UnitHandler};
 use swimos_api::agent::WarpLaneKind;
 use swimos_connector::deser::MessageView;
-use swimos_connector::ingress::{Lanes, MessageSelector};
-use swimos_connector::selector::SelectorError;
+use swimos_connector::ingress::{pubsub::MessageSelector, Lanes};
+use swimos_connector::selector::{PubSubSelector, SelectorError};
 use swimos_connector::{
     BaseConnector, ConnectorAgent, ConnectorStream, IngressConnector, IngressContext,
 };
@@ -51,7 +51,7 @@ use tracing::{debug, error, info};
 pub struct KafkaIngressConnector<F> {
     factory: F,
     configuration: KafkaIngressConfiguration,
-    lanes: RefCell<Lanes>,
+    lanes: RefCell<Lanes<PubSubSelector>>,
 }
 
 impl<F> KafkaIngressConnector<F> {
@@ -70,7 +70,7 @@ impl KafkaIngressConnector<KafkaFactory> {
     ///
     /// # Arguments
     /// * `configuration` - The connector configuration, specifying the connection details for the Kafka consumer
-    ///   an the lanes that the connector agent should expose.
+    ///   and the lanes that the connector agent should expose.
     pub fn for_config(configuration: KafkaIngressConfiguration) -> Self {
         Self::new(KafkaFactory, configuration)
     }

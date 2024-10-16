@@ -32,6 +32,7 @@ frunk = { workspace = true }
 bytes = { workspace = true }
 
 [dev-dependencies]
+swimos_connector_util = { workspace = true }
 tokio = { workspace = true, features = ["rt"] }
 uuid = { workspace = true, features = ["v4"] }
 bytes = { workspace = true }

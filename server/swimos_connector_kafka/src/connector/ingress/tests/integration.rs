@@ -18,8 +18,6 @@ use std::{
     time::Duration,
 };
 
-use super::setup_agent;
-use crate::connector::test_util::run_handler_with_futures;
 use crate::{
     config::KafkaLogLevel,
     connector::ingress::{message_to_handler, Lanes, MessageSelector, MessageState, MessageTasks},
@@ -36,10 +34,37 @@ use swimos_api::agent::WarpLaneKind;
 use swimos_connector::config::{IngressMapLaneSpec, IngressValueLaneSpec};
 use swimos_connector::deser::{MessageDeserializer, MessageView, ReconDeserializer};
 use swimos_connector::{BaseConnector, ConnectorAgent, IngressConnector, IngressContext};
+use swimos_connector_util::run_handler_with_futures;
 use swimos_model::{Item, Value};
 use swimos_recon::print_recon_compact;
 use swimos_utilities::trigger;
 use tokio::sync::mpsc;
+
+fn setup_agent() -> (ConnectorAgent, HashMap<String, u64>) {
+    let agent = ConnectorAgent::default();
+    let mut ids = HashMap::new();
+    let id1 = agent
+        .register_dynamic_item(
+            "key",
+            ItemDescriptor::WarpLane {
+                kind: WarpLaneKind::Value,
+                flags: ItemFlags::TRANSIENT,
+            },
+        )
+        .expect("Registration failed.");
+    let id2 = agent
+        .register_dynamic_item(
+            "map",
+            ItemDescriptor::WarpLane {
+                kind: WarpLaneKind::Map,
+                flags: ItemFlags::TRANSIENT,
+            },
+        )
+        .expect("Registration failed.");
+    ids.insert("key".to_string(), id1);
+    ids.insert("map".to_string(), id2);
+    (agent, ids)
+}
 
 fn props() -> HashMap<String, String> {
     [("key".to_string(), "value".to_string())]

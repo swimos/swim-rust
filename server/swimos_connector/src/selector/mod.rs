@@ -16,7 +16,9 @@ mod base;
 mod model;
 
 pub use base::*;
+mod relay;
 pub use model::*;
+pub use relay::*;
 
 #[cfg(feature = "pubsub")]
 mod pubsub;

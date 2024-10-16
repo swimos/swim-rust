@@ -18,7 +18,7 @@ mod ingress;
 pub use config::FluvioIngressConfiguration;
 pub use fluvio::dataplane::link::ErrorCode;
 pub use fluvio::FluvioError;
-pub use ingress::FluvioIngressConnector;
+pub use ingress::{FluvioIngressConnector, FluvioIngressConsumer};
 use swimos_connector::selector::{InvalidLanes, SelectorError};
 pub use swimos_connector::{
     config::{IngressMapLaneSpec, IngressValueLaneSpec},

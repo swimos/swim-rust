@@ -45,3 +45,4 @@ parking_lot = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
+swimos_connector_util = { workspace = true }
