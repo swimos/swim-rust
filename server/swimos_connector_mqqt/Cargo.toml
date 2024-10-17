@@ -21,7 +21,7 @@ swimos_agent = { workspace = true }
 tracing = { workspace = true }
 rumqttc = { workspace = true, features = ["url"]}
 thiserror = { workspace = true }
-swimos_connector = { workspace = true }
+swimos_connector = { workspace = true, features = ["pubsub"] }
 frunk = { workspace = true }
 
 [dev-dependencies]

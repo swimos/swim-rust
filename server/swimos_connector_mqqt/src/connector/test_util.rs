@@ -19,6 +19,7 @@ use std::{
 
 use bytes::BytesMut;
 use futures::{stream::FuturesUnordered, StreamExt};
+use rumqttc::tokio_rustls::rustls::internal::msgs::base::Payload;
 use swimos_agent::{
     agent_model::{
         downlink::BoxDownlinkChannelFactory, AgentSpec, ItemDescriptor, ItemFlags, WarpLaneKind,
@@ -37,6 +38,8 @@ use swimos_api::{
 use swimos_connector::ConnectorAgent;
 use swimos_model::Text;
 use swimos_utilities::routing::RouteUri;
+
+use crate::facade::MqttMessage;
 
 pub struct LaneRequest {
     name: String,
@@ -258,5 +261,29 @@ pub fn run_handler<H: EventHandler<ConnectorAgent>>(
                 break modified;
             }
         }
+    }
+}
+
+pub struct TestMessage {
+    topic: String,
+    payload: Vec<u8>,
+}
+
+impl TestMessage {
+    pub fn new(topic: &str, payload: &str) -> Self {
+        TestMessage {
+            topic: topic.to_string(),
+            payload: payload.as_bytes().to_vec(),
+        }
+    }
+}
+
+impl MqttMessage for TestMessage {
+    fn topic(&self) -> &str {
+        &self.topic
+    }
+
+    fn payload(&self) -> &[u8] {
+        &self.payload
     }
 }

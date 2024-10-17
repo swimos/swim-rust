@@ -45,7 +45,7 @@ pub enum InvalidLaneSpec {
 /// Error type produced for invalid lane descriptors.
 #[derive(Clone, Debug, Error, PartialEq, Eq)]
 pub enum InvalidLanes {
-    /// The specification of a line as not valid
+    /// The specification of a lane as not valid
     #[error(transparent)]
     Spec(#[from] InvalidLaneSpec),
     /// A connector has too many lanes.

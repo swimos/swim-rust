@@ -337,7 +337,7 @@ impl ValueSelector for ChainSelector {
 }
 
 /// A value lane selector generates event handlers from messages to update the state of a map lane.
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct MapLaneSelector<K, V> {
     name: String,
     key_selector: K,

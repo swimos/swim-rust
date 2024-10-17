@@ -1,3 +1,19 @@
+// Copyright 2015-2024 Swim Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+use std::collections::HashSet;
+
 use frunk::{hlist, Coprod};
 use swimos_agent::event_handler::{EventHandler, HandlerActionExt, Sequentially};
 use swimos_connector::{
@@ -13,6 +29,9 @@ use swimos_model::Value;
 use tracing::trace;
 
 use crate::facade::MqttMessage;
+
+#[cfg(test)]
+mod tests;
 
 pub type MqttSelector = Coprod!(TopicSelector, PayloadSelector);
 
@@ -45,6 +64,7 @@ impl Lanes {
             .iter()
             .map(try_from_map_selector)
             .collect::<Result<Vec<_>, _>>()?;
+        check_selectors(&value_selectors, &map_selectors)?;
         Ok(Lanes {
             value_lanes: value_selectors,
             map_lanes: map_selectors,
@@ -73,6 +93,31 @@ fn try_from_map_selector(
     let selector = MapLaneSelector::try_from(selector)?;
     Ok(selector.try_map_selectors(check_selector, check_selector)?)
 }
+
+fn check_selectors(
+    value_selectors: &[ValueLaneSelector<MqttSelector>],
+    map_selectors: &[MapLaneSelector<MqttSelector, MqttSelector>],
+) -> Result<(), InvalidLanes> {
+    let mut names = HashSet::new();
+    for value_selector in value_selectors {
+        let name = value_selector.name();
+        if names.contains(name) {
+            return Err(InvalidLanes::NameCollision(name.to_string()));
+        } else {
+            names.insert(name);
+        }
+    }
+    for map_selector in map_selectors {
+        let name = map_selector.name();
+        if names.contains(name) {
+            return Err(InvalidLanes::NameCollision(name.to_string()));
+        } else {
+            names.insert(name);
+        }
+    }
+    Ok(())
+}
+
 pub struct MqttMessageSelector {
     payload_deserializer: BoxMessageDeserializer,
     lanes: Lanes,
