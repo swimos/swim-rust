@@ -32,28 +32,35 @@ use crate::{
     EgressDownlinkSpec, EgressLaneSpec, MqttEgressConfiguration,
 };
 
+#[cfg(test)]
+mod tests;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct MessageSelector {
+pub struct MessageExtractor {
     topic: TopicExtractor,
     payload: Option<FieldExtractor>,
 }
 
-impl MessageSelector {
+impl MessageExtractor {
     pub fn new(topic: TopicExtractor, payload: Option<FieldExtractor>) -> Self {
-        MessageSelector { topic, payload }
+        MessageExtractor { topic, payload }
     }
 
-    pub fn select_topic<'a>(&'a self, key: Option<&'a Value>, value: &'a Value) -> Option<&'a str> {
-        let MessageSelector { topic, .. } = self;
+    pub fn extract_topic<'a>(
+        &'a self,
+        key: Option<&'a Value>,
+        value: &'a Value,
+    ) -> Option<&'a str> {
+        let MessageExtractor { topic, .. } = self;
         topic.select(key, value)
     }
 
-    pub fn select_payload<'a>(
+    pub fn extract_payload<'a>(
         &self,
         key: Option<&'a Value>,
         value: &'a Value,
     ) -> Option<&'a Value> {
-        let MessageSelector { payload, .. } = self;
+        let MessageExtractor { payload, .. } = self;
         match payload {
             Some(sel) => sel.select(key, value),
             None => Some(value),
@@ -61,33 +68,33 @@ impl MessageSelector {
     }
 }
 
-impl<'a> From<MessageSelectorSpec<'a>> for MessageSelector {
-    fn from(value: MessageSelectorSpec<'a>) -> Self {
-        let MessageSelectorSpec { topic, payload } = value;
+impl<'a> From<MessageExtractorSpec<'a>> for MessageExtractor {
+    fn from(value: MessageExtractorSpec<'a>) -> Self {
+        let MessageExtractorSpec { topic, payload } = value;
         let topic = match topic {
             TopicExtractorSpec::Fixed(s) => TopicExtractor::Fixed(s.to_string()),
             TopicExtractorSpec::Selector(spec) => TopicExtractor::Selector(spec.into()),
         };
-        MessageSelector::new(topic, payload.map(Into::into))
+        MessageExtractor::new(topic, payload.map(Into::into))
     }
 }
 
-struct MessageSelectorSpec<'a> {
+struct MessageExtractorSpec<'a> {
     topic: TopicExtractorSpec<'a>,
     payload: Option<FieldExtractorSpec<'a>>,
 }
 
-impl MessageSelector {
+impl MessageExtractor {
     pub fn try_from_ext_spec(
         spec: &ExtractionSpec,
         fixed_topic: Option<&str>,
     ) -> Result<Self, InvalidExtractor> {
-        let spec = MessageSelectorSpec::try_from_ext_spec(spec, fixed_topic)?;
+        let spec = MessageExtractorSpec::try_from_ext_spec(spec, fixed_topic)?;
         Ok(spec.into())
     }
 }
 
-impl<'a> MessageSelectorSpec<'a> {
+impl<'a> MessageExtractorSpec<'a> {
     fn try_from_ext_spec(
         spec: &'a ExtractionSpec,
         fixed_topic: Option<&str>,
@@ -113,20 +120,20 @@ impl<'a> MessageSelectorSpec<'a> {
             .as_ref()
             .map(|s| parse_field_selector(s))
             .transpose()?;
-        Ok(MessageSelectorSpec { topic, payload })
+        Ok(MessageExtractorSpec { topic, payload })
     }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct MessageSelectors {
-    value_lanes: HashMap<String, MessageSelector>,
-    map_lanes: HashMap<String, MessageSelector>,
-    value_downlinks: HashMap<Address<String>, MessageSelector>,
-    map_downlinks: HashMap<Address<String>, MessageSelector>,
+pub struct MessageExtractors {
+    value_lanes: HashMap<String, MessageExtractor>,
+    map_lanes: HashMap<String, MessageExtractor>,
+    value_downlinks: HashMap<Address<String>, MessageExtractor>,
+    map_downlinks: HashMap<Address<String>, MessageExtractor>,
 }
 
-impl MessageSelectors {
-    pub fn select_source(&self, source: MessageSource<'_>) -> Option<&MessageSelector> {
+impl MessageExtractors {
+    pub fn select_source(&self, source: MessageSource<'_>) -> Option<&MessageExtractor> {
         match source {
             MessageSource::Lane(name) => self
                 .value_lanes
@@ -140,7 +147,7 @@ impl MessageSelectors {
     }
 }
 
-impl TryFrom<&MqttEgressConfiguration> for MessageSelectors {
+impl TryFrom<&MqttEgressConfiguration> for MessageExtractors {
     type Error = InvalidExtractors;
 
     fn try_from(value: &MqttEgressConfiguration) -> Result<Self, Self::Error> {
@@ -164,7 +171,7 @@ impl TryFrom<&MqttEgressConfiguration> for MessageSelectors {
                     return Err(InvalidExtractors::NameCollision(name));
                 }
                 Entry::Vacant(entry) => {
-                    let selector = MessageSelector::try_from_ext_spec(extractor, top)?;
+                    let selector = MessageExtractor::try_from_ext_spec(extractor, top)?;
                     entry.insert(selector);
                 }
             }
@@ -179,7 +186,7 @@ impl TryFrom<&MqttEgressConfiguration> for MessageSelectors {
                     return Err(InvalidExtractors::NameCollision(name));
                 }
                 Entry::Vacant(entry) => {
-                    let selector = MessageSelector::try_from_ext_spec(extractor, top)?;
+                    let selector = MessageExtractor::try_from_ext_spec(extractor, top)?;
                     entry.insert(selector);
                 }
             }
@@ -191,7 +198,7 @@ impl TryFrom<&MqttEgressConfiguration> for MessageSelectors {
                     return Err(InvalidExtractors::AddressCollision(address));
                 }
                 Entry::Vacant(entry) => {
-                    let selector = MessageSelector::try_from_ext_spec(extractor, top)?;
+                    let selector = MessageExtractor::try_from_ext_spec(extractor, top)?;
                     entry.insert(selector);
                 }
             }
@@ -206,12 +213,12 @@ impl TryFrom<&MqttEgressConfiguration> for MessageSelectors {
                     return Err(InvalidExtractors::AddressCollision(address));
                 }
                 Entry::Vacant(entry) => {
-                    let selector = MessageSelector::try_from_ext_spec(extractor, top)?;
+                    let selector = MessageExtractor::try_from_ext_spec(extractor, top)?;
                     entry.insert(selector);
                 }
             }
         }
-        Ok(MessageSelectors {
+        Ok(MessageExtractors {
             value_lanes: value_lane_selectors,
             map_lanes: map_lane_selectors,
             value_downlinks: value_dl_selectors,

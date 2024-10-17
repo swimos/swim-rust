@@ -17,7 +17,7 @@ use std::{cell::RefCell, collections::HashMap, future::Future, sync::Arc, time::
 use bytes::BytesMut;
 use futures::{future::Ready, FutureExt};
 use rumqttc::{ClientError, MqttOptions};
-use selector::MessageSelectors;
+use selector::MessageExtractors;
 use swimos_agent::{
     agent_lifecycle::HandlerContext,
     event_handler::{EventHandler, HandlerActionExt, TryHandlerActionExt, UnitHandler},
@@ -69,13 +69,13 @@ impl MqttEgressConnector<MqttFactory> {
 struct ConnectorState<F: PublisherFactory> {
     ser_tx: Option<oneshot::Sender<SharedMessageSerializer>>,
     serializer: Serializer,
-    selectors: Arc<MessageSelectors>,
+    selectors: Arc<MessageExtractors>,
     sender: F::Publisher,
     driver: Option<F::Driver>,
 }
 
 impl<F: PublisherFactory> ConnectorState<F> {
-    fn new(extractors: Arc<MessageSelectors>, sender: F::Publisher, driver: F::Driver) -> Self {
+    fn new(extractors: Arc<MessageExtractors>, sender: F::Publisher, driver: F::Driver) -> Self {
         let (ser_tx, ser_rx) = oneshot::channel();
         ConnectorState {
             ser_tx: Some(ser_tx),
@@ -162,14 +162,14 @@ where
 #[derive(Clone)]
 pub struct MqttSender<P> {
     publisher: SerializingPublisher<P>,
-    selectors: Arc<MessageSelectors>,
+    selectors: Arc<MessageExtractors>,
     retain: bool,
 }
 
 impl<P> MqttSender<P> {
     fn new(
         publisher: P,
-        selectors: Arc<MessageSelectors>,
+        selectors: Arc<MessageExtractors>,
         payload_format: SharedMessageSerializer,
     ) -> Self {
         MqttSender {
@@ -287,7 +287,7 @@ where
         let MqttSender { selectors, .. } = self;
         selectors
             .select_source(source)
-            .and_then(|selector| selector.select_topic(key, value))
+            .and_then(|selector| selector.extract_topic(key, value))
     }
 
     fn select_payload<'a>(
@@ -299,7 +299,7 @@ where
         let MqttSender { selectors, .. } = self;
         selectors
             .select_source(source)
-            .and_then(|selector| selector.select_payload(key, value))
+            .and_then(|selector| selector.extract_payload(key, value))
             .unwrap_or(&Value::Extant)
     }
 

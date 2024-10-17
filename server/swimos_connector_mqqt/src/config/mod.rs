@@ -55,11 +55,11 @@ pub struct MqttEgressConfiguration {
     /// Descriptors for the value downlinks (to remote lanes) of the connector agent and how to extract messages
     /// from the received events to send to the egress sink.
     pub value_downlinks: Vec<EgressDownlinkSpec>,
-    /// Serialization format to use when writing payloads.
-    pub payload_serializer: DataFormat,
     /// Descriptors for the map downlinks (to remote lanes) of the connector agent and how to extract messages
     /// from the received events to send to the egress sink.
     pub map_downlinks: Vec<EgressDownlinkSpec>,
+    /// Serialization format to use when writing payloads.
+    pub payload_serializer: DataFormat,
     pub keep_alive_secs: Option<u64>,
     pub max_packet_size: Option<usize>,
     pub max_inflight: Option<u32>,
