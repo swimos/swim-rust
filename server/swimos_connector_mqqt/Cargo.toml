@@ -19,10 +19,12 @@ swimos_recon = { workspace = true }
 tokio = { workspace = true, features = ["sync", "macros"] }
 swimos_agent = { workspace = true }
 tracing = { workspace = true }
-rumqttc = { workspace = true, features = ["url"]}
+rumqttc = { workspace = true, features = ["url", "use-rustls"]}
 thiserror = { workspace = true }
 swimos_connector = { workspace = true, features = ["pubsub"] }
 frunk = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt"] }
+parking_lot = { workspace = true }
+rand = { workspace = true }

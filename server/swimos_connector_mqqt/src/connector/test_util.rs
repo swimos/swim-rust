@@ -19,7 +19,6 @@ use std::{
 
 use bytes::BytesMut;
 use futures::{stream::FuturesUnordered, StreamExt};
-use rumqttc::tokio_rustls::rustls::internal::msgs::base::Payload;
 use swimos_agent::{
     agent_model::{
         downlink::BoxDownlinkChannelFactory, AgentSpec, ItemDescriptor, ItemFlags, WarpLaneKind,

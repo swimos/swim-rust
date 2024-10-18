@@ -19,7 +19,7 @@ use futures::{
     Stream, StreamExt, TryStream, TryStreamExt,
 };
 use rumqttc::{ClientError, MqttOptions};
-use selector::Lanes;
+use selector::{Lanes, MqttMessageSelector};
 use swimos_agent::{
     agent_lifecycle::HandlerContext,
     event_handler::{EventHandler, UnitHandler},
@@ -40,6 +40,8 @@ use crate::{
 };
 
 mod selector;
+#[cfg(test)]
+mod tests;
 
 use super::DEFAULT_CHANNEL_SIZE;
 
@@ -61,9 +63,7 @@ impl<F> MqttIngressConnector<F> {
 
 impl MqttIngressConnector<MqttFactory> {
     pub fn for_config(configuration: MqttIngressConfiguration) -> Self {
-        let channel_size = configuration
-            .client_channel_size
-            .unwrap_or(DEFAULT_CHANNEL_SIZE);
+        let channel_size = configuration.channel_size.unwrap_or(DEFAULT_CHANNEL_SIZE);
         MqttIngressConnector::new(MqttFactory::new(channel_size), configuration)
     }
 }
@@ -102,6 +102,7 @@ where
             configuration.keep_alive_secs,
             configuration.max_packet_size,
             None,
+            configuration.channel_size,
             configuration.credentials.clone(),
         )?;
 
@@ -113,9 +114,6 @@ where
             lanes,
         );
         let handler_stream = once(handler_stream_fut).try_flatten();
-
-        //let handler_stream =
-        //    pub_stream.map(move |result| result.map(|publish| handle_message(&lanes, publish)));
 
         Ok(Box::pin(handler_stream))
     }
@@ -163,7 +161,7 @@ where
         SubscriptionStream::new(Box::pin(consumer.into_stream()), sub_task).into_stream();
 
     let msg_deser = format.load_deserializer().await?;
-    let message_sel = selector::MqttMessageSelector::new(msg_deser, lanes);
+    let message_sel = MqttMessageSelector::new(msg_deser, lanes);
     let handlers = pub_stream.map(move |result| {
         result.and_then(|message| {
             message_sel
@@ -246,6 +244,7 @@ fn open_client<F>(
     keep_alive_secs: Option<u64>,
     max_packet_size: Option<usize>,
     max_inflight: Option<u32>,
+    channel_size: Option<usize>,
     credentials: Option<Credentials>,
 ) -> Result<(F::Subscriber, F::Consumer), MqttConnectorError>
 where
@@ -261,6 +260,9 @@ where
     if let Some(n) = max_inflight {
         let max = u16::try_from(n).unwrap_or(u16::MAX);
         opts.set_inflight(max);
+    }
+    if let Some(n) = channel_size {
+        opts.set_request_channel_capacity(n);
     }
     if let Some(Credentials { username, password }) = credentials {
         opts.set_credentials(username, password);

@@ -118,7 +118,7 @@ fn make_config() -> MqttEgressConfiguration {
         keep_alive_secs: None,
         max_packet_size: None,
         max_inflight: None,
-        client_channel_size: None,
+        channel_size: None,
         credentials: None,
     }
 }

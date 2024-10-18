@@ -59,9 +59,7 @@ impl<F: PublisherFactory> MqttEgressConnector<F> {
 
 impl MqttEgressConnector<MqttFactory> {
     pub fn for_config(configuration: MqttEgressConfiguration) -> Self {
-        let channel_size = configuration
-            .client_channel_size
-            .unwrap_or(DEFAULT_CHANNEL_SIZE);
+        let channel_size = configuration.channel_size.unwrap_or(DEFAULT_CHANNEL_SIZE);
         MqttEgressConnector::new(MqttFactory::new(channel_size), configuration)
     }
 }
@@ -203,6 +201,7 @@ where
             keep_alive_secs,
             max_packet_size,
             max_inflight,
+            channel_size,
             credentials,
             ..
         } = configuration;
@@ -224,6 +223,7 @@ where
             *keep_alive_secs,
             *max_packet_size,
             *max_inflight,
+            *channel_size,
             credentials.clone(),
         )?;
         let mut guard = inner.borrow_mut();
@@ -332,6 +332,7 @@ fn open_client<F>(
     keep_alive_secs: Option<u64>,
     max_packet_size: Option<usize>,
     max_inflight: Option<u32>,
+    channel_size: Option<usize>,
     credentials: Option<Credentials>,
 ) -> Result<(F::Publisher, F::Driver), MqttConnectorError>
 where
@@ -347,6 +348,9 @@ where
     if let Some(n) = max_inflight {
         let max = u16::try_from(n).unwrap_or(u16::MAX);
         opts.set_inflight(max);
+    }
+    if let Some(n) = channel_size {
+        opts.set_request_channel_capacity(n);
     }
     if let Some(Credentials { username, password }) = credentials {
         opts.set_credentials(username, password);

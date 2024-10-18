@@ -34,7 +34,7 @@ pub struct MqttIngressConfiguration {
     pub subscription: Subscription,
     pub keep_alive_secs: Option<u64>,
     pub max_packet_size: Option<usize>,
-    pub client_channel_size: Option<usize>,
+    pub channel_size: Option<usize>,
     pub credentials: Option<Credentials>,
 }
 
@@ -63,7 +63,7 @@ pub struct MqttEgressConfiguration {
     pub keep_alive_secs: Option<u64>,
     pub max_packet_size: Option<usize>,
     pub max_inflight: Option<u32>,
-    pub client_channel_size: Option<usize>,
+    pub channel_size: Option<usize>,
     pub credentials: Option<Credentials>,
 }
 

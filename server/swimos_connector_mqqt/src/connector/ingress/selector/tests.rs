@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{borrow::Borrow, collections::HashMap};
+use std::collections::HashMap;
 
 use crate::connector::test_util::{run_handler, TestMessage, TestSpawner};
 use swimos_agent::agent_model::{AgentSpec, ItemDescriptor, ItemFlags};
