@@ -46,7 +46,7 @@ fn lanes_from_spec() {
         "map", "$key", "$payload", true, false,
     )];
     let lanes =
-        Lanes::try_from_lane_specs(&value_lanes, &map_lanes).expect("Invalid specification.");
+        Lanes::<PubSubSelector>::try_from_lane_specs(&value_lanes, &map_lanes).expect("Invalid specification.");
 
     let value_lanes = lanes
         .value_lanes()
@@ -70,7 +70,7 @@ fn value_lane_collision() {
         IngressValueLaneSpec::new(Some("key"), "$payload.field", false),
     ];
     let map_lanes = vec![];
-    let err = Lanes::try_from_lane_specs(&value_lanes, &map_lanes).expect_err("Should fail.");
+    let err = Lanes::<PubSubSelector>::try_from_lane_specs(&value_lanes, &map_lanes).expect_err("Should fail.");
     assert_eq!(err, InvalidLanes::NameCollision("key".to_string()))
 }
 
@@ -81,7 +81,7 @@ fn map_lane_collision() {
         IngressMapLaneSpec::new("map", "$key", "$payload", true, false),
         IngressMapLaneSpec::new("map", "$key[0]", "$payload", true, true),
     ];
-    let err = Lanes::try_from_lane_specs(&value_lanes, &map_lanes).expect_err("Should fail.");
+    let err = Lanes::<PubSubSelector>::try_from_lane_specs(&value_lanes, &map_lanes).expect_err("Should fail.");
     assert_eq!(err, InvalidLanes::NameCollision("map".to_string()))
 }
 
@@ -95,7 +95,7 @@ fn value_map_lane_collision() {
     let map_lanes = vec![IngressMapLaneSpec::new(
         "field", "$key", "$payload", true, false,
     )];
-    let err = Lanes::try_from_lane_specs(&value_lanes, &map_lanes).expect_err("Should fail.");
+    let err = Lanes::<PubSubSelector>::try_from_lane_specs(&value_lanes, &map_lanes).expect_err("Should fail.");
     assert_eq!(err, InvalidLanes::NameCollision("field".to_string()))
 }
 

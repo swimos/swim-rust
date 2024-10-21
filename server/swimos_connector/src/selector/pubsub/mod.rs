@@ -26,6 +26,7 @@ use crate::{
     DeserializationError,
 };
 pub use error::*;
+use frunk::coproduct::{CNil, Coproduct};
 use frunk::{Coprod, HList};
 use regex::Regex;
 pub use relay::{
@@ -145,6 +146,28 @@ pub struct RawSelectorDescriptor<'a> {
     pub part: &'a str,
     pub index: Option<usize>,
     pub components: Vec<SelectorComponent<'a>>,
+}
+
+impl<'a> RawSelectorDescriptor<'a> {
+    pub fn suggested_name(&self) -> Option<&'a str> {
+        let RawSelectorDescriptor { part, index, components } = self;
+        if let Some(SelectorComponent { name, index, .. }) = components.last() {
+            if index.is_none() {
+                Some(*name)
+            } else {
+                None
+            }
+        } else if index.is_none() {
+            let p = part.strip_prefix('$').unwrap_or(part);
+            if !p.is_empty() {
+                Some(p)
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
 }
 
 // can't use FromStr as it doesn't have a lifetime associated with it.
@@ -297,7 +320,10 @@ pub fn parse_selector(descriptor: &str) -> Result<SelectorDescriptor<'_>, BadSel
     RawSelectorDescriptor::try_from(descriptor)?.try_into()
 }
 
-impl TryFrom<&IngressValueLaneSpec> for PubSubValueLaneSelector {
+impl<S> TryFrom<&IngressValueLaneSpec> for ValueLaneSelector<S>
+where
+    S: InterpretLaneSelector,
+{
     type Error = InvalidLaneSpec;
 
     fn try_from(value: &IngressValueLaneSpec) -> Result<Self, Self::Error> {
@@ -306,15 +332,84 @@ impl TryFrom<&IngressValueLaneSpec> for PubSubValueLaneSelector {
             selector,
             required,
         } = value;
-        let parsed = parse_selector(selector.as_str())?;
+        let parsed = RawSelectorDescriptor::try_from(selector.as_str())?;
         if let Some(lane_name) = name
             .as_ref()
             .cloned()
             .or_else(|| parsed.suggested_name().map(|s| s.to_owned()))
         {
-            Ok(ValueLaneSelector::new(lane_name, parsed.into(), *required))
+            if let Some(selector) = S::try_interp(&parsed)? {
+                Ok(ValueLaneSelector::new(lane_name, selector, *required))
+            } else {
+                Err(InvalidLaneSpec::Selector(BadSelector::InvalidRoot))
+            }
         } else {
             Err(InvalidLaneSpec::NameCannotBeInferred)
+        }
+    }
+}
+
+trait InterpretLaneSelector: Sized {
+
+    fn try_interp(descriptor: &RawSelectorDescriptor<'_>) -> Result<Option<Self>, BadSelector>;
+
+}
+
+impl InterpretLaneSelector for PayloadSelector {
+    fn try_interp(descriptor: &RawSelectorDescriptor<'_>) -> Result<Option<Self>, BadSelector> {
+        let RawSelectorDescriptor { part, index, components } = descriptor;
+        if *part == "$payload" {
+            let selector = ChainSelector::new(*index, components);
+            Ok(Some(PayloadSelector::new(selector)))
+        } else {
+            Ok(None)
+        }
+    }
+}
+
+impl InterpretLaneSelector for KeySelector {
+    fn try_interp(descriptor: &RawSelectorDescriptor<'_>) -> Result<Option<Self>, BadSelector> {
+        let RawSelectorDescriptor { part, index, components } = descriptor;
+        if *part == "$key" {
+            let selector = ChainSelector::new(*index, components);
+            Ok(Some(KeySelector::new(selector)))
+        } else {
+            Ok(None)
+        }
+    }
+}
+
+impl InterpretLaneSelector for TopicSelector {
+    fn try_interp(descriptor: &RawSelectorDescriptor<'_>) -> Result<Option<Self>, BadSelector> {
+        let RawSelectorDescriptor { part, index, components } = descriptor;
+        if *part == "$topic" {
+            if index.is_none() && components.is_empty() {
+                Ok(Some(TopicSelector))
+            } else {
+                Err(BadSelector::TopicWithComponent)
+            }
+        } else {
+            Ok(None)
+        }
+    }
+}
+
+impl InterpretLaneSelector for CNil {
+    fn try_interp(_descriptor: &RawSelectorDescriptor<'_>) -> Result<Option<Self>, BadSelector> {
+        Ok(None)
+    }
+}
+
+impl<Head, Tail> InterpretLaneSelector for Coproduct<Head, Tail>
+where
+    Head: InterpretLaneSelector,
+    Tail: InterpretLaneSelector,
+{
+    fn try_interp(descriptor: &RawSelectorDescriptor<'_>) -> Result<Option<Self>, BadSelector> {
+        if let Some(tail) = Tail::try_interp(descriptor)? {
+            Ok(Some(Coproduct::Inr(tail)))
+        } else {
+            Ok(Head::try_interp(descriptor)?.map(Coproduct::Inl))
         }
     }
 }
@@ -331,7 +426,11 @@ impl<'a> From<SelectorDescriptor<'a>> for PubSubSelector {
     }
 }
 
-impl TryFrom<&IngressMapLaneSpec> for PubSubMapLaneSelector {
+impl<K, V> TryFrom<&IngressMapLaneSpec> for MapLaneSelector<K, V>
+where
+    K: InterpretLaneSelector,
+    V: InterpretLaneSelector,
+{
     type Error = InvalidLaneSpec;
 
     fn try_from(value: &IngressMapLaneSpec) -> Result<Self, Self::Error> {
@@ -342,13 +441,20 @@ impl TryFrom<&IngressMapLaneSpec> for PubSubMapLaneSelector {
             remove_when_no_value,
             required,
         } = value;
-        Ok(PubSubMapLaneSelector::new(
-            name.clone(),
-            parse_selector(key_selector.as_str())?.into(),
-            parse_selector(value_selector.as_str())?.into(),
-            *required,
-            *remove_when_no_value,
-        ))
+        let key = K::try_interp(&RawSelectorDescriptor::try_from(key_selector.as_str())?)?;
+        let value = V::try_interp(&RawSelectorDescriptor::try_from(value_selector.as_str())?)?;
+        match (key, value) {
+            (Some(key), Some(value)) => {
+                Ok(MapLaneSelector::new(
+                    name.clone(),
+                    key,
+                    value,
+                    *required,
+                    *remove_when_no_value,
+                ))
+            }
+            _ => Err(InvalidLaneSpec::Selector(BadSelector::InvalidRoot))
+        }
     }
 }
 

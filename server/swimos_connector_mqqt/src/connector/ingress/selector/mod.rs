@@ -75,7 +75,7 @@ impl Lanes {
 fn check_selector(selector: PubSubSelector) -> Result<MqttSelector, InvalidLaneSpec> {
     let split: Result<KeySelector, MqttSelector> = selector.uninject();
     match split {
-        Ok(_) => Err(InvalidLaneSpec::Selector(BadSelector::UnsupportedRoot)),
+        Ok(_) => Err(InvalidLaneSpec::Selector(BadSelector::InvalidRoot)),
         Err(sel) => Ok(sel),
     }
 }
