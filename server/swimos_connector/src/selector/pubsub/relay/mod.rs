@@ -15,24 +15,16 @@
 #[cfg(test)]
 mod tests;
 
-use crate::{
-    selector::{PubSubSelectorArgs, Selector, SelectorError},
-    BadSelector,
-};
-use frunk::Coprod;
+use crate::BadSelector;
 use swimos_model::Value;
 
+use crate::selector::relay::{
+    LaneSelector, NodeSelector, PayloadSegment, RelayPayloadSelector, Segment,
+};
 use crate::selector::{parse_selector, PubSubSelector};
 use regex::Regex;
-use std::{slice::Iter, str::FromStr, sync::OnceLock};
-use swimos_agent::event_handler::{Discard, SendCommand};
-use swimos_agent_protocol::MapMessage;
-use swimos_api::address::Address;
+use std::sync::OnceLock;
 use swimos_recon::parser::{parse_recognize, ParseError};
-
-type SendCommandOp =
-    Coprod!(SendCommand<String, Value>, SendCommand<String,MapMessage<Value, Value>>);
-pub type GenericSendCommandOp = Discard<Option<SendCommandOp>>;
 
 static STATIC_REGEX: OnceLock<Regex> = OnceLock::new();
 static STATIC_PATH_REGEX: OnceLock<Regex> = OnceLock::new();
@@ -53,13 +45,7 @@ fn create_static_path_regex() -> Result<Regex, regex::Error> {
     Regex::new(r"^\/?[a-zA-Z0-9_]+(\/[a-zA-Z0-9_]+)*(\/|$)")
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum Segment {
-    Static(String),
-    Selector(PubSubSelector),
-}
-
-fn parse_segment(pattern: &str) -> Result<Segment, BadSelector> {
+fn parse_segment(pattern: &str) -> Result<Segment<PubSubSelector>, BadSelector> {
     let mut iter = pattern.chars();
     match iter.next() {
         Some('$') => Ok(Segment::Selector(parse_selector(pattern)?.into())),
@@ -74,166 +60,91 @@ fn parse_segment(pattern: &str) -> Result<Segment, BadSelector> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-struct LaneSelector {
-    segment: Segment,
-    pattern: String,
+/// Parses a publish-subscribe [`LaneSelector`].
+///
+/// Publish-subscribe node URI selectors define three selector keywords which may be used at any
+/// part of the pattern.
+/// * `$topic` - selects the segment from the connector's topic. E.g, "/agents/$topic".
+/// * `$key` - selects the segment from the message's key. E.g, "/agents/$key".
+/// * `$payload` - selects the segment from the message's value. E.g, "/agents/$payload".
+///
+/// `$key` and `$payload` selectors yield Recon [`Value`]'s and allow for selecting attributes and
+/// items from the key or value of the message.
+///
+/// # Static Example
+/// "lights".
+///
+/// # Dynamic Example
+/// "$payload.id".
+pub fn parse_lane_selector(pattern: &str) -> Result<LaneSelector<PubSubSelector>, BadSelector> {
+    Ok(LaneSelector::new(
+        parse_segment(pattern)?,
+        pattern.to_string(),
+    ))
 }
 
-impl FromStr for LaneSelector {
-    type Err = BadSelector;
-
-    fn from_str(pattern: &str) -> Result<Self, Self::Err> {
-        Ok(LaneSelector {
-            segment: parse_segment(pattern)?,
-            pattern: pattern.to_string(),
-        })
+/// Parses a publish-subscribe [`NodeSelector`].
+///
+/// Publish-subscribe node URI selectors define three selector keywords which may be used at any
+/// part of the pattern.
+/// * `$topic` - selects the segment from the connector's topic. E.g, "/agents/$topic".
+/// * `$key` - selects the segment from the message's key. E.g, "/agents/$key".
+/// * `$payload` - selects the segment from the message's value. E.g, "/agents/$payload".
+///
+/// `$key` and `$payload` selectors yield Recon [`Value`]'s and allow for selecting attributes and
+/// items from the key or value of the message.
+///
+/// # Static Example
+/// "/agents/lights".
+///
+/// # Dynamic Example
+/// "/$topic/$key/$payload.id".
+pub fn parse_node_selector(mut pattern: &str) -> Result<NodeSelector<PubSubSelector>, BadSelector> {
+    let input = pattern.to_string();
+    if !pattern.starts_with('/') || pattern.len() < 2 {
+        return Err(BadSelector::InvalidPath);
     }
-}
 
-impl LaneSelector {
-    fn select(&self, args: &PubSubSelectorArgs<'_>) -> Result<String, SelectorError> {
-        let LaneSelector { pattern, segment } = self;
+    let mut segments: Vec<Segment<PubSubSelector>> = Vec::new();
 
-        match segment {
-            Segment::Static(p) => Ok(p.to_string()),
-            Segment::Selector(selector) => {
-                let value = selector
-                    .select(args)?
-                    .ok_or(SelectorError::Selector(pattern.to_string()))?;
-                match value {
-                    Value::BooleanValue(v) => {
-                        if v {
-                            Ok("true".to_string())
-                        } else {
-                            Ok("false".to_string())
-                        }
-                    }
-                    Value::Int32Value(v) => Ok(v.to_string()),
-                    Value::Int64Value(v) => Ok(v.to_string()),
-                    Value::UInt32Value(v) => Ok(v.to_string()),
-                    Value::UInt64Value(v) => Ok(v.to_string()),
-                    Value::BigUint(v) => Ok(v.to_string()),
-                    Value::Text(v) => Ok(v.to_string()),
-                    _ => Err(SelectorError::InvalidRecord(self.pattern.to_string())),
+    loop {
+        let mut iter = pattern.chars();
+        match iter.next() {
+            Some('$') => match pattern.split_once('/') {
+                Some((head, tail)) => {
+                    segments.push(Segment::Selector(parse_selector(head)?.into()));
+                    pattern = tail;
                 }
-            }
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct NodeSelector {
-    pattern: String,
-    segments: Vec<Segment>,
-}
-
-impl<'a> IntoIterator for &'a NodeSelector {
-    type Item = &'a Segment;
-    type IntoIter = Iter<'a, Segment>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.segments.iter()
-    }
-}
-
-impl FromStr for NodeSelector {
-    type Err = BadSelector;
-
-    fn from_str(mut pattern: &str) -> Result<Self, Self::Err> {
-        let input = pattern.to_string();
-        if !pattern.starts_with('/') || pattern.len() < 2 {
-            return Err(BadSelector::InvalidPath);
-        }
-
-        let mut segments = Vec::new();
-
-        loop {
-            let mut iter = pattern.chars();
-            match iter.next() {
-                Some('$') => match pattern.split_once('/') {
-                    Some((head, tail)) => {
-                        segments.push(Segment::Selector(parse_selector(head)?.into()));
-                        pattern = tail;
-                    }
-                    None => {
-                        segments.push(Segment::Selector(parse_selector(pattern)?.into()));
+                None => {
+                    segments.push(Segment::Selector(parse_selector(pattern)?.into()));
+                    break;
+                }
+            },
+            Some(_) => match static_path_regex().find(pattern) {
+                Some(matched) => {
+                    segments.push(Segment::Static(matched.as_str().to_string()));
+                    pattern = &pattern[matched.end()..];
+                    if pattern.is_empty() {
                         break;
-                    }
-                },
-                Some(_) => match static_path_regex().find(pattern) {
-                    Some(matched) => {
-                        segments.push(Segment::Static(matched.as_str().to_string()));
-                        pattern = &pattern[matched.end()..];
-                        if pattern.is_empty() {
-                            break;
-                        } else if pattern.starts_with('/') {
-                            // Pattern will capture up to a trailing slash but not a double one, so
-                            // guard against the next static segment starting with a slash.
-                            return Err(BadSelector::InvalidPath);
-                        }
-                    }
-                    None => return Err(BadSelector::InvalidPath),
-                },
-                _ => return Err(BadSelector::InvalidPath),
-            }
-        }
-
-        Ok(NodeSelector {
-            segments,
-            pattern: input,
-        })
-    }
-}
-
-impl NodeSelector {
-    fn select(&self, args: &PubSubSelectorArgs<'_>) -> Result<String, SelectorError> {
-        let mut node_uri = String::new();
-
-        for elem in self.into_iter() {
-            match elem {
-                Segment::Static(p) => node_uri.push_str(p),
-                Segment::Selector(selector) => {
-                    let value = selector
-                        .select(args)?
-                        .ok_or(SelectorError::Selector(self.pattern.to_string()))?;
-                    match value {
-                        Value::BooleanValue(v) => {
-                            node_uri.push_str(if v { "true" } else { "false" })
-                        }
-                        Value::Int32Value(v) => node_uri.push_str(&v.to_string()),
-                        Value::Int64Value(v) => node_uri.push_str(&v.to_string()),
-                        Value::UInt32Value(v) => node_uri.push_str(&v.to_string()),
-                        Value::UInt64Value(v) => node_uri.push_str(&v.to_string()),
-                        Value::BigInt(v) => node_uri.push_str(&v.to_string()),
-                        Value::BigUint(v) => node_uri.push_str(&v.to_string()),
-                        Value::Text(v) => node_uri.push_str(v.as_str()),
-                        _ => return Err(SelectorError::InvalidRecord(self.pattern.to_string())),
+                    } else if pattern.starts_with('/') {
+                        // Pattern will capture up to a trailing slash but not a double one, so
+                        // guard against the next static segment starting with a slash.
+                        return Err(BadSelector::InvalidPath);
                     }
                 }
-            }
+                None => return Err(BadSelector::InvalidPath),
+            },
+            _ => return Err(BadSelector::InvalidPath),
         }
-
-        Ok(node_uri)
     }
+
+    Ok(NodeSelector::new(input, segments))
 }
 
-#[derive(Debug, Clone, PartialEq)]
-struct PayloadSelector {
-    inner: Inner,
-    required: bool,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum PayloadSegment {
-    Value(Value),
-    Selector(PubSubSelector),
-}
-
-impl TryFrom<Segment> for PayloadSegment {
+impl TryFrom<Segment<PubSubSelector>> for PayloadSegment<PubSubSelector> {
     type Error = ParseError;
 
-    fn try_from(value: Segment) -> Result<Self, Self::Error> {
+    fn try_from(value: Segment<PubSubSelector>) -> Result<Self, Self::Error> {
         match value {
             Segment::Static(path) => Ok(PayloadSegment::Value(parse_recognize::<Value>(
                 path.as_str(),
@@ -244,253 +155,53 @@ impl TryFrom<Segment> for PayloadSegment {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-enum Inner {
-    Value {
-        pattern: String,
-        segment: PayloadSegment,
-    },
-    Map {
-        key_pattern: String,
-        value_pattern: String,
-        remove_when_no_value: bool,
-        key: PayloadSegment,
-        value: PayloadSegment,
-    },
-}
-
-impl PayloadSelector {
-    pub fn value(pattern: &str, required: bool) -> Result<PayloadSelector, BadSelector> {
-        Ok(PayloadSelector {
-            inner: Inner::Value {
-                pattern: pattern.to_string(),
-                segment: parse_segment(pattern)?.try_into()?,
-            },
-            required,
-        })
-    }
-
-    pub fn map(
-        key_pattern: &str,
-        value_pattern: &str,
-        required: bool,
-        remove_when_no_value: bool,
-    ) -> Result<PayloadSelector, BadSelector> {
-        let key = parse_segment(key_pattern)?.try_into()?;
-        let value = parse_segment(value_pattern)?.try_into()?;
-        Ok(PayloadSelector {
-            inner: Inner::Map {
-                key_pattern: key_pattern.to_string(),
-                value_pattern: value_pattern.to_string(),
-                remove_when_no_value,
-                key,
-                value,
-            },
-            required,
-        })
-    }
-
-    fn select(
-        &self,
-        node_uri: String,
-        lane_uri: String,
-        args: &PubSubSelectorArgs<'_>,
-    ) -> Result<GenericSendCommandOp, SelectorError> {
-        let PayloadSelector { inner, required } = self;
-        let op = match inner {
-            Inner::Value { pattern, segment } => {
-                build_value(*required, pattern.as_str(), segment, args)?.map(|payload| {
-                    SendCommandOp::inject(SendCommand::new(
-                        Address::new(None, node_uri, lane_uri),
-                        payload,
-                        false,
-                    ))
-                })
-            }
-            Inner::Map {
-                key_pattern,
-                value_pattern,
-                remove_when_no_value,
-                key,
-                value,
-            } => {
-                let key = build_value(*required, key_pattern.as_str(), key, args)?;
-                let value = build_value(*required, value_pattern.as_str(), value, args)?;
-
-                match (key, value) {
-                    (Some(key_payload), Some(value_payload)) => {
-                        let op = SendCommandOp::inject(SendCommand::new(
-                            Address::new(None, node_uri, lane_uri),
-                            MapMessage::Update {
-                                key: key_payload,
-                                value: value_payload,
-                            },
-                            false,
-                        ));
-                        Some(op)
-                    }
-                    (Some(key_payload), None) if *remove_when_no_value => {
-                        let op = SendCommandOp::inject(SendCommand::new(
-                            Address::new(None, node_uri, lane_uri),
-                            MapMessage::Remove { key: key_payload },
-                            false,
-                        ));
-                        Some(op)
-                    }
-                    _ => None,
-                }
-            }
-        };
-
-        Ok(Discard::<Option<SendCommandOp>>::new(op))
-    }
-}
-
-fn build_value(
-    required: bool,
+/// Parses a Value Lane selector.
+///
+/// # Arguments
+/// * `pattern` - the selector pattern to parse. This may be defined as a Recon [`Value`] which may
+///   be used as the key or value for the messaage to send to the lane.
+/// * `required` - whether the selector must succeed. If this is true and the selector fails, then
+///   the connector will terminate.
+///
+/// Both key and value selectors may define a Recon [`Value`] which may be used as the key or value
+/// for the message to send to the lane.
+pub fn parse_value_selector(
     pattern: &str,
-    segment: &PayloadSegment,
-    args: &PubSubSelectorArgs<'_>,
-) -> Result<Option<Value>, SelectorError> {
-    let payload = match segment {
-        PayloadSegment::Value(value) => Ok(Some(value.clone())),
-        PayloadSegment::Selector(selector) => selector.select(args).map_err(SelectorError::from),
-    };
-
-    match payload {
-        Ok(Some(payload)) => Ok(Some(payload)),
-        Ok(None) => {
-            if required {
-                Err(SelectorError::Selector(pattern.to_string()))
-            } else {
-                Ok(None)
-            }
-        }
-        Err(e) => {
-            if required {
-                Err(e)
-            } else {
-                Ok(None)
-            }
-        }
-    }
+    required: bool,
+) -> Result<RelayPayloadSelector<PubSubSelector>, BadSelector> {
+    Ok(RelayPayloadSelector::value(
+        parse_segment(pattern)?.try_into()?,
+        pattern.to_string(),
+        required,
+    ))
 }
 
-/// A collection of relays which are used to derive the commands to send to lanes on agents.
-#[derive(Debug, Clone, Default)]
-pub struct Relays {
-    chain: Vec<Relay>,
-}
-
-impl Relays {
-    pub fn new<I>(chain: I) -> Relays
-    where
-        I: IntoIterator<Item = Relay>,
-    {
-        Relays {
-            chain: chain.into_iter().collect(),
-        }
-    }
-
-    pub fn len(&self) -> usize {
-        self.chain.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.chain.is_empty()
-    }
-}
-
-impl From<Relay> for Relays {
-    fn from(relays: Relay) -> Relays {
-        Relays {
-            chain: vec![relays],
-        }
-    }
-}
-
-impl<'s> IntoIterator for &'s Relays {
-    type Item = &'s Relay;
-    type IntoIter = Iter<'s, Relay>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.chain.as_slice().iter()
-    }
-}
-
-/// A relay which is used to build a command to send to a lane on an agent.
-#[derive(Debug, Clone)]
-pub struct Relay {
-    node: NodeSelector,
-    lane: LaneSelector,
-    payload: PayloadSelector,
-}
-
-impl Relay {
-    /// Builds a new Value [`Relay`].
-    ///
-    /// # Arguments
-    /// * `node` - node URI selector.
-    /// * `lane` - node URI selector.
-    /// * `pattern` - the payload selector pattern.
-    /// * `required` - whether the selector must succeed. If this is true and the selector fails, then
-    ///   the connector will terminate.
-    pub fn value(
-        node: &str,
-        lane: &str,
-        payload: &str,
-        required: bool,
-    ) -> Result<Relay, BadSelector> {
-        Ok(Relay {
-            node: NodeSelector::from_str(node)?,
-            lane: LaneSelector::from_str(lane)?,
-            payload: PayloadSelector::value(payload, required)?,
-        })
-    }
-
-    /// Builds a new Map [`Relay`].
-    ///
-    /// # Arguments
-    /// * `node` - node URI selector.
-    /// * `lane` - node URI selector.
-    /// * `key_pattern` - the key selector pattern.
-    /// * `value_pattern` - the value selector pattern.
-    /// * `required` - whether the selector must succeed. If this is true and the selector fails, then
-    ///   the connector will terminate.
-    /// * `remove_when_no_value` - if the value selector fails to select, then it will emit a map
-    ///   remove command to remove the corresponding entry.
-    pub fn map(
-        node: &str,
-        lane: &str,
-        key_pattern: &str,
-        value_pattern: &str,
-        required: bool,
-        remove_when_no_value: bool,
-    ) -> Result<Relay, BadSelector> {
-        Ok(Relay {
-            node: NodeSelector::from_str(node)?,
-            lane: LaneSelector::from_str(lane)?,
-            payload: PayloadSelector::map(
-                key_pattern,
-                value_pattern,
-                required,
-                remove_when_no_value,
-            )?,
-        })
-    }
-
-    pub fn select_handler(
-        &self,
-        args: &PubSubSelectorArgs<'_>,
-    ) -> Result<GenericSendCommandOp, SelectorError> {
-        let Relay {
-            node,
-            lane,
-            payload,
-        } = self;
-
-        let node_uri = node.select(args)?;
-        let lane_uri = lane.select(args)?;
-        payload.select(node_uri, lane_uri, args)
-    }
+/// Parses a Value Lane selector.
+///
+/// # Arguments
+/// * `key_pattern` - the key selector pattern to parse.
+/// * `value_pattern` - the key selector pattern to parse.
+/// * `required` - whether the selector must succeed. If this is true and the selector fails, then
+///   the connector will terminate.
+/// * `remove_when_no_value` - if the value selector fails to select, then it will emit a map
+///   remove command to remove the corresponding entry.
+///
+/// Both key and value selectors may define a Recon [`Value`] which may be used as the key or value
+/// for the message to send to the lane.
+pub fn parse_map_selector(
+    key_pattern: &str,
+    value_pattern: &str,
+    required: bool,
+    remove_when_no_value: bool,
+) -> Result<RelayPayloadSelector<PubSubSelector>, BadSelector> {
+    let key = parse_segment(key_pattern)?.try_into()?;
+    let value = parse_segment(value_pattern)?.try_into()?;
+    Ok(RelayPayloadSelector::map(
+        key,
+        value,
+        key_pattern.to_string(),
+        value_pattern.to_string(),
+        required,
+        remove_when_no_value,
+    ))
 }

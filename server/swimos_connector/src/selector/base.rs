@@ -27,13 +27,6 @@ pub type GenericMapLaneOp = Discard<Option<MapLaneOp>>;
 pub type GenericValueLaneSet =
     Discard<Option<ValueLaneSelectSet<ConnectorAgent, Value, ValueLaneSelectorFn>>>;
 
-// /// A lazy loader for a component of a messages. This ensures that deserializers are only run if a
-// /// selector refers to a component.
-// pub trait Deferred {
-//     /// Get the deserialized component (computing it on the first call).
-//     fn get(&mut self) -> Result<&Value, DeserializationError>;
-// }
-
 #[derive(Debug, PartialEq)]
 pub struct ValueLaneSelector<S> {
     name: String,
@@ -97,13 +90,13 @@ impl<S> ValueLaneSelector<S> {
     }
 }
 
-impl<'a, S, A> SelectHandler<'a, A> for ValueLaneSelector<S>
+impl<S, A> SelectHandler<A> for ValueLaneSelector<S>
 where
-    S: Selector<'a, Arg = A>,
+    S: Selector<A>,
 {
     type Handler = GenericValueLaneSet;
 
-    fn select_handler(&self, args: &'a A) -> Result<Self::Handler, SelectorError> {
+    fn select_handler(&self, args: &mut A) -> Result<Self::Handler, SelectorError> {
         let ValueLaneSelector {
             name,
             selector,
@@ -444,14 +437,14 @@ impl<K, V> MapLaneSelector<K, V> {
     }
 }
 
-impl<'a, K, V, A> SelectHandler<'a, A> for MapLaneSelector<K, V>
+impl<K, V, A> SelectHandler<A> for MapLaneSelector<K, V>
 where
-    K: Selector<'a, Arg = A>,
-    V: Selector<'a, Arg = A>,
+    K: Selector<A>,
+    V: Selector<A>,
 {
     type Handler = GenericMapLaneOp;
 
-    fn select_handler(&self, from: &'a A) -> Result<Self::Handler, SelectorError> {
+    fn select_handler(&self, from: &mut A) -> Result<Self::Handler, SelectorError> {
         let MapLaneSelector {
             name,
             key_selector,

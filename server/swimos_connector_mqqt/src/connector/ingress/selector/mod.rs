@@ -162,13 +162,13 @@ impl MqttMessageSelector {
         {
             let topic = Value::text(message.topic());
             let payload = Deferred::new(message.payload(), payload_deserializer);
-            let args = hlist![topic, payload];
+            let mut args = hlist![topic, payload];
 
             for value_lane in value_lanes {
-                value_lane_handlers.push(value_lane.select_handler(&args)?);
+                value_lane_handlers.push(value_lane.select_handler(&mut args)?);
             }
             for map_lane in map_lanes {
-                map_lane_handlers.push(map_lane.select_handler(&args)?);
+                map_lane_handlers.push(map_lane.select_handler(&mut args)?);
             }
             //for relay in relays {
             //    relay_handlers.push(relay.select_handler(&args)?);

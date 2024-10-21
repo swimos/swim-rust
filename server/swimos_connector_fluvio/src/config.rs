@@ -17,8 +17,10 @@ use fluvio::Offset;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use swimos_connector::config::format::DataFormat;
-use swimos_connector::config::{IngressMapLaneSpec, IngressValueLaneSpec, RelaySpecification};
-use swimos_connector::selector::Relays;
+use swimos_connector::config::{
+    IngressMapLaneSpec, IngressValueLaneSpec, PubSubRelaySpecification,
+};
+use swimos_connector::selector::{PubSubSelector, Relays};
 use swimos_form::Form;
 use swimos_recon::parser::parse_recognize;
 
@@ -37,7 +39,7 @@ struct FluvioIngressSpecification {
     map_lanes: Vec<IngressMapLaneSpec>,
     key_deserializer: DataFormat,
     payload_deserializer: DataFormat,
-    relays: Vec<RelaySpecification>,
+    relays: Vec<PubSubRelaySpecification>,
 }
 
 impl FluvioIngressSpecification {
@@ -220,7 +222,7 @@ pub struct FluvioIngressConfiguration {
     /// messages.
     pub payload_deserializer: DataFormat,
     /// Collection of relays used for forwarding messages to lanes on agents.
-    pub relays: Relays,
+    pub relays: Relays<PubSubSelector>,
 }
 
 impl FluvioIngressConfiguration {

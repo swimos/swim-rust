@@ -27,14 +27,12 @@ pub struct MockFactory {
 }
 
 impl MockFactory {
-
     pub fn new(expected_opts: MqttOptions) -> Self {
         MockFactory {
             inner: Default::default(),
             expected_opts,
         }
     }
-
 }
 
 #[derive(Default)]
@@ -71,7 +69,13 @@ impl PublisherFactory for MockFactory {
             _ => panic!("Transports do not match."),
         }
         let (tx, rx) = mpsc::channel(16);
-        (TestPublisher { tx }, TestDriver { rx, inner: inner.clone() })
+        (
+            TestPublisher { tx },
+            TestDriver {
+                rx,
+                inner: inner.clone(),
+            },
+        )
     }
 }
 

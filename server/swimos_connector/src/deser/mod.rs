@@ -26,7 +26,6 @@ pub use json::JsonDeserializer;
 #[cfg(feature = "avro")]
 pub use avro::AvroDeserializer;
 
-use std::cell::RefCell;
 use std::error::Error;
 use std::{array::TryFromSliceError, convert::Infallible};
 use swimos_form::Form;
@@ -242,7 +241,7 @@ where
 pub struct Deferred<'a> {
     buf: &'a [u8],
     deser: &'a BoxMessageDeserializer,
-    state: RefCell<Option<Value>>,
+    state: Option<Value>,
 }
 
 impl<'a> Deferred<'a> {
@@ -250,32 +249,29 @@ impl<'a> Deferred<'a> {
         Deferred {
             buf,
             deser,
-            state: RefCell::new(None),
+            state: None,
         }
     }
 
-    pub fn get(&self) -> Result<Value, DeserializationError> {
+    pub fn get(&mut self) -> Result<Value, DeserializationError> {
         let Deferred { buf, deser, state } = self;
-        if let Some(v) = &*state.borrow() {
+        if let Some(v) = state {
             Ok(v.clone())
         } else {
-            let inner = &mut *state.borrow_mut();
-            Ok(inner.insert(deser.deserialize(buf)?).clone())
+            Ok(state.insert(deser.deserialize(buf)?).clone())
         }
     }
 
-    pub fn with<F>(&self, f: F) -> Result<Option<Value>, DeserializationError>
+    pub fn with<F>(&mut self, f: F) -> Result<Option<Value>, DeserializationError>
     where
         F: FnOnce(&Value) -> Option<Value>,
     {
         let Deferred { buf, deser, state } = self;
-        {
-            if let Some(v) = &*state.borrow() {
-                return Ok(f(v));
-            }
+        if let Some(v) = state {
+            Ok(f(v))
+        } else {
+            let val = state.insert(deser.deserialize(buf)?);
+            Ok(f(val))
         }
-        let inner = &mut *state.borrow_mut();
-        let val = inner.insert(deser.deserialize(buf)?);
-        Ok(f(val))
     }
 }
