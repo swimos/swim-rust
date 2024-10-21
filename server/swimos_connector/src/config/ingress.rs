@@ -1,5 +1,5 @@
 use crate::{
-    selector::{PubSubSelector, Relay, Relays},
+    selector::{InterpretableSelector, PubSubSelector, Relay, Relays},
     BadSelector,
 };
 use swimos_form::Form;
@@ -80,7 +80,7 @@ impl IngressMapLaneSpec {
 #[cfg(feature = "pubsub")]
 #[derive(Clone, Debug, Form, PartialEq, Eq)]
 #[form(tag = "ValueRelaySpec")]
-pub struct PubSubValueRelaySpecification {
+pub struct ValueRelaySpecification {
     /// A node URI selector. See [`crate::selector::NodeSelector`] for more information.
     pub node: String,
     /// A lane URI selector. See [`crate::selector::LaneSelector`] for more information.
@@ -96,7 +96,7 @@ pub struct PubSubValueRelaySpecification {
 #[cfg(feature = "pubsub")]
 #[derive(Clone, Debug, Form, PartialEq, Eq)]
 #[form(tag = "MapRelaySpec")]
-pub struct PubSubMapRelaySpecification {
+pub struct MapRelaySpecification {
     /// A node URI selector. See [`crate::selector::NodeSelector`] for more information.
     pub node: String,
     /// A lane URI selector. See [`crate::selector::LaneSelector`] for more information.
@@ -116,27 +116,30 @@ pub struct PubSubMapRelaySpecification {
 /// Specification of a relay for the connector.
 #[cfg(feature = "pubsub")]
 #[derive(Clone, Debug, Form, PartialEq, Eq)]
-pub enum PubSubRelaySpecification {
+pub enum RelaySpecification {
     /// Specification of a value relay for the connector.
-    Value(PubSubValueRelaySpecification),
+    Value(ValueRelaySpecification),
     /// Specification of a map relay for the connector.
-    Map(PubSubMapRelaySpecification),
+    Map(MapRelaySpecification),
 }
 
 #[cfg(feature = "pubsub")]
-impl TryFrom<Vec<PubSubRelaySpecification>> for Relays<PubSubSelector> {
+impl<S> TryFrom<Vec<RelaySpecification>> for Relays<S>
+where
+    S: InterpretableSelector,
+{
     type Error = BadSelector;
 
-    fn try_from(value: Vec<PubSubRelaySpecification>) -> Result<Self, Self::Error> {
+    fn try_from(value: Vec<RelaySpecification>) -> Result<Self, Self::Error> {
         use crate::selector::{
             parse_lane_selector, parse_map_selector, parse_node_selector, parse_value_selector,
         };
 
-        let mut chain = Vec::with_capacity(value.len());
+        let mut chain: Vec<Relay<S>> = Vec::with_capacity(value.len());
 
         for spec in value {
             match spec {
-                PubSubRelaySpecification::Value(PubSubValueRelaySpecification {
+                RelaySpecification::Value(ValueRelaySpecification {
                     node,
                     lane,
                     payload,
@@ -149,7 +152,7 @@ impl TryFrom<Vec<PubSubRelaySpecification>> for Relays<PubSubSelector> {
                     );
                     chain.push(relay);
                 }
-                PubSubRelaySpecification::Map(PubSubMapRelaySpecification {
+                RelaySpecification::Map(MapRelaySpecification {
                     node,
                     lane,
                     key,

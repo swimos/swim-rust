@@ -326,7 +326,7 @@ pub fn parse_selector(descriptor: &str) -> Result<SelectorDescriptor<'_>, BadSel
 
 impl<S> TryFrom<&IngressValueLaneSpec> for ValueLaneSelector<S>
 where
-    S: InterpretLaneSelector,
+    S: InterpretableSelector,
 {
     type Error = InvalidLaneSpec;
 
@@ -353,11 +353,11 @@ where
     }
 }
 
-trait InterpretLaneSelector: Sized {
+pub trait InterpretableSelector: Sized {
     fn try_interp(descriptor: &RawSelectorDescriptor<'_>) -> Result<Option<Self>, BadSelector>;
 }
 
-impl InterpretLaneSelector for PayloadSelector {
+impl InterpretableSelector for PayloadSelector {
     fn try_interp(descriptor: &RawSelectorDescriptor<'_>) -> Result<Option<Self>, BadSelector> {
         let RawSelectorDescriptor {
             part,
@@ -373,7 +373,7 @@ impl InterpretLaneSelector for PayloadSelector {
     }
 }
 
-impl InterpretLaneSelector for KeySelector {
+impl InterpretableSelector for KeySelector {
     fn try_interp(descriptor: &RawSelectorDescriptor<'_>) -> Result<Option<Self>, BadSelector> {
         let RawSelectorDescriptor {
             part,
@@ -389,7 +389,7 @@ impl InterpretLaneSelector for KeySelector {
     }
 }
 
-impl InterpretLaneSelector for TopicSelector {
+impl InterpretableSelector for TopicSelector {
     fn try_interp(descriptor: &RawSelectorDescriptor<'_>) -> Result<Option<Self>, BadSelector> {
         let RawSelectorDescriptor {
             part,
@@ -408,16 +408,16 @@ impl InterpretLaneSelector for TopicSelector {
     }
 }
 
-impl InterpretLaneSelector for CNil {
+impl InterpretableSelector for CNil {
     fn try_interp(_descriptor: &RawSelectorDescriptor<'_>) -> Result<Option<Self>, BadSelector> {
         Ok(None)
     }
 }
 
-impl<Head, Tail> InterpretLaneSelector for Coproduct<Head, Tail>
+impl<Head, Tail> InterpretableSelector for Coproduct<Head, Tail>
 where
-    Head: InterpretLaneSelector,
-    Tail: InterpretLaneSelector,
+    Head: InterpretableSelector,
+    Tail: InterpretableSelector,
 {
     fn try_interp(descriptor: &RawSelectorDescriptor<'_>) -> Result<Option<Self>, BadSelector> {
         if let Some(tail) = Tail::try_interp(descriptor)? {
@@ -442,8 +442,8 @@ impl<'a> From<SelectorDescriptor<'a>> for PubSubSelector {
 
 impl<K, V> TryFrom<&IngressMapLaneSpec> for MapLaneSelector<K, V>
 where
-    K: InterpretLaneSelector,
-    V: InterpretLaneSelector,
+    K: InterpretableSelector,
+    V: InterpretableSelector,
 {
     type Error = InvalidLaneSpec;
 

@@ -33,7 +33,7 @@ fn parse_lane() {
     }
 
     fn err(pattern: &str) {
-        if let Ok(actual) = parse_lane_selector(pattern) {
+        if let Ok(actual) = parse_lane_selector::<PubSubSelector>(pattern) {
             panic!(
                 "Expected parse error from pattern {}, but got {:?}",
                 pattern, actual
@@ -104,7 +104,7 @@ fn parse_node() {
     }
 
     fn err(pattern: &str) {
-        if let Ok(actual) = parse_node_selector(pattern) {
+        if let Ok(actual) = parse_node_selector::<PubSubSelector>(pattern) {
             panic!(
                 "Expected parse error from pattern {}, but got {:?}",
                 pattern, actual

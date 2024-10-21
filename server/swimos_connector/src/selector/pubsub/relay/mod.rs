@@ -26,6 +26,8 @@ use regex::Regex;
 use std::sync::OnceLock;
 use swimos_recon::parser::{parse_recognize, ParseError};
 
+use super::{InterpretableSelector, RawSelectorDescriptor};
+
 static STATIC_REGEX: OnceLock<Regex> = OnceLock::new();
 static STATIC_PATH_REGEX: OnceLock<Regex> = OnceLock::new();
 
@@ -45,10 +47,13 @@ fn create_static_path_regex() -> Result<Regex, regex::Error> {
     Regex::new(r"^\/?[a-zA-Z0-9_]+(\/[a-zA-Z0-9_]+)*(\/|$)")
 }
 
-fn parse_segment(pattern: &str) -> Result<Segment<PubSubSelector>, BadSelector> {
+fn parse_segment<S>(pattern: &str) -> Result<Segment<S>, BadSelector>
+where
+    S: InterpretableSelector,
+{
     let mut iter = pattern.chars();
     match iter.next() {
-        Some('$') => Ok(Segment::Selector(parse_selector(pattern)?.into())),
+        Some('$') => Ok(Segment::Selector(interp(pattern)?)),
         Some(_) => {
             if static_regex().is_match(pattern) {
                 Ok(Segment::Static(pattern.to_string()))
@@ -76,11 +81,24 @@ fn parse_segment(pattern: &str) -> Result<Segment<PubSubSelector>, BadSelector> 
 ///
 /// # Dynamic Example
 /// "$payload.id".
-pub fn parse_lane_selector(pattern: &str) -> Result<LaneSelector<PubSubSelector>, BadSelector> {
+pub fn parse_lane_selector<S>(pattern: &str) -> Result<LaneSelector<S>, BadSelector>
+where
+    S: InterpretableSelector,
+{
     Ok(LaneSelector::new(
         parse_segment(pattern)?,
         pattern.to_string(),
     ))
+}
+
+fn interp<S: InterpretableSelector>(rep: &str) -> Result<S, BadSelector> {
+    let desc = RawSelectorDescriptor::try_from(rep)?;
+    let s = S::try_interp(&desc)?;
+    if let Some(s) = s {
+        Ok(s)
+    } else {
+        Err(BadSelector::InvalidRoot)
+    }
 }
 
 /// Parses a publish-subscribe [`NodeSelector`].
@@ -99,24 +117,27 @@ pub fn parse_lane_selector(pattern: &str) -> Result<LaneSelector<PubSubSelector>
 ///
 /// # Dynamic Example
 /// "/$topic/$key/$payload.id".
-pub fn parse_node_selector(mut pattern: &str) -> Result<NodeSelector<PubSubSelector>, BadSelector> {
+pub fn parse_node_selector<S>(mut pattern: &str) -> Result<NodeSelector<S>, BadSelector>
+where
+    S: InterpretableSelector,
+{
     let input = pattern.to_string();
     if !pattern.starts_with('/') || pattern.len() < 2 {
         return Err(BadSelector::InvalidPath);
     }
 
-    let mut segments: Vec<Segment<PubSubSelector>> = Vec::new();
+    let mut segments: Vec<Segment<S>> = Vec::new();
 
     loop {
         let mut iter = pattern.chars();
         match iter.next() {
             Some('$') => match pattern.split_once('/') {
                 Some((head, tail)) => {
-                    segments.push(Segment::Selector(parse_selector(head)?.into()));
+                    segments.push(Segment::Selector(interp(head)?));
                     pattern = tail;
                 }
                 None => {
-                    segments.push(Segment::Selector(parse_selector(pattern)?.into()));
+                    segments.push(Segment::Selector(interp(pattern)?));
                     break;
                 }
             },
@@ -141,10 +162,10 @@ pub fn parse_node_selector(mut pattern: &str) -> Result<NodeSelector<PubSubSelec
     Ok(NodeSelector::new(input, segments))
 }
 
-impl TryFrom<Segment<PubSubSelector>> for PayloadSegment<PubSubSelector> {
+impl<S> TryFrom<Segment<S>> for PayloadSegment<S> {
     type Error = ParseError;
 
-    fn try_from(value: Segment<PubSubSelector>) -> Result<Self, Self::Error> {
+    fn try_from(value: Segment<S>) -> Result<Self, Self::Error> {
         match value {
             Segment::Static(path) => Ok(PayloadSegment::Value(parse_recognize::<Value>(
                 path.as_str(),
@@ -159,16 +180,19 @@ impl TryFrom<Segment<PubSubSelector>> for PayloadSegment<PubSubSelector> {
 ///
 /// # Arguments
 /// * `pattern` - the selector pattern to parse. This may be defined as a Recon [`Value`] which may
-///   be used as the key or value for the messaage to send to the lane.
+///   be used as the key or value for the message to send to the lane.
 /// * `required` - whether the selector must succeed. If this is true and the selector fails, then
 ///   the connector will terminate.
 ///
 /// Both key and value selectors may define a Recon [`Value`] which may be used as the key or value
 /// for the message to send to the lane.
-pub fn parse_value_selector(
+pub fn parse_value_selector<S>(
     pattern: &str,
     required: bool,
-) -> Result<RelayPayloadSelector<PubSubSelector>, BadSelector> {
+) -> Result<RelayPayloadSelector<S>, BadSelector>
+where
+    S: InterpretableSelector,
+{
     Ok(RelayPayloadSelector::value(
         parse_segment(pattern)?.try_into()?,
         pattern.to_string(),
@@ -188,12 +212,15 @@ pub fn parse_value_selector(
 ///
 /// Both key and value selectors may define a Recon [`Value`] which may be used as the key or value
 /// for the message to send to the lane.
-pub fn parse_map_selector(
+pub fn parse_map_selector<S>(
     key_pattern: &str,
     value_pattern: &str,
     required: bool,
     remove_when_no_value: bool,
-) -> Result<RelayPayloadSelector<PubSubSelector>, BadSelector> {
+) -> Result<RelayPayloadSelector<S>, BadSelector>
+where
+    S: InterpretableSelector,
+{
     let key = parse_segment(key_pattern)?.try_into()?;
     let value = parse_segment(value_pattern)?.try_into()?;
     Ok(RelayPayloadSelector::map(
