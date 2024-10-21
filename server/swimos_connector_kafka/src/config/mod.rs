@@ -15,15 +15,14 @@
 use rdkafka::config::RDKafkaLogLevel;
 
 mod egress;
-mod format;
 mod ingress;
 
 pub use egress::{
     DownlinkAddress, EgressDownlinkSpec, EgressLaneSpec, ExtractionSpec, KafkaEgressConfiguration,
     TopicSpecifier,
 };
-pub use format::DataFormat;
-pub use ingress::{IngressMapLaneSpec, IngressValueLaneSpec, KafkaIngressConfiguration};
+pub use ingress::KafkaIngressConfiguration;
+pub use swimos_connector::config::format::DataFormat;
 use swimos_form::Form;
 
 /// Enumeration of logging levels supported by the underlying Kafka consumer.

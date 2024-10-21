@@ -14,22 +14,23 @@
 
 use std::{collections::HashMap, time::SystemTime};
 
+use crate::config::TopicSpecifier;
+use crate::{
+    connector::test_util::create_kafka_props, DataFormat, EgressLaneSpec, ExtractionSpec,
+    KafkaEgressConfiguration, KafkaEgressConnector, KafkaLogLevel,
+};
 use futures::{future::join, TryFutureExt};
 use rand::Rng;
+use swimos_connector::deser::Endianness;
 use swimos_connector::{
     BaseConnector, ConnectorAgent, EgressConnector, EgressConnectorSender, MessageSource,
     SendResult,
 };
+use swimos_connector_util::run_handler_with_futures;
 use swimos_model::{Item, Value};
 use swimos_utilities::trigger;
 use tokio::time::sleep;
 
-use crate::config::TopicSpecifier;
-use crate::{
-    connector::test_util::{create_kafka_props, run_handler_with_futures},
-    DataFormat, EgressLaneSpec, Endianness, ExtractionSpec, KafkaEgressConfiguration,
-    KafkaEgressConnector, KafkaLogLevel,
-};
 const LANE: &str = "lane";
 
 fn make_config() -> KafkaEgressConfiguration {

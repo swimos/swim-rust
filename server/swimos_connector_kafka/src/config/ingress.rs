@@ -12,14 +12,60 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::HashMap;
-
 use super::{DataFormat, KafkaLogLevel};
+use std::collections::HashMap;
+use std::path::Path;
+use std::str::FromStr;
+use swimos_connector::config::{
+    IngressMapLaneSpec, IngressValueLaneSpec, PubSubRelaySpecification,
+};
+use swimos_connector::selector::{BadSelector, PubSubSelector, Relays};
 use swimos_form::Form;
+use swimos_recon::parser::parse_recognize;
+
+type BoxError = Box<dyn std::error::Error + Send + Sync + 'static>;
 
 /// Configuration parameters for the Kafka ingress connector.
 #[derive(Clone, Debug, Form, PartialEq, Eq)]
 #[form(tag = "kafka")]
+struct KafkaIngressSpecification {
+    properties: HashMap<String, String>,
+    log_level: KafkaLogLevel,
+    value_lanes: Vec<IngressValueLaneSpec>,
+    map_lanes: Vec<IngressMapLaneSpec>,
+    key_deserializer: DataFormat,
+    payload_deserializer: DataFormat,
+    topics: Vec<String>,
+    relays: Vec<PubSubRelaySpecification>,
+}
+
+impl KafkaIngressSpecification {
+    pub fn build(self) -> Result<KafkaIngressConfiguration, BadSelector> {
+        let KafkaIngressSpecification {
+            properties,
+            log_level,
+            value_lanes,
+            map_lanes,
+            key_deserializer,
+            payload_deserializer,
+            topics,
+            relays,
+        } = self;
+
+        Ok(KafkaIngressConfiguration {
+            properties,
+            log_level,
+            value_lanes,
+            map_lanes,
+            key_deserializer,
+            payload_deserializer,
+            topics,
+            relays: Relays::try_from(relays)?,
+        })
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct KafkaIngressConfiguration {
     /// Properties to configure the Kafka consumer.
     pub properties: HashMap<String, String>,
@@ -37,76 +83,22 @@ pub struct KafkaIngressConfiguration {
     pub payload_deserializer: DataFormat,
     /// A list of Kafka topics to subscribe to.
     pub topics: Vec<String>,
+    /// Collection of relays used for forwarding messages to lanes on agents.
+    pub relays: Relays<PubSubSelector>,
 }
 
-/// Specification of a value lane for the Kafka connector.
-#[derive(Clone, Debug, Form, PartialEq, Eq)]
-#[form(tag = "ValueLaneSpec")]
-pub struct IngressValueLaneSpec {
-    /// A name to use for the lane. If not specified, the connector will attempt to infer one from the selector.
-    pub name: Option<String>,
-    /// String representation of a selector to extract values for the lane from Kafka messages.
-    pub selector: String,
-    /// Whether the lane is required. If this is `true` and the selector returns nothing for a Kafka Message, the
-    /// connector will fail with an error.
-    pub required: bool,
-}
-
-impl IngressValueLaneSpec {
-    /// # Arguments
-    /// * `name` - A name to use for the lane. If not specified the connector will attempt to infer a name from the selector.
-    /// * `selector` - String representation of the selector to extract values from the Kafka message.
-    /// * `required` - Whether the lane is required. If this is `true` and the selector returns nothing for a Kafka Message, the
-    ///   connector will fail with an error.
-    pub fn new<S: Into<String>>(name: Option<S>, selector: S, required: bool) -> Self {
-        IngressValueLaneSpec {
-            name: name.map(Into::into),
-            selector: selector.into(),
-            required,
-        }
+impl KafkaIngressConfiguration {
+    pub async fn from_file(path: impl AsRef<Path>) -> Result<KafkaIngressConfiguration, BoxError> {
+        let content = tokio::fs::read_to_string(path).await?;
+        KafkaIngressConfiguration::from_str(&content)
     }
 }
 
-/// Specification of a value lane for the Kafka connector.
-#[derive(Clone, Debug, Form, PartialEq, Eq)]
-#[form(tag = "MapLaneSpec")]
-pub struct IngressMapLaneSpec {
-    /// The name of the lane.
-    pub name: String,
-    /// String representation of a selector to extract the map keys from the Kafka messages.
-    pub key_selector: String,
-    /// String representation of a selector to extract the map values from the Kafka messages.
-    pub value_selector: String,
-    /// Whether to remove an entry from the map if the value selector does not return a value. Otherwise, missing
-    /// values will be treated as a failed extraction from the message.
-    pub remove_when_no_value: bool,
-    /// Whether the lane is required. If this is `true` and the selector returns nothing for a Kafka Message, the
-    /// connector will fail with an error.
-    pub required: bool,
-}
+impl FromStr for KafkaIngressConfiguration {
+    type Err = BoxError;
 
-impl IngressMapLaneSpec {
-    /// # Arguments
-    /// * `name` - The name of the lane.
-    /// * `key_selector` - String representation of a selector to extract the map keys from the Kafka messages.
-    /// * `value_selector` - String representation of a selector to extract the map values from the Kafka messages.
-    /// * `remove_when_no_value` - Whether to remove an entry from the map if the value selector does not return a value. Otherwise, missing
-    ///   values will be treated as a failed extraction from the message.
-    /// * `required` - Whether the lane is required. If this is `true` and the selector returns nothing for a Kafka Message, the
-    ///   connector will fail with an error.
-    pub fn new<S: Into<String>>(
-        name: S,
-        key_selector: S,
-        value_selector: S,
-        remove_when_no_value: bool,
-        required: bool,
-    ) -> Self {
-        IngressMapLaneSpec {
-            name: name.into(),
-            key_selector: key_selector.into(),
-            value_selector: value_selector.into(),
-            remove_when_no_value,
-            required,
-        }
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let config = parse_recognize::<KafkaIngressSpecification>(s, true)?.build()?;
+        Ok(config)
     }
 }

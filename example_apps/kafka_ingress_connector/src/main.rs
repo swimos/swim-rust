@@ -34,7 +34,6 @@ use swimos::{
 };
 use swimos_connector::IngressConnectorModel;
 use swimos_connector_kafka::{KafkaIngressConfiguration, KafkaIngressConnector};
-use swimos_recon::parser::parse_recognize;
 
 mod params;
 
@@ -99,11 +98,10 @@ async fn load_config(
     } else {
         CONNECTOR_CONFIG
     };
-    let config = parse_recognize::<KafkaIngressConfiguration>(recon, true)?;
-    Ok(config)
+    KafkaIngressConfiguration::from_str(recon)
 }
 
-pub fn setup_logging() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+pub fn setup_logging() -> Result<(), Box<dyn Error + Send + Sync>> {
     let filter = example_filter()?.add_directive(LevelFilter::INFO.into());
     tracing_subscriber::fmt().with_env_filter(filter).init();
     Ok(())
