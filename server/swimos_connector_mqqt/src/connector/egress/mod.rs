@@ -38,6 +38,8 @@ use crate::{
 };
 
 mod selector;
+#[cfg(test)]
+mod tests;
 
 use super::DEFAULT_CHANNEL_SIZE;
 
