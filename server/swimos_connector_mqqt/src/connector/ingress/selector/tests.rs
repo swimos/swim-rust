@@ -14,16 +14,21 @@
 
 use std::collections::HashMap;
 
-use crate::connector::test_util::{run_handler, TestMessage, TestSpawner};
+use crate::connector::test_util::{run_handler_with_commands, TestMessage, TestSpawner};
+use bytes::BytesMut;
 use swimos_agent::agent_model::{AgentSpec, ItemDescriptor, ItemFlags};
-use swimos_api::agent::WarpLaneKind;
+use swimos_agent_protocol::{encoding::command::CommandMessageDecoder, CommandMessage};
+use swimos_api::{address::Address, agent::WarpLaneKind};
 use swimos_connector::{
-    config::{IngressMapLaneSpec, IngressValueLaneSpec},
+    config::{
+        IngressMapLaneSpec, IngressValueLaneSpec, RelaySpecification, ValueRelaySpecification,
+    },
     deser::{MessageDeserializer, ReconDeserializer},
     selector::Relays,
     ConnectorAgent,
 };
 use swimos_model::Value;
+use tokio_util::codec::Decoder;
 
 use super::{Lanes, MqttMessageSelector};
 
@@ -66,7 +71,12 @@ fn select_handler() {
     let map_lanes = vec![IngressMapLaneSpec::new(
         MAP_LANE, "$topic", "$payload", false, true,
     )];
-    let relay_specs = vec![];
+    let relay_specs = vec![RelaySpecification::Value(ValueRelaySpecification {
+        node: "/node".to_string(),
+        lane: "lane".to_string(),
+        payload: "$payload".to_string(),
+        required: true,
+    })];
 
     let lanes =
         Lanes::try_from_lane_specs(&value_lanes, &map_lanes).expect("Lanes should be valid");
@@ -79,7 +89,10 @@ fn select_handler() {
         .handle_message(&message)
         .expect("Should produce a handler.");
     let spawner = TestSpawner::default();
-    let modified = run_handler(&agent, &spawner, handler);
+
+    let mut command_buffer = BytesMut::new();
+    let modified = run_handler_with_commands(&agent, &spawner, handler, &mut command_buffer);
+    check_commands(&mut command_buffer);
     assert_eq!(modified, [value_id, map_id].into_iter().collect());
 
     let guard = agent.value_lane(VALUE_LANE).expect("Lane absent.");
@@ -93,4 +106,25 @@ fn select_handler() {
             .collect::<HashMap<_, _>>();
         assert_eq!(map, &expected);
     });
+}
+
+fn check_commands(buffer: &mut BytesMut) {
+    let mut decoder = CommandMessageDecoder::<String, Value>::default();
+    match decoder.decode_eof(buffer) {
+        Ok(Some(CommandMessage::Addressed {
+            target,
+            command,
+            overwrite_permitted,
+        })) => {
+            assert_eq!(
+                target,
+                Address::new(None, "/node".to_string(), "lane".to_string())
+            );
+            assert_eq!(command, Value::from(34));
+            assert!(!overwrite_permitted);
+        }
+        Ok(Some(_)) => panic!("Unexpected message."),
+        Ok(None) => panic!("No message."),
+        Err(err) => panic!("Failed: {}", err),
+    }
 }
