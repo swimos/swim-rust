@@ -150,7 +150,11 @@ pub struct RawSelectorDescriptor<'a> {
 
 impl<'a> RawSelectorDescriptor<'a> {
     pub fn suggested_name(&self) -> Option<&'a str> {
-        let RawSelectorDescriptor { part, index, components } = self;
+        let RawSelectorDescriptor {
+            part,
+            index,
+            components,
+        } = self;
         if let Some(SelectorComponent { name, index, .. }) = components.last() {
             if index.is_none() {
                 Some(*name)
@@ -350,14 +354,16 @@ where
 }
 
 trait InterpretLaneSelector: Sized {
-
     fn try_interp(descriptor: &RawSelectorDescriptor<'_>) -> Result<Option<Self>, BadSelector>;
-
 }
 
 impl InterpretLaneSelector for PayloadSelector {
     fn try_interp(descriptor: &RawSelectorDescriptor<'_>) -> Result<Option<Self>, BadSelector> {
-        let RawSelectorDescriptor { part, index, components } = descriptor;
+        let RawSelectorDescriptor {
+            part,
+            index,
+            components,
+        } = descriptor;
         if *part == "$payload" {
             let selector = ChainSelector::new(*index, components);
             Ok(Some(PayloadSelector::new(selector)))
@@ -369,7 +375,11 @@ impl InterpretLaneSelector for PayloadSelector {
 
 impl InterpretLaneSelector for KeySelector {
     fn try_interp(descriptor: &RawSelectorDescriptor<'_>) -> Result<Option<Self>, BadSelector> {
-        let RawSelectorDescriptor { part, index, components } = descriptor;
+        let RawSelectorDescriptor {
+            part,
+            index,
+            components,
+        } = descriptor;
         if *part == "$key" {
             let selector = ChainSelector::new(*index, components);
             Ok(Some(KeySelector::new(selector)))
@@ -381,7 +391,11 @@ impl InterpretLaneSelector for KeySelector {
 
 impl InterpretLaneSelector for TopicSelector {
     fn try_interp(descriptor: &RawSelectorDescriptor<'_>) -> Result<Option<Self>, BadSelector> {
-        let RawSelectorDescriptor { part, index, components } = descriptor;
+        let RawSelectorDescriptor {
+            part,
+            index,
+            components,
+        } = descriptor;
         if *part == "$topic" {
             if index.is_none() && components.is_empty() {
                 Ok(Some(TopicSelector))
@@ -444,16 +458,14 @@ where
         let key = K::try_interp(&RawSelectorDescriptor::try_from(key_selector.as_str())?)?;
         let value = V::try_interp(&RawSelectorDescriptor::try_from(value_selector.as_str())?)?;
         match (key, value) {
-            (Some(key), Some(value)) => {
-                Ok(MapLaneSelector::new(
-                    name.clone(),
-                    key,
-                    value,
-                    *required,
-                    *remove_when_no_value,
-                ))
-            }
-            _ => Err(InvalidLaneSpec::Selector(BadSelector::InvalidRoot))
+            (Some(key), Some(value)) => Ok(MapLaneSelector::new(
+                name.clone(),
+                key,
+                value,
+                *required,
+                *remove_when_no_value,
+            )),
+            _ => Err(InvalidLaneSpec::Selector(BadSelector::InvalidRoot)),
         }
     }
 }

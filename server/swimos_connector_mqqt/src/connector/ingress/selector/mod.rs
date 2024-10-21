@@ -12,18 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::HashSet;
-
 use frunk::{hlist, Coprod};
 use swimos_agent::event_handler::{EventHandler, HandlerActionExt, Sequentially};
 use swimos_connector::{
-    config::{IngressMapLaneSpec, IngressValueLaneSpec},
     deser::{BoxMessageDeserializer, Deferred},
-    selector::{
-        InvalidLaneSpec, InvalidLanes, KeySelector, MapLaneSelector, PayloadSelector,
-        PubSubSelector, SelectHandler, SelectorError, TopicSelector, ValueLaneSelector,
-    },
-    BadSelector, ConnectorAgent,
+    selector::{PayloadSelector, SelectHandler, SelectorError, TopicSelector},
+    ConnectorAgent,
 };
 use swimos_model::Value;
 use tracing::trace;
@@ -35,88 +29,7 @@ mod tests;
 
 pub type MqttSelector = Coprod!(TopicSelector, PayloadSelector);
 
-// Information about the lanes of the connector. These are computed from the configuration in the `on_start` handler
-// and stored in the lifecycle to be used to start the consumer stream.
-#[derive(Debug, Default, Clone)]
-pub struct Lanes {
-    value_lanes: Vec<ValueLaneSelector<MqttSelector>>,
-    map_lanes: Vec<MapLaneSelector<MqttSelector, MqttSelector>>,
-}
-
-impl Lanes {
-    pub fn value_lanes(&self) -> &[ValueLaneSelector<MqttSelector>] {
-        &self.value_lanes
-    }
-
-    pub fn map_lanes(&self) -> &[MapLaneSelector<MqttSelector, MqttSelector>] {
-        &self.map_lanes
-    }
-
-    pub fn try_from_lane_specs(
-        value_lanes: &[IngressValueLaneSpec],
-        map_lanes: &[IngressMapLaneSpec],
-    ) -> Result<Lanes, InvalidLanes> {
-        let value_selectors = value_lanes
-            .iter()
-            .map(try_from_value_selector)
-            .collect::<Result<Vec<_>, _>>()?;
-        let map_selectors = map_lanes
-            .iter()
-            .map(try_from_map_selector)
-            .collect::<Result<Vec<_>, _>>()?;
-        check_selectors(&value_selectors, &map_selectors)?;
-        Ok(Lanes {
-            value_lanes: value_selectors,
-            map_lanes: map_selectors,
-        })
-    }
-}
-
-fn check_selector(selector: PubSubSelector) -> Result<MqttSelector, InvalidLaneSpec> {
-    let split: Result<KeySelector, MqttSelector> = selector.uninject();
-    match split {
-        Ok(_) => Err(InvalidLaneSpec::Selector(BadSelector::InvalidRoot)),
-        Err(sel) => Ok(sel),
-    }
-}
-
-fn try_from_value_selector(
-    selector: &IngressValueLaneSpec,
-) -> Result<ValueLaneSelector<MqttSelector>, InvalidLanes> {
-    let selector = ValueLaneSelector::try_from(selector)?;
-    Ok(selector.try_map_selector(check_selector)?)
-}
-
-fn try_from_map_selector(
-    selector: &IngressMapLaneSpec,
-) -> Result<MapLaneSelector<MqttSelector, MqttSelector>, InvalidLanes> {
-    let selector = MapLaneSelector::try_from(selector)?;
-    Ok(selector.try_map_selectors(check_selector, check_selector)?)
-}
-
-fn check_selectors(
-    value_selectors: &[ValueLaneSelector<MqttSelector>],
-    map_selectors: &[MapLaneSelector<MqttSelector, MqttSelector>],
-) -> Result<(), InvalidLanes> {
-    let mut names = HashSet::new();
-    for value_selector in value_selectors {
-        let name = value_selector.name();
-        if names.contains(name) {
-            return Err(InvalidLanes::NameCollision(name.to_string()));
-        } else {
-            names.insert(name);
-        }
-    }
-    for map_selector in map_selectors {
-        let name = map_selector.name();
-        if names.contains(name) {
-            return Err(InvalidLanes::NameCollision(name.to_string()));
-        } else {
-            names.insert(name);
-        }
-    }
-    Ok(())
-}
+pub type Lanes = swimos_connector::ingress::Lanes<MqttSelector>;
 
 pub struct MqttMessageSelector {
     payload_deserializer: BoxMessageDeserializer,

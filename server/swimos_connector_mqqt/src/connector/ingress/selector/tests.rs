@@ -20,104 +20,14 @@ use swimos_api::agent::WarpLaneKind;
 use swimos_connector::{
     config::{IngressMapLaneSpec, IngressValueLaneSpec},
     deser::{MessageDeserializer, ReconDeserializer},
-    selector::{
-        ChainSelector, InvalidLanes, MapLaneSelector, PayloadSelector, TopicSelector,
-        ValueLaneSelector,
-    },
     ConnectorAgent,
 };
 use swimos_model::Value;
 
-use super::{Lanes, MqttMessageSelector, MqttSelector};
+use super::{Lanes, MqttMessageSelector};
 
 const VALUE_LANE: &str = "value_lane";
 const MAP_LANE: &str = "map_lane";
-
-#[test]
-fn interpret_lanes_good() {
-    let value_lanes = vec![IngressValueLaneSpec::new(
-        Some(VALUE_LANE),
-        "$payload",
-        true,
-    )];
-    let map_lanes = vec![IngressMapLaneSpec::new(
-        MAP_LANE, "$topic", "$payload", false, true,
-    )];
-
-    let Lanes {
-        value_lanes,
-        map_lanes,
-    } = Lanes::try_from_lane_specs(&value_lanes, &map_lanes).expect("Lanes should be valid");
-
-    let expected_val_sel = MqttSelector::inject(PayloadSelector::new(ChainSelector::default()));
-    let expected_map_key_sel = MqttSelector::inject(TopicSelector);
-
-    let expected_value = vec![ValueLaneSelector::new(
-        VALUE_LANE.to_string(),
-        expected_val_sel.clone(),
-        true,
-    )];
-
-    let expected_map = vec![MapLaneSelector::new(
-        MAP_LANE.to_string(),
-        expected_map_key_sel,
-        expected_val_sel,
-        true,
-        false,
-    )];
-
-    assert_eq!(value_lanes, expected_value);
-    assert_eq!(map_lanes, expected_map);
-}
-
-#[test]
-fn interpret_lanes_value_lane_collision() {
-    let value_lanes = vec![
-        IngressValueLaneSpec::new(Some(VALUE_LANE), "$payload", true),
-        IngressValueLaneSpec::new(Some(VALUE_LANE), "$topic", false),
-    ];
-    let map_lanes = vec![IngressMapLaneSpec::new(
-        MAP_LANE, "$topic", "$payload", false, true,
-    )];
-
-    let error = Lanes::try_from_lane_specs(&value_lanes, &map_lanes).expect_err("Should fail.");
-
-    assert_eq!(error, InvalidLanes::NameCollision(VALUE_LANE.to_string()));
-}
-
-#[test]
-fn interpret_lanes_map_lane_collision() {
-    let value_lanes = vec![IngressValueLaneSpec::new(
-        Some(VALUE_LANE),
-        "$payload",
-        true,
-    )];
-    let map_lanes = vec![
-        IngressMapLaneSpec::new(MAP_LANE, "$topic", "$payload", false, true),
-        IngressMapLaneSpec::new(MAP_LANE, "$payload.key", "$payload.value", true, true),
-    ];
-
-    let error = Lanes::try_from_lane_specs(&value_lanes, &map_lanes).expect_err("Should fail.");
-
-    assert_eq!(error, InvalidLanes::NameCollision(MAP_LANE.to_string()));
-}
-
-#[test]
-fn interpret_lanes_value_and_map_lane_collision() {
-    let value_lanes = vec![IngressValueLaneSpec::new(
-        Some(VALUE_LANE),
-        "$payload",
-        true,
-    )];
-    let map_lanes = vec![
-        IngressMapLaneSpec::new(MAP_LANE, "$topic", "$payload", false, true),
-        IngressMapLaneSpec::new(VALUE_LANE, "$payload.key", "$payload.value", true, true),
-    ];
-
-    let error = Lanes::try_from_lane_specs(&value_lanes, &map_lanes).expect_err("Should fail.");
-
-    assert_eq!(error, InvalidLanes::NameCollision(VALUE_LANE.to_string()));
-}
 
 fn init_agent() -> (ConnectorAgent, u64, u64) {
     let agent = ConnectorAgent::default();
