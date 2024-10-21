@@ -19,7 +19,7 @@ use futures::{
     Stream, StreamExt, TryStream, TryStreamExt,
 };
 use rumqttc::{ClientError, MqttOptions};
-use selector::{Lanes, MqttMessageSelector};
+use selector::{Lanes, MqttMessageSelector, Relays};
 use swimos_agent::{
     agent_lifecycle::HandlerContext,
     event_handler::{EventHandler, UnitHandler},
@@ -48,7 +48,7 @@ use super::DEFAULT_CHANNEL_SIZE;
 pub struct MqttIngressConnector<F> {
     factory: F,
     configuration: MqttIngressConfiguration,
-    lanes: RefCell<Lanes>,
+    lanes_and_relays: RefCell<(Lanes, Relays)>,
 }
 
 impl<F> MqttIngressConnector<F> {
@@ -56,7 +56,7 @@ impl<F> MqttIngressConnector<F> {
         MqttIngressConnector {
             factory,
             configuration,
-            lanes: Default::default(),
+            lanes_and_relays: Default::default(),
         }
     }
 }
@@ -91,10 +91,10 @@ where
         let MqttIngressConnector {
             factory,
             configuration,
-            lanes,
+            lanes_and_relays,
         } = self;
 
-        let lanes = std::mem::take(&mut *lanes.borrow_mut());
+        let (lanes, relays) = std::mem::take(&mut *lanes_and_relays.borrow_mut());
 
         let (client, consumer) = open_client(
             factory,
@@ -112,6 +112,7 @@ where
             configuration.payload_deserializer.clone(),
             configuration.subscription.clone(),
             lanes,
+            relays,
         );
         let handler_stream = once(handler_stream_fut).try_flatten();
 
@@ -121,10 +122,17 @@ where
     fn initialize(&self, context: &mut dyn IngressContext) -> Result<(), Self::Error> {
         let MqttIngressConnector {
             configuration,
-            lanes,
+            lanes_and_relays,
             ..
         } = self;
-        let mut guard = lanes.borrow_mut();
+        let mut guard = lanes_and_relays.borrow_mut();
+        let relays = match Relays::try_from(configuration.relays.clone()) {
+            Ok(relays) => relays,
+            Err(err) => {
+                error!(error = %err, "Failed to create relays for an MQTT connector.");
+                return Err(err.into());
+            }
+        };
         match Lanes::try_from_lane_specs(&configuration.value_lanes, &configuration.map_lanes) {
             Ok(lanes_from_conf) => {
                 for lane_spec in lanes_from_conf.value_lanes() {
@@ -133,10 +141,10 @@ where
                 for lane_spec in lanes_from_conf.map_lanes() {
                     context.open_lane(lane_spec.name(), WarpLaneKind::Map);
                 }
-                *guard = lanes_from_conf;
+                *guard = (lanes_from_conf, relays);
             }
             Err(err) => {
-                error!(error = %err, "Failed to create lanes for a MQTT connector.");
+                error!(error = %err, "Failed to create lanes for an MQTT connector.");
                 return Err(err.into());
             }
         }
@@ -150,6 +158,7 @@ async fn create_handler_stream<M, Client, Consumer>(
     format: DataFormat,
     subscription: Subscription,
     lanes: Lanes,
+    relays: Relays,
 ) -> Result<impl ConnectorStream<MqttConnectorError>, MqttConnectorError>
 where
     M: MqttMessage + 'static,
@@ -161,7 +170,7 @@ where
         SubscriptionStream::new(Box::pin(consumer.into_stream()), sub_task).into_stream();
 
     let msg_deser = format.load_deserializer().await?;
-    let message_sel = MqttMessageSelector::new(msg_deser, lanes);
+    let message_sel = MqttMessageSelector::new(msg_deser, lanes, relays);
     let handlers = pub_stream.map(move |result| {
         result.and_then(|message| {
             message_sel

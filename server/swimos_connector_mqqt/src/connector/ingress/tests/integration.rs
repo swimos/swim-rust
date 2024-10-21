@@ -50,6 +50,7 @@ fn make_config() -> MqttIngressConfiguration {
         map_lanes: vec![IngressMapLaneSpec::new(
             MAP_LANE, "$topic", "$payload", false, true,
         )],
+        relays: vec![],
         payload_deserializer: DataFormat::Recon,
         subscription: Subscription::Topic("topic".to_string()),
         keep_alive_secs: Some(30),
@@ -89,9 +90,11 @@ fn initialize_connector() {
     let mut context = TestContext::default();
     assert!(connector.initialize(&mut context).is_ok());
 
-    let guard = connector.lanes.borrow();
-    assert_eq!(guard.value_lanes().len(), 1);
-    assert_eq!(guard.map_lanes().len(), 1);
+    let guard = connector.lanes_and_relays.borrow();
+    let (lanes, relays) = &*guard;
+    assert_eq!(lanes.value_lanes().len(), 1);
+    assert_eq!(lanes.map_lanes().len(), 1);
+    assert!(relays.is_empty());
 
     let TestContext { lanes } = context;
     assert_eq!(lanes.len(), 2);
@@ -171,6 +174,7 @@ fn make_simple_config() -> MqttIngressConfiguration {
             true,
         )],
         map_lanes: vec![],
+        relays: vec![],
         payload_deserializer: DataFormat::Recon,
         subscription: Subscription::Topic("topic".to_string()),
         keep_alive_secs: Some(30),

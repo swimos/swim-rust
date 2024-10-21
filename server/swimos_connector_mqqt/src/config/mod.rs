@@ -13,7 +13,9 @@
 // limitations under the License.
 
 use swimos_api::address::Address;
-use swimos_connector::config::{format::DataFormat, IngressMapLaneSpec, IngressValueLaneSpec};
+use swimos_connector::config::{
+    format::DataFormat, IngressMapLaneSpec, IngressValueLaneSpec, RelaySpecification,
+};
 use swimos_form::Form;
 
 /// Configuration parameters for the MQTT ingress connector.
@@ -28,6 +30,7 @@ pub struct MqttIngressConfiguration {
     /// Specifications for the map lanes to define for the connector. This includes a pattern to define a selector
     /// that will pick out updates to apply to that lane, from a MQTT message.
     pub map_lanes: Vec<IngressMapLaneSpec>,
+    pub relays: Vec<RelaySpecification>,
     /// Deserialization format to use to interpret the contents of the payloads of the MQTT messages.
     pub payload_deserializer: DataFormat,
     /// The MQTT topics to subscribe to.

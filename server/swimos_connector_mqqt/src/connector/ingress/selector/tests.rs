@@ -20,6 +20,7 @@ use swimos_api::agent::WarpLaneKind;
 use swimos_connector::{
     config::{IngressMapLaneSpec, IngressValueLaneSpec},
     deser::{MessageDeserializer, ReconDeserializer},
+    selector::Relays,
     ConnectorAgent,
 };
 use swimos_model::Value;
@@ -65,10 +66,12 @@ fn select_handler() {
     let map_lanes = vec![IngressMapLaneSpec::new(
         MAP_LANE, "$topic", "$payload", false, true,
     )];
+    let relay_specs = vec![];
 
     let lanes =
         Lanes::try_from_lane_specs(&value_lanes, &map_lanes).expect("Lanes should be valid");
-    let selector = MqttMessageSelector::new(ReconDeserializer.boxed(), lanes);
+    let relays = Relays::try_from(relay_specs).expect("Relays should be valid.");
+    let selector = MqttMessageSelector::new(ReconDeserializer.boxed(), lanes, relays);
 
     let message = TestMessage::new("topic", "34");
 

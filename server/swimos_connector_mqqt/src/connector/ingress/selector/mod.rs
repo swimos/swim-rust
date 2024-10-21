@@ -30,23 +30,20 @@ mod tests;
 pub type MqttSelector = Coprod!(TopicSelector, PayloadSelector);
 
 pub type Lanes = swimos_connector::ingress::Lanes<MqttSelector>;
+pub type Relays = swimos_connector::selector::Relays<MqttSelector>;
 
 pub struct MqttMessageSelector {
     payload_deserializer: BoxMessageDeserializer,
     lanes: Lanes,
-    //relays: Relays,
+    relays: Relays,
 }
 
 impl MqttMessageSelector {
-    pub fn new(
-        payload_deserializer: BoxMessageDeserializer,
-        lanes: Lanes,
-        //relays: Relays
-    ) -> Self {
+    pub fn new(payload_deserializer: BoxMessageDeserializer, lanes: Lanes, relays: Relays) -> Self {
         MqttMessageSelector {
             payload_deserializer,
             lanes,
-            //relays,
+            relays,
         }
     }
 
@@ -60,7 +57,7 @@ impl MqttMessageSelector {
         let MqttMessageSelector {
             payload_deserializer,
             lanes,
-            //relays,
+            relays,
         } = self;
 
         let value_lanes = lanes.value_lanes();
@@ -70,7 +67,7 @@ impl MqttMessageSelector {
 
         let mut value_lane_handlers = Vec::with_capacity(value_lanes.len());
         let mut map_lane_handlers = Vec::with_capacity(map_lanes.len());
-        //let mut relay_handlers = Vec::with_capacity(relays.len());
+        let mut relay_handlers = Vec::with_capacity(relays.len());
 
         {
             let topic = Value::text(message.topic());
@@ -83,14 +80,14 @@ impl MqttMessageSelector {
             for map_lane in map_lanes {
                 map_lane_handlers.push(map_lane.select_handler(&mut args)?);
             }
-            //for relay in relays {
-            //    relay_handlers.push(relay.select_handler(&args)?);
-            //}
+            for relay in relays {
+                relay_handlers.push(relay.select_handler(&mut args)?);
+            }
         }
 
         let handler = Sequentially::new(value_lane_handlers)
-            .followed_by(Sequentially::new(map_lane_handlers));
-        //.followed_by(Sequentially::new(relay_handlers));
+            .followed_by(Sequentially::new(map_lane_handlers))
+            .followed_by(Sequentially::new(relay_handlers));
         Ok(handler)
     }
 }

@@ -18,7 +18,7 @@ mod relay;
 mod tests;
 
 use crate::config::{IngressMapLaneSpec, IngressValueLaneSpec};
-use crate::deser::{Deferred, MessagePart};
+use crate::deser::Deferred;
 use crate::selector::{MapLaneSelector, SelectorComponent, ValueLaneSelector};
 use crate::BadSelector;
 use crate::{
@@ -100,23 +100,6 @@ impl Selector<Deferred<'_>> for PayloadSelector {
     fn select(&self, from: &mut Deferred<'_>) -> Result<Option<Value>, DeserializationError> {
         let PayloadSelector(chain) = self;
         from.with(|val| ValueSelector::select_value(chain, val).cloned())
-    }
-}
-
-/// Enumeration of the components of a message.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum MessageField {
-    Key,
-    Payload,
-    Topic,
-}
-
-impl From<MessagePart> for MessageField {
-    fn from(value: MessagePart) -> Self {
-        match value {
-            MessagePart::Key => MessageField::Key,
-            MessagePart::Payload => MessageField::Payload,
-        }
     }
 }
 
@@ -233,97 +216,6 @@ impl<'a> TryFrom<&'a str> for RawSelectorDescriptor<'a> {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum SelectorDescriptor<'a> {
-    Part {
-        part: MessagePart,
-        index: Option<usize>,
-        components: Vec<SelectorComponent<'a>>,
-    },
-    Topic,
-}
-
-impl<'a> TryFrom<RawSelectorDescriptor<'a>> for SelectorDescriptor<'a> {
-    type Error = BadSelector;
-
-    fn try_from(value: RawSelectorDescriptor<'a>) -> Result<Self, Self::Error> {
-        let RawSelectorDescriptor {
-            part,
-            index,
-            components,
-        } = value;
-        match part {
-            "$topic" => {
-                if index.is_none() && components.is_empty() {
-                    Ok(SelectorDescriptor::Topic)
-                } else {
-                    Err(BadSelector::TopicWithComponent)
-                }
-            }
-            "$key" => Ok(SelectorDescriptor::Part {
-                part: MessagePart::Key,
-                index,
-                components,
-            }),
-            "$payload" => Ok(SelectorDescriptor::Part {
-                part: MessagePart::Payload,
-                index,
-                components,
-            }),
-            _ => Err(BadSelector::InvalidRoot),
-        }
-    }
-}
-
-impl<'a> SelectorDescriptor<'a> {
-    pub fn field(&self) -> MessageField {
-        match self {
-            SelectorDescriptor::Part { part, .. } => (*part).into(),
-            SelectorDescriptor::Topic => MessageField::Topic,
-        }
-    }
-
-    pub fn suggested_name(&self) -> Option<&'a str> {
-        match self {
-            SelectorDescriptor::Part {
-                part,
-                index,
-                components,
-            } => {
-                if let Some(SelectorComponent { name, index, .. }) = components.last() {
-                    if index.is_none() {
-                        Some(*name)
-                    } else {
-                        None
-                    }
-                } else if index.is_none() {
-                    Some(match part {
-                        MessagePart::Key => "key",
-                        MessagePart::Payload => "payload",
-                    })
-                } else {
-                    None
-                }
-            }
-            SelectorDescriptor::Topic => Some("topic"),
-        }
-    }
-
-    pub fn selector(&self) -> Option<ChainSelector> {
-        match self {
-            SelectorDescriptor::Part {
-                index, components, ..
-            } => Some(ChainSelector::new(*index, components)),
-            SelectorDescriptor::Topic => None,
-        }
-    }
-}
-
-/// Attempt to parse a descriptor for a selector from a string.
-pub fn parse_selector(descriptor: &str) -> Result<SelectorDescriptor<'_>, BadSelector> {
-    RawSelectorDescriptor::try_from(descriptor)?.try_into()
-}
-
 impl<S> TryFrom<&IngressValueLaneSpec> for ValueLaneSelector<S>
 where
     S: InterpretableSelector,
@@ -424,18 +316,6 @@ where
             Ok(Some(Coproduct::Inr(tail)))
         } else {
             Ok(Head::try_interp(descriptor)?.map(Coproduct::Inl))
-        }
-    }
-}
-
-impl<'a> From<SelectorDescriptor<'a>> for PubSubSelector {
-    fn from(parsed: SelectorDescriptor<'a>) -> Self {
-        match (parsed.field(), parsed.selector()) {
-            (MessageField::Key, Some(selector)) => PubSubSelector::inject(KeySelector(selector)),
-            (MessageField::Payload, Some(selector)) => {
-                PubSubSelector::inject(PayloadSelector(selector))
-            }
-            _ => PubSubSelector::inject(TopicSelector),
         }
     }
 }

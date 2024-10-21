@@ -1,5 +1,5 @@
 use crate::{
-    selector::{InterpretableSelector, PubSubSelector, Relay, Relays},
+    selector::{InterpretableSelector, Relay, Relays},
     BadSelector,
 };
 use swimos_form::Form;

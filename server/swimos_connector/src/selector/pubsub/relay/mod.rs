@@ -21,7 +21,6 @@ use swimos_model::Value;
 use crate::selector::relay::{
     LaneSelector, NodeSelector, PayloadSegment, RelayPayloadSelector, Segment,
 };
-use crate::selector::{parse_selector, PubSubSelector};
 use regex::Regex;
 use std::sync::OnceLock;
 use swimos_recon::parser::{parse_recognize, ParseError};
