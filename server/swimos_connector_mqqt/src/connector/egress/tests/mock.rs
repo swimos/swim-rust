@@ -12,16 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{future::Future, sync::Arc};
+use std::{cell::RefCell, future::Future, pin::pin, sync::Arc};
 
 use bytes::Bytes;
 use parking_lot::Mutex;
 use rumqttc::{ClientError, ConnectionError, MqttOptions, Publish, Request, Transport};
+use swimos_utilities::trigger;
 use tokio::sync::mpsc::{self, error::SendError};
 
 use crate::facade::{MqttPublisher, PublisherDriver, PublisherFactory};
 
 pub struct MockFactory {
+    stop: RefCell<Option<trigger::Receiver>>,
     inner: Arc<Mutex<Outputs>>,
     expected_opts: MqttOptions,
 }
@@ -29,9 +31,16 @@ pub struct MockFactory {
 impl MockFactory {
     pub fn new(expected_opts: MqttOptions) -> Self {
         MockFactory {
+            stop: Default::default(),
             inner: Default::default(),
             expected_opts,
         }
+    }
+
+    pub fn with_stop(&self) -> trigger::Sender {
+        let (tx, rx) = trigger::trigger();
+        *self.stop.borrow_mut() = Some(rx);
+        tx
     }
 }
 
@@ -47,6 +56,7 @@ impl PublisherFactory for MockFactory {
 
     fn create(&self, options: MqttOptions) -> (Self::Publisher, Self::Driver) {
         let MockFactory {
+            stop,
             inner,
             expected_opts,
         } = self;
@@ -68,10 +78,12 @@ impl PublisherFactory for MockFactory {
             (Transport::Unix, Transport::Unix) => {}
             _ => panic!("Transports do not match."),
         }
+        let stop = self.stop.borrow_mut().take();
         let (tx, rx) = mpsc::channel(16);
         (
             TestPublisher { tx },
             TestDriver {
+                stop,
                 rx,
                 inner: inner.clone(),
             },
@@ -103,15 +115,37 @@ impl MqttPublisher for TestPublisher {
 }
 
 pub struct TestDriver {
+    stop: Option<trigger::Receiver>,
     rx: mpsc::Receiver<Publish>,
     inner: Arc<Mutex<Outputs>>,
 }
 
 impl PublisherDriver for TestDriver {
     async fn into_future(self) -> Result<(), ConnectionError> {
-        let TestDriver { mut rx, inner } = self;
-        while let Some(publish) = rx.recv().await {
-            inner.lock().published.push(publish);
+        let TestDriver {
+            stop,
+            mut rx,
+            inner,
+        } = self;
+        if let Some(stop_rx) = stop {
+            let mut stop_rx = pin!(stop_rx);
+            loop {
+                let publish = tokio::select! {
+                    _ = &mut stop_rx => break,
+                    maybe_publish = rx.recv() => {
+                        if let Some(publish) = maybe_publish {
+                            publish
+                        } else {
+                            break;
+                        }
+                    }
+                };
+                inner.lock().published.push(publish);
+            }
+        } else {
+            while let Some(publish) = rx.recv().await {
+                inner.lock().published.push(publish);
+            }
         }
         Ok(())
     }
