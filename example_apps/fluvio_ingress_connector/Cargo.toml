@@ -1,5 +1,5 @@
 [package]
-name = "fluvio_connector"
+name = "fluvio_ingress_connector"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
@@ -18,6 +18,7 @@ swimos_recon = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
-
-[[bin]]
-name = "fluvio_connector_client"
+serde_json = { workspace = true }
+rand = { workspace = true }
+fluvio = { workspace = true }
+bytes = { workspace = true }

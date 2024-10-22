@@ -12,29 +12,26 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! An example demonstrating Value Lanes.
+//! An example demonstrating a Fluvio connector.
 //!
-//! Run the server using the following:
+//! Run the application using the following:
 //! ```text
-//! $ cargo run --bin value-lane
+//! $ cargo run --bin fluvio_connector
 //! ```
-//!
-//! And run the client with the following:
-//! ```text
-//! $ cargo run --bin value_client
-//! ```
-
-use std::{error::Error, str::FromStr, time::Duration};
 
 use clap::Parser;
 use example_util::{example_filter, manage_handle};
+use fluvio::RecordKey;
+use rand::Rng;
+use serde_json::json;
+use std::collections::HashSet;
+use std::{error::Error, str::FromStr, time::Duration};
 use swimos::{
     route::{RoutePattern, RouteUri},
     server::{Server, ServerBuilder},
 };
 use swimos_connector::IngressConnectorModel;
-
-use swimos_recon::parser::parse_recognize;
+use tokio::time::sleep;
 
 mod agent;
 mod params;
@@ -42,11 +39,12 @@ mod params;
 use crate::agent::{SensorAgent, SensorLifecycle};
 use params::Params;
 use swimos::agent::agent_model::AgentModel;
-use swimos_connector_fluvio::{
-    FluvioIngressConfiguration, FluvioIngressConnector, FluvioIngressSpecification,
-};
+use swimos_connector_fluvio::{FluvioIngressConfiguration, FluvioIngressConnector};
 use tracing::error;
 use tracing_subscriber::filter::LevelFilter;
+
+const FLUVIO_TOPIC: &str = "sensors";
+const MAX_AGENTS: usize = 50;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
@@ -88,11 +86,48 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         manage_handle(handle).await
     };
 
-    let (_, result) = tokio::join!(shutdown, task);
+    let (_, task_result, producer_result) = tokio::join!(shutdown, task, run_fluvio());
 
-    result?;
+    producer_result?;
+    task_result?;
     println!("Server stopped successfully.");
     Ok(())
+}
+
+async fn run_fluvio() -> Result<(), Box<dyn Error + Send + Sync>> {
+    let producer = fluvio::producer(FLUVIO_TOPIC).await?;
+    let mut agent_ids = HashSet::new();
+
+    loop {
+        let (agent_id, payload) = {
+            let len = agent_ids.len();
+            let mut rng = rand::thread_rng();
+
+            let agent_id = if len == MAX_AGENTS {
+                rng.gen_range(0..len)
+            } else {
+                let id = len + 1;
+                agent_ids.insert(id);
+                id
+            };
+
+            let payload = json! {
+                {
+                    "temperature": rng.gen_range(10..100),
+                    "voltage": rng.gen_range::<f64, _>(0.0..12.0)
+                }
+            };
+
+            (agent_id, serde_json::to_vec(&payload)?)
+        };
+
+        producer
+            .send(RecordKey::from((agent_id as u32).to_le_bytes()), payload)
+            .await?;
+        producer.flush().await?;
+
+        sleep(Duration::from_millis(500)).await;
+    }
 }
 
 const CONNECTOR_CONFIG: &str = include_str!("fluvio_connector.recon");
@@ -107,12 +142,14 @@ async fn load_config(
     } else {
         CONNECTOR_CONFIG
     };
-    let config = parse_recognize::<FluvioIngressSpecification>(recon, true)?.build()?;
-    Ok(config)
+    FluvioIngressConfiguration::from_str(recon)
 }
 
 pub fn setup_logging() -> Result<(), Box<dyn Error + Send + Sync>> {
-    let filter = example_filter()?.add_directive(LevelFilter::INFO.into());
+    let filter = example_filter()?
+        .add_directive(LevelFilter::INFO.into())
+        .add_directive("swimos_connector_fluvio=trace".parse()?)
+        .add_directive("swimos_connector=info".parse()?);
     tracing_subscriber::fmt().with_env_filter(filter).init();
     Ok(())
 }

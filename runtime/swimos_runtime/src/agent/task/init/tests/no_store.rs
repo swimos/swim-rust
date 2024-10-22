@@ -41,7 +41,7 @@ use crate::agent::{
         AgentRuntimeRequest, Endpoints, InitialEndpoints, LaneEndpoint, LaneRuntimeSpec,
         StoreRuntimeSpec,
     },
-    AgentExecError, Io, LinkRequest,
+    Io, LinkRequest,
 };
 
 type RawMapOperation = MapOperation<Bytes, BytesMut>;

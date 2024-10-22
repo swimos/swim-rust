@@ -1,9 +1,15 @@
 @fluvio {
     topic: "sensors",
+    addr: "127.0.0.1:9003",
     partition: 0,
     offset: @End {
     },
     value_lanes: {
+        @ValueLaneSpec {
+            name: temperature,
+            selector: "$payload.temperature",
+            required: true
+        }
     },
     map_lanes: {
     },
@@ -11,16 +17,8 @@
         @Value {
             node: "/sensors/$key",
             lane: "temperature",
-            payload: "$value.temperature",
+            payload: "$payload.temperature",
             required: true
-        },
-        @Map {
-            node: "/sensors/$key",
-            lane: "voltage",
-            key: "$value.timestamp",
-            value: "$value.voltage",
-            required: true,
-            remove_when_no_value: true
         }
     },
     key_deserializer: @UInt32(@LittleEndian),
