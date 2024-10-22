@@ -19,9 +19,8 @@ use std::{
 
 use swimos_api::address::Address;
 use swimos_connector::selector::{
-    ChainSelector, RawSelectorDescriptor, Selector, SelectorComponent,
+    BadSelector, ChainSelector, RawSelectorDescriptor, SelectorComponent, ValueSelector,
 };
-use swimos_connector::BadSelector;
 use swimos_model::Value;
 
 use crate::{
@@ -95,8 +94,8 @@ impl FieldSelector {
     pub fn select<'a>(&self, key: Option<&'a Value>, value: &'a Value) -> Option<&'a Value> {
         let FieldSelector { part, selector } = self;
         match part {
-            KeyOrValue::Key => key.and_then(|k| selector.select(k)),
-            KeyOrValue::Value => selector.select(value),
+            KeyOrValue::Key => key.and_then(|k| selector.select_value(k)),
+            KeyOrValue::Value => selector.select_value(value),
         }
     }
 }
@@ -253,7 +252,6 @@ pub struct MessageSelectors {
     map_lanes: HashMap<String, MessageSelector>,
     value_downlinks: HashMap<Address<String>, MessageSelector>,
     map_downlinks: HashMap<Address<String>, MessageSelector>,
-    total_lanes: u32,
 }
 
 impl MessageSelectors {
@@ -271,10 +269,6 @@ impl MessageSelectors {
 
     pub fn map_downlinks(&self) -> &HashMap<Address<String>, MessageSelector> {
         &self.map_downlinks
-    }
-
-    pub fn total_lanes(&self) -> u32 {
-        self.total_lanes
     }
 }
 
@@ -351,21 +345,11 @@ impl TryFrom<&KafkaEgressConfiguration> for MessageSelectors {
                 }
             }
         }
-        let total = value_lanes.len() + map_lanes.len();
-        let total_lanes = if let Ok(n) = u32::try_from(total) {
-            if n == u32::MAX {
-                return Err(InvalidExtractors::TooManyLanes(total));
-            }
-            n
-        } else {
-            return Err(InvalidExtractors::TooManyLanes(total));
-        };
         Ok(MessageSelectors {
             value_lanes: value_lane_selectors,
             map_lanes: map_lane_selectors,
             value_downlinks: value_dl_selectors,
             map_downlinks: map_dl_selectors,
-            total_lanes,
         })
     }
 }

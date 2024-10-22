@@ -38,13 +38,13 @@ use swimos_model::{Text, Value};
 use swimos_utilities::trigger;
 use thiserror::Error;
 
+use crate::connector::EgressContext;
 use crate::lifecycle::fixture::{
     drive_downlink, run_handle_with_futs, DownlinkRecord, RequestsRecord, TimerRecord,
 };
 use crate::{
     BaseConnector, ConnectorAgent, ConnectorFuture, EgressConnector, EgressConnectorLifecycle,
-    EgressConnectorSender, EgressContext, MapLaneSelectorFn, MessageSource, SendResult,
-    ValueLaneSelectorFn,
+    EgressConnectorSender, MapLaneSelectorFn, MessageSource, SendResult, ValueLaneSelectorFn,
 };
 
 #[derive(Default)]
@@ -167,28 +167,29 @@ const NODE2: &str = "/node2";
 const LANE1: &str = "value_lane";
 const LANE2: &str = "map_lane";
 
-fn value_lane_addr() -> Address<String> {
-    Address::new(Some(HOST.to_string()), NODE1.to_string(), LANE1.to_string())
+fn value_lane_addr() -> Address<&'static str> {
+    Address::new(Some(HOST), NODE1, LANE1)
 }
 
-fn map_lane_addr() -> Address<String> {
-    Address::new(None, NODE2.to_string(), LANE2.to_string())
+fn map_lane_addr() -> Address<&'static str> {
+    Address::new(None, NODE2, LANE2)
 }
 
 impl EgressConnector for TestConnector {
-    type SendError = TestError;
+    type Error = TestError;
 
     type Sender = TestSender;
 
-    fn open_downlinks(&self, context: &mut dyn EgressContext) {
+    fn initialize(&self, context: &mut dyn EgressContext) -> Result<(), Self::Error> {
         context.open_event_downlink(value_lane_addr());
         context.open_map_downlink(map_lane_addr());
+        Ok(())
     }
 
     fn make_sender(
         &self,
         _agent_params: &HashMap<String, String>,
-    ) -> Result<Self::Sender, Self::SendError> {
+    ) -> Result<Self::Sender, Self::Error> {
         self.push(Event::CreateSender);
         Ok(TestSender {
             state: self.state.clone(),
@@ -265,6 +266,7 @@ async fn init_connector(
     let RequestsRecord {
         mut downlinks,
         timers,
+        ..
     } = run_handle_with_futs(agent, handler)
         .await
         .expect("Handler failed.");
@@ -415,11 +417,16 @@ async fn connector_lifecycle_value_lane_event_busy() {
     let handler = lifecycle
         .item_event(&agent, VALUE_LANE)
         .expect("No pending event.");
-    let RequestsRecord { downlinks, timers } = run_handle_with_futs(&agent, handler)
+    let RequestsRecord {
+        downlinks,
+        timers,
+        lanes,
+    } = run_handle_with_futs(&agent, handler)
         .await
         .expect("Handler failed.");
 
     assert!(downlinks.is_empty());
+    assert!(lanes.is_empty());
 
     let id = match timers.as_slice() {
         &[TimerRecord { id, .. }] => id,
@@ -461,11 +468,16 @@ async fn connector_lifecycle_value_lane_event_busy_twice() {
     let handler = lifecycle
         .item_event(&agent, VALUE_LANE)
         .expect("No pending event.");
-    let RequestsRecord { downlinks, timers } = run_handle_with_futs(&agent, handler)
+    let RequestsRecord {
+        downlinks,
+        timers,
+        lanes,
+    } = run_handle_with_futs(&agent, handler)
         .await
         .expect("Handler failed.");
 
     assert!(downlinks.is_empty());
+    assert!(lanes.is_empty());
 
     let id = match timers.as_slice() {
         &[TimerRecord { id, .. }] => id,
@@ -478,10 +490,15 @@ async fn connector_lifecycle_value_lane_event_busy_twice() {
 
     let handler = lifecycle.on_timer(id);
 
-    let RequestsRecord { downlinks, timers } = run_handle_with_futs(&agent, handler)
+    let RequestsRecord {
+        downlinks,
+        timers,
+        lanes,
+    } = run_handle_with_futs(&agent, handler)
         .await
         .expect("Handler failed.");
     assert!(downlinks.is_empty());
+    assert!(lanes.is_empty());
 
     let id = match timers.as_slice() {
         &[TimerRecord { id, .. }] => id,

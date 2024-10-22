@@ -12,9 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use futures::task::{waker, ArcWake};
+use futures::{
+    future::{pending, ready},
+    task::{waker, ArcWake},
+};
 use std::{
     cell::Cell,
+    future::Future,
     num::NonZeroUsize,
     sync::{atomic::AtomicBool, Arc},
     task::{Context, Poll},
@@ -24,6 +28,8 @@ use swimos_num::non_zero_usize;
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
 use crate::{byte_channel, RunWithBudget};
+
+use super::BudgetedFutureExt;
 
 struct TestWaker(AtomicBool);
 
@@ -164,4 +170,49 @@ async fn with_budget_sets_budget() {
     });
 
     fut.await;
+}
+
+#[test]
+fn consume_budget_consumes() {
+    let w = Arc::new(TestWaker::default());
+    let waker = waker(w.clone());
+    let mut cx = Context::from_waker(&waker);
+    super::set_budget(2);
+
+    let fut = pin!(ready(0).consuming());
+
+    assert_eq!(fut.poll(&mut cx), Poll::Ready(0));
+    assert_eq!(super::TASK_BUDGET.with(Cell::get), Some(1));
+
+    assert!(!w.triggered());
+}
+
+#[test]
+fn consume_budget_pending_no_consume() {
+    let w = Arc::new(TestWaker::default());
+    let waker = waker(w.clone());
+    let mut cx = Context::from_waker(&waker);
+    super::set_budget(2);
+
+    let fut = pin!(pending::<i32>().consuming());
+
+    assert_eq!(fut.poll(&mut cx), Poll::Pending);
+    assert_eq!(super::TASK_BUDGET.with(Cell::get), Some(2));
+    assert!(!w.triggered());
+}
+
+#[test]
+fn consume_budget_yields_on_exhaustion() {
+    let w = Arc::new(TestWaker::default());
+    let waker = waker(w.clone());
+    let mut cx = Context::from_waker(&waker);
+    super::set_budget(1);
+
+    let mut fut = pin!(ready(0).consuming());
+
+    assert_eq!(fut.as_mut().poll(&mut cx), Poll::Pending);
+    assert_eq!(super::TASK_BUDGET.with(Cell::get), None);
+    assert!(w.triggered());
+
+    assert_eq!(fut.poll(&mut cx), Poll::Ready(0));
 }

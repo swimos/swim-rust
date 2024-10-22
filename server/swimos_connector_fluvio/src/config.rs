@@ -13,45 +13,37 @@
 // limitations under the License.
 
 use fluvio::config::{TlsCerts, TlsConfig, TlsPaths, TlsPolicy as FluvioTlsPolicy};
-use fluvio::{FluvioConfig, Offset};
-use std::path::PathBuf;
+use fluvio::Offset;
+use std::path::{Path, PathBuf};
+use std::str::FromStr;
 use swimos_connector::config::format::DataFormat;
-use swimos_connector::config::{IngressMapLaneSpec, IngressValueLaneSpec};
-use swimos_connector::{RelaySpecification, Relays};
+use swimos_connector::config::{
+    IngressMapLaneSpec, IngressValueLaneSpec, PubSubRelaySpecification,
+};
+use swimos_connector::selector::{PubSubSelector, Relays};
 use swimos_form::Form;
+use swimos_recon::parser::parse_recognize;
 
 type BoxError = Box<dyn std::error::Error + Send + Sync + 'static>;
 
 /// Configuration parameters for the Fluvio connector.
 #[derive(Clone, Debug, Form, PartialEq, Eq)]
-#[form(tag = "fluvio")]
-pub struct FluvioIngressSpecification {
-    /// The topic to consume from.
-    pub topic: String,
-    /// Fluvio library configuration.
-    pub fluvio: Option<FluvioSpecification>,
-    /// The partition to consume from.
-    pub partition: u32,
-    /// The offset to start consuming from.
+#[form(tag = "fluvio_specification")]
+struct FluvioIngressSpecification {
+    topic: String,
+    fluvio: FluvioSpecification,
+    partition: u32,
     #[form(name = "offset")]
-    pub offset: OffsetSpecification,
-    /// Specifications for the value lanes to define for the connector. This includes a pattern to
-    /// define a selector that will pick out values to set to that lane, from a Fluvio message.
-    pub value_lanes: Vec<IngressValueLaneSpec>,
-    /// Specifications for the map lanes to define for the connector. This includes a pattern to
-    /// define a selector that will pick out updates to apply to that lane, from a Fluvio message.
-    pub map_lanes: Vec<IngressMapLaneSpec>,
-    /// Deserialization format to use to interpret the contents of the keys of the Fluvio messages.
-    pub key_deserializer: DataFormat,
-    /// Deserialization format to use to interpret the contents of the payloads of the Fluvio
-    /// messages.
-    pub payload_deserializer: DataFormat,
-    /// Collection of relays used for forwarding messages to lanes on agents.
-    pub relays: Vec<RelaySpecification>,
+    offset: OffsetSpecification,
+    value_lanes: Vec<IngressValueLaneSpec>,
+    map_lanes: Vec<IngressMapLaneSpec>,
+    key_deserializer: DataFormat,
+    payload_deserializer: DataFormat,
+    relays: Vec<PubSubRelaySpecification>,
 }
 
 impl FluvioIngressSpecification {
-    pub fn build(self) -> Result<FluvioIngressConfiguration, BoxError> {
+    fn build(self) -> Result<FluvioIngressConfiguration, BoxError> {
         let FluvioIngressSpecification {
             topic,
             fluvio,
@@ -83,7 +75,7 @@ impl FluvioIngressSpecification {
 }
 
 #[derive(Clone, Debug, Form, PartialEq, Eq)]
-pub enum OffsetSpecification {
+enum OffsetSpecification {
     Beginning(Option<u32>),
     End(Option<u32>),
     Absolute(i64),
@@ -102,12 +94,12 @@ impl OffsetSpecification {
 }
 
 #[derive(Clone, Debug, Form, PartialEq, Eq)]
-#[form(tag = "Native")]
-pub struct FluvioSpecification {
-    pub addr: String,
-    pub use_spu_local_address: Option<bool>,
-    pub tls: Option<TlsPolicy>,
-    pub client_id: Option<String>,
+#[form(tag = "fluvio")]
+struct FluvioSpecification {
+    addr: String,
+    use_spu_local_address: Option<bool>,
+    tls: Option<TlsPolicy>,
+    client_id: Option<String>,
 }
 
 impl FluvioSpecification {
@@ -135,9 +127,9 @@ impl FluvioSpecification {
     }
 }
 
-/// Describes whether or not to use TLS and how
+/// Describes whether or not to use TLS and how.
 #[derive(Clone, Debug, Form, PartialEq, Eq)]
-pub enum TlsPolicy {
+enum TlsPolicy {
     Disabled,
     Anonymous,
     Verified(FluvioTlsConfig),
@@ -180,36 +172,36 @@ impl TlsPolicy {
     }
 }
 
-/// Describes the TLS configuration either inline or via file paths
+/// Describes the TLS configuration either inline or via file paths.
 #[derive(Clone, Debug, Form, PartialEq, Eq)]
-pub enum FluvioTlsConfig {
+enum FluvioTlsConfig {
     Inline(FluvioTlsCerts),
     Files(FluvioTlsPaths),
 }
 
 #[derive(Clone, Debug, Form, PartialEq, Eq)]
-pub struct FluvioTlsCerts {
-    /// Domain name
-    pub domain: String,
-    /// Client or Server private key
-    pub key: String,
-    /// Client or Server certificate
-    pub cert: String,
-    /// Certificate Authority cert
-    pub ca_cert: String,
+struct FluvioTlsCerts {
+    /// Domain name.
+    domain: String,
+    /// Client or Server private key.
+    key: String,
+    /// Client or Server certificate.
+    cert: String,
+    /// Certificate Authority cert.
+    ca_cert: String,
 }
 
-/// TLS config with paths to keys and certs
+/// TLS config with paths to keys and certs.
 #[derive(Clone, Debug, Form, PartialEq, Eq)]
-pub struct FluvioTlsPaths {
-    /// Domain name
-    pub domain: String,
-    /// Path to client or server private key
-    pub key: String,
-    /// Path to client or server certificate
-    pub cert: String,
-    /// Path to Certificate Authority certificate
-    pub ca_cert: String,
+struct FluvioTlsPaths {
+    /// Domain name.
+    domain: String,
+    /// Path to client or server private key.
+    key: String,
+    /// Path to client or server certificate.
+    cert: String,
+    /// Path to Certificate Authority certificate.
+    ca_cert: String,
 }
 
 #[derive(Clone, Debug)]
@@ -234,5 +226,21 @@ pub struct FluvioIngressConfiguration {
     /// messages.
     pub payload_deserializer: DataFormat,
     /// Collection of relays used for forwarding messages to lanes on agents.
-    pub relays: Relays,
+    pub relays: Relays<PubSubSelector>,
+}
+
+impl FluvioIngressConfiguration {
+    pub async fn from_file(path: impl AsRef<Path>) -> Result<FluvioIngressConfiguration, BoxError> {
+        let content = tokio::fs::read_to_string(path).await?;
+        FluvioIngressConfiguration::from_str(&content)
+    }
+}
+
+impl FromStr for FluvioIngressConfiguration {
+    type Err = BoxError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let config = parse_recognize::<FluvioIngressSpecification>(s, true)?.build()?;
+        Ok(config)
+    }
 }

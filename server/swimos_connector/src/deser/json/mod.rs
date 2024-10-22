@@ -18,7 +18,7 @@ mod tests;
 use serde_json::Value as JsonValue;
 use swimos_model::{Item, Value};
 
-use super::{MessageDeserializer, MessagePart, MessageView};
+use super::MessageDeserializer;
 
 fn convert_json_value(input: JsonValue) -> Value {
     match input {
@@ -54,19 +54,8 @@ pub struct JsonDeserializer;
 impl MessageDeserializer for JsonDeserializer {
     type Error = serde_json::Error;
 
-    fn deserialize<'a>(
-        &self,
-        message: &'a MessageView<'a>,
-        part: MessagePart,
-    ) -> Result<Value, Self::Error> {
-        let payload = match part {
-            MessagePart::Key => message.key(),
-            MessagePart::Payload => message.payload(),
-        };
-        let v: serde_json::Value = serde_json::from_slice(payload).map_err(|e| {
-            println!("{e:?}");
-            e
-        })?;
+    fn deserialize(&self, buf: &[u8]) -> Result<Value, Self::Error> {
+        let v: serde_json::Value = serde_json::from_slice(buf)?;
         Ok(convert_json_value(v))
     }
 }

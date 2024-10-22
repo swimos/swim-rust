@@ -23,13 +23,13 @@ use crate::facade::{ConsumerFactory, KafkaConsumer, KafkaFactory, KafkaMessage};
 use crate::KafkaIngressConfiguration;
 use futures::{stream::unfold, Future};
 use swimos_agent::agent_lifecycle::HandlerContext;
-use swimos_agent::event_handler::{
-    EventHandler, HandlerActionExt, TryHandlerActionExt, UnitHandler,
-};
+use swimos_agent::event_handler::{EventHandler, HandlerActionExt, UnitHandler};
+use swimos_api::agent::WarpLaneKind;
 use swimos_connector::deser::MessageView;
-use swimos_connector::ingress::{Lanes, MessageSelector};
+use swimos_connector::ingress::{pubsub::MessageSelector, Lanes};
+use swimos_connector::selector::{PubSubSelector, SelectorError};
 use swimos_connector::{
-    BaseConnector, ConnectorAgent, ConnectorStream, IngressConnector, SelectorError,
+    BaseConnector, ConnectorAgent, ConnectorStream, IngressConnector, IngressContext,
 };
 use swimos_utilities::trigger;
 use tokio::sync::mpsc;
@@ -51,7 +51,7 @@ use tracing::{debug, error, info};
 pub struct KafkaIngressConnector<F> {
     factory: F,
     configuration: KafkaIngressConfiguration,
-    lanes: RefCell<Lanes>,
+    lanes: RefCell<Lanes<PubSubSelector>>,
 }
 
 impl<F> KafkaIngressConnector<F> {
@@ -70,7 +70,7 @@ impl KafkaIngressConnector<KafkaFactory> {
     ///
     /// # Arguments
     /// * `configuration` - The connector configuration, specifying the connection details for the Kafka consumer
-    ///   an the lanes that the connector agent should expose.
+    ///   and the lanes that the connector agent should expose.
     pub fn for_config(configuration: KafkaIngressConfiguration) -> Self {
         Self::new(KafkaFactory, configuration)
     }
@@ -82,27 +82,9 @@ where
 {
     fn on_start(&self, init_complete: trigger::Sender) -> impl EventHandler<ConnectorAgent> + '_ {
         let handler_context = ConnHandlerContext::default();
-        let KafkaIngressConnector {
-            configuration,
-            lanes,
-            ..
-        } = self;
-        let result =
-            Lanes::try_from_lane_specs(&configuration.value_lanes, &configuration.map_lanes);
-        if let Err(err) = &result {
-            error!(error = %err, "Failed to create lanes for a Kafka connector.");
-        }
-        let handler = handler_context
-            .value(result)
-            .try_handler()
-            .and_then(|l: Lanes| {
-                let open_handler = l.open_lanes(init_complete);
-                debug!("Successfully created lanes for a Kafka connector.");
-                *lanes.borrow_mut() = l;
-                open_handler
-            });
-
-        handler
+        handler_context.effect(move || {
+            init_complete.trigger();
+        })
     }
 
     fn on_stop(&self) -> impl EventHandler<ConnectorAgent> + '_ {
@@ -114,11 +96,9 @@ impl<F> IngressConnector for KafkaIngressConnector<F>
 where
     F: ConsumerFactory + Send + 'static,
 {
-    type StreamError = KafkaConnectorError;
+    type Error = KafkaConnectorError;
 
-    fn create_stream(
-        &self,
-    ) -> Result<impl ConnectorStream<KafkaConnectorError>, Self::StreamError> {
+    fn create_stream(&self) -> Result<impl ConnectorStream<KafkaConnectorError>, Self::Error> {
         let KafkaIngressConnector {
             factory,
             configuration,
@@ -151,6 +131,31 @@ where
 
         let stream_src = MessageTasks::new(consumer_task, rx);
         Ok(stream_src.into_stream())
+    }
+
+    fn initialize(&self, context: &mut dyn IngressContext) -> Result<(), Self::Error> {
+        let KafkaIngressConnector {
+            configuration,
+            lanes,
+            ..
+        } = self;
+        let mut guard = lanes.borrow_mut();
+        match Lanes::try_from_lane_specs(&configuration.value_lanes, &configuration.map_lanes) {
+            Ok(lanes_from_conf) => {
+                for lane_spec in lanes_from_conf.value_lanes() {
+                    context.open_lane(lane_spec.name(), WarpLaneKind::Value);
+                }
+                for lane_spec in lanes_from_conf.map_lanes() {
+                    context.open_lane(lane_spec.name(), WarpLaneKind::Map);
+                }
+                *guard = lanes_from_conf;
+            }
+            Err(err) => {
+                error!(error = %err, "Failed to create lanes for a Kafka connector.");
+                return Err(err.into());
+            }
+        }
+        Ok(())
     }
 }
 
@@ -229,7 +234,7 @@ where
             let message = consumer.recv().await?;
             let view = message.view();
             let (trigger_tx, trigger_rx) = trigger::trigger();
-            // We need to keep a borrow on the receiver in order to be bale to commit it. However, we don't want
+            // We need to keep a borrow on the receiver in order to be able to commit it. However, we don't want
             // to do this until after we know the handler has been run. The handler cannot be executed within the
             // as it requires access to the agent state. Therefore, we send it out via an MPSC channel and
             // wait for a signal to indicate that it has been handled.

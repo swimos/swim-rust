@@ -14,7 +14,8 @@
 
 use rdkafka::error::KafkaError;
 use swimos_api::address::Address;
-use swimos_connector::{BadSelector, LoadError, SelectorError, SerializationError};
+use swimos_connector::selector::{BadSelector, InvalidLanes, SelectorError};
+use swimos_connector::{LoadError, SerializationError};
 use thiserror::Error;
 
 /// Errors that can be produced by the Kafka connector.
@@ -23,6 +24,9 @@ pub enum KafkaConnectorError {
     /// Failed to load the deserializers required to interpret the Kafka messages.
     #[error(transparent)]
     Configuration(#[from] LoadError),
+    /// The specification of at least one lane is invalid.
+    #[error(transparent)]
+    Lanes(#[from] InvalidLanes),
     /// The Kafka consumer failed.
     #[error(transparent)]
     Kafka(#[from] KafkaError),
@@ -34,7 +38,7 @@ pub enum KafkaConnectorError {
 }
 
 /// Error type for an invalid egress extractor specification.
-#[derive(Clone, Copy, Debug, Error, PartialEq, Eq)]
+#[derive(Clone, Debug, Error, PartialEq, Eq)]
 pub enum InvalidExtractor {
     /// A string describing a selector was invalid.
     #[error(transparent)]
@@ -50,9 +54,6 @@ pub enum InvalidExtractors {
     /// The specification of an extractor was not valid.
     #[error(transparent)]
     Spec(#[from] InvalidExtractor),
-    /// A connector has too many lanes.
-    #[error("The connector has {0} lanes which cannot fit in a u32.")]
-    TooManyLanes(usize),
     /// There are lane extractors with the same name.
     #[error("The lane name {0} occurs more than once.")]
     NameCollision(String),
