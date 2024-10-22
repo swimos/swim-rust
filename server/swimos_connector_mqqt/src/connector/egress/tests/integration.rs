@@ -15,17 +15,25 @@
 use std::{collections::HashMap, time::Duration};
 
 use futures::future::join;
+use futures::TryFutureExt;
 use rumqttc::MqttOptions;
 use swimos_agent::agent_model::{AgentSpec, ItemDescriptor, ItemFlags};
 use swimos_api::{address::Address, agent::WarpLaneKind};
 use swimos_connector::{
-    config::format::DataFormat, BaseConnector, ConnectorAgent, EgressConnector, EgressContext,
+    config::format::DataFormat, BaseConnector, ConnectorAgent, EgressConnector,
+    EgressConnectorSender, EgressContext, MessageSource, SendResult,
 };
-use swimos_utilities::trigger::{self, trigger};
+use swimos_model::Value;
+use swimos_recon::print_recon_compact;
+use swimos_utilities::trigger;
 
 use crate::{
     config::{Credentials, ExtractionSpec, TopicSpecifier},
-    connector::test_util::run_handler_with_futures,
+    connector::{
+        egress::tests::mock::Outputs,
+        test_util::{run_handler, run_handler_with_futures, TestSpawner},
+    },
+    facade::MqttMessage,
     EgressDownlinkSpec, EgressLaneSpec, MqttEgressConfiguration, MqttEgressConnector,
 };
 
@@ -183,4 +191,79 @@ async fn start_connector() {
     let (modified, result) = wait_for_done.await.expect("Timed out.");
     assert!(modified.is_empty());
     assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn create_and_use_sender() {
+    let factory = MockFactory::new(make_expected_opts());
+
+    let stop_tx = factory.with_stop();
+    let outputs = factory.outputs();
+
+    let connector = MqttEgressConnector::new(factory, make_config());
+    let mut context = TestContext::default();
+    assert!(connector.initialize(&mut context).is_ok());
+    let agent = setup_agent();
+
+    let (init_tx, init_rx) = trigger::trigger();
+    let handler = connector.on_start(init_tx);
+
+    let on_start_and_driver = run_handler_with_futures(&agent, handler);
+
+    let agent_ref = &agent;
+    let connector_ref = &connector;
+    let send_task = async move {
+        // Wait for initialization to complete.
+        assert!(init_rx.await.is_ok());
+
+        let sender = connector_ref
+            .make_sender(&HashMap::new())
+            .expect("Creation failed.");
+
+        let addr = Address::new(None, NODE2, LANE).owned();
+        let data = [
+            (MessageSource::Lane(VALUE_LANE), None, Value::from(56)),
+            (
+                MessageSource::Lane(MAP_LANE),
+                Some(Value::text("hello")),
+                Value::from(4),
+            ),
+            (
+                MessageSource::Downlink(&addr),
+                Some(Value::text("world")),
+                Value::from(true),
+            ),
+        ];
+        let spawner = TestSpawner::default();
+        for (source, key, value) in data {
+            let fut = match sender
+                .send(source, key.as_ref(), &value)
+                .expect("Expected result.")
+            {
+                SendResult::Suspend(fut) => fut,
+                SendResult::RequestCallback(_, _) => panic!("Unexpected callback request."),
+                SendResult::Fail(err) => panic!("Failed: {}", err),
+            };
+            let handler = fut.into_future().await.expect("Write failed.");
+            assert!(run_handler(agent_ref, &spawner, handler).is_empty());
+        }
+        //Stop the driver.
+        stop_tx.trigger();
+    };
+
+    let wait_for_done = tokio::time::timeout(TEST_TIMEOUT, join(on_start_and_driver, send_task));
+
+    let (modified, _) = wait_for_done.await.expect("Timed out.");
+    assert!(modified.is_empty());
+
+    let Outputs { published } = &*outputs.lock();
+
+    assert_eq!(published.len(), 3);
+    let expected_payloads = vec![Value::from(56), Value::from(4), Value::from(true)];
+
+    for (publish, payload) in published.iter().zip(expected_payloads.into_iter()) {
+        assert_eq!(publish.topic(), "topic");
+        let payload_bytes = format!("{}", print_recon_compact(&payload)).into_bytes();
+        assert_eq!(publish.payload(), &payload_bytes);
+    }
 }

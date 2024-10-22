@@ -75,12 +75,12 @@ struct ConnectorState<F: PublisherFactory> {
 }
 
 impl<F: PublisherFactory> ConnectorState<F> {
-    fn new(extractors: Arc<MessageExtractors>, sender: F::Publisher, driver: F::Driver) -> Self {
+    fn new(extractors: MessageExtractors, sender: F::Publisher, driver: F::Driver) -> Self {
         let (ser_tx, ser_rx) = oneshot::channel();
         ConnectorState {
             ser_tx: Some(ser_tx),
             serializer: Serializer::Pending(ser_rx),
-            selectors: extractors,
+            selectors: Arc::new(extractors),
             sender,
             driver: Some(driver),
         }
@@ -229,7 +229,8 @@ where
             credentials.clone(),
         )?;
         let mut guard = inner.borrow_mut();
-        *guard = Some(ConnectorState::new(Default::default(), publisher, driver));
+        let extractors = MessageExtractors::try_from(configuration)?;
+        *guard = Some(ConnectorState::new(extractors, publisher, driver));
         Ok(())
     }
 
@@ -314,13 +315,18 @@ where
         let MqttSender {
             publisher, retain, ..
         } = self;
-        let topic = self.select_topic(source, key, value).unwrap();
+        let topic = self.select_topic(source, key, value);
         let payload = self.select_payload(source, key, value);
 
-        let topic_string = topic.to_string();
         let retain_msg = *retain;
-
-        let fut_result = publisher.publish(topic_string, payload, retain_msg);
+        let fut_result = if let Some(topic) = topic {
+            let topic_string = topic.to_string();
+            publisher
+                .publish(topic_string, payload, retain_msg)
+                .map_err(MqttConnectorError::from)
+        } else {
+            Err(MqttConnectorError::MissingTopic)
+        };
         async move {
             fut_result?.await?;
             Ok(UnitHandler::default())

@@ -12,7 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{cell::RefCell, future::Future, pin::pin, sync::Arc};
+use std::{
+    cell::RefCell,
+    future::Future,
+    pin::pin,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
+};
 
 use bytes::Bytes;
 use parking_lot::Mutex;
@@ -23,30 +31,35 @@ use tokio::sync::mpsc::{self, error::SendError};
 use crate::facade::{MqttPublisher, PublisherDriver, PublisherFactory};
 
 pub struct MockFactory {
-    stop: RefCell<Option<trigger::Receiver>>,
+    stop_tx: RefCell<Option<trigger::Sender>>,
+    stop_rx: trigger::Receiver,
     inner: Arc<Mutex<Outputs>>,
     expected_opts: MqttOptions,
 }
 
 impl MockFactory {
     pub fn new(expected_opts: MqttOptions) -> Self {
+        let (stop_tx, stop_rx) = trigger::trigger();
         MockFactory {
-            stop: Default::default(),
+            stop_tx: RefCell::new(Some(stop_tx)),
+            stop_rx,
             inner: Default::default(),
             expected_opts,
         }
     }
 
     pub fn with_stop(&self) -> trigger::Sender {
-        let (tx, rx) = trigger::trigger();
-        *self.stop.borrow_mut() = Some(rx);
-        tx
+        self.stop_tx.borrow_mut().take().expect("Already taken.")
+    }
+
+    pub fn outputs(&self) -> Arc<Mutex<Outputs>> {
+        self.inner.clone()
     }
 }
 
 #[derive(Default)]
 pub struct Outputs {
-    published: Vec<Publish>,
+    pub published: Vec<Publish>,
 }
 
 impl PublisherFactory for MockFactory {
@@ -56,9 +69,10 @@ impl PublisherFactory for MockFactory {
 
     fn create(&self, options: MqttOptions) -> (Self::Publisher, Self::Driver) {
         let MockFactory {
-            stop,
+            stop_rx,
             inner,
             expected_opts,
+            ..
         } = self;
         assert_eq!(options.inflight(), expected_opts.inflight());
         assert_eq!(options.keep_alive(), expected_opts.keep_alive());
@@ -78,14 +92,19 @@ impl PublisherFactory for MockFactory {
             (Transport::Unix, Transport::Unix) => {}
             _ => panic!("Transports do not match."),
         }
-        let stop = self.stop.borrow_mut().take();
+        let stop = stop_rx.clone();
         let (tx, rx) = mpsc::channel(16);
+        let pending = Arc::new(AtomicUsize::new(0));
         (
-            TestPublisher { tx },
+            TestPublisher {
+                tx,
+                pending: pending.clone(),
+            },
             TestDriver {
                 stop,
                 rx,
                 inner: inner.clone(),
+                pending,
             },
         )
     }
@@ -93,6 +112,7 @@ impl PublisherFactory for MockFactory {
 
 #[derive(Clone)]
 pub struct TestPublisher {
+    pending: Arc<AtomicUsize>,
     tx: mpsc::Sender<Publish>,
 }
 
@@ -107,17 +127,22 @@ impl MqttPublisher for TestPublisher {
         let payload = payload.to_vec();
         let mut publish = Publish::new(topic, rumqttc::QoS::AtMostOnce, payload.to_vec());
         publish.retain = retain;
+        let p = self.pending.clone();
         async move {
             let result = tx.send(publish).await;
+            if result.is_ok() {
+                p.fetch_add(1, Ordering::SeqCst);
+            }
             result.map_err(|SendError(publish)| ClientError::Request(Request::Publish(publish)))
         }
     }
 }
 
 pub struct TestDriver {
-    stop: Option<trigger::Receiver>,
+    stop: trigger::Receiver,
     rx: mpsc::Receiver<Publish>,
     inner: Arc<Mutex<Outputs>>,
+    pending: Arc<AtomicUsize>,
 }
 
 impl PublisherDriver for TestDriver {
@@ -126,25 +151,30 @@ impl PublisherDriver for TestDriver {
             stop,
             mut rx,
             inner,
+            pending,
         } = self;
-        if let Some(stop_rx) = stop {
-            let mut stop_rx = pin!(stop_rx);
-            loop {
-                let publish = tokio::select! {
-                    _ = &mut stop_rx => break,
-                    maybe_publish = rx.recv() => {
-                        if let Some(publish) = maybe_publish {
-                            publish
-                        } else {
-                            break;
-                        }
+        let mut stop_rx = pin!(stop);
+        loop {
+            let publish = tokio::select! {
+                _ = &mut stop_rx => break,
+                maybe_publish = rx.recv() => {
+                    if let Some(publish) = maybe_publish {
+                        publish
+                    } else {
+                        break;
                     }
-                };
+                }
+            };
+            pending.fetch_sub(1, Ordering::SeqCst);
+            inner.lock().published.push(publish);
+        }
+        let mut remaining = pending.load(Ordering::SeqCst);
+        while remaining > 0 {
+            if let Some(publish) = rx.recv().await {
+                remaining = remaining.saturating_sub(1);
                 inner.lock().published.push(publish);
-            }
-        } else {
-            while let Some(publish) = rx.recv().await {
-                inner.lock().published.push(publish);
+            } else {
+                break;
             }
         }
         Ok(())
