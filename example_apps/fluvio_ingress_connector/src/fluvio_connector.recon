@@ -1,0 +1,26 @@
+@fluvio {
+    topic: "sensors",
+    addr: "127.0.0.1:9003",
+    partition: 0,
+    offset: @End {
+    },
+    value_lanes: {
+        @ValueLaneSpec {
+            name: temperature,
+            selector: "$payload.temperature",
+            required: true
+        }
+    },
+    map_lanes: {
+    },
+    relays: {
+        @Value {
+            node: "/sensors/$key",
+            lane: "temperature",
+            payload: "$payload.temperature",
+            required: true
+        }
+    },
+    key_deserializer: @UInt32(@LittleEndian),
+    payload_deserializer: @Json
+}

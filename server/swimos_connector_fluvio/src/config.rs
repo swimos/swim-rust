@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use fluvio::config::{TlsCerts, TlsConfig, TlsPaths, TlsPolicy as FluvioTlsPolicy};
-use fluvio::Offset;
+use fluvio::{FluvioConfig, Offset};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use swimos_connector::config::format::DataFormat;
@@ -28,10 +28,13 @@ type BoxError = Box<dyn std::error::Error + Send + Sync + 'static>;
 
 /// Configuration parameters for the Fluvio connector.
 #[derive(Clone, Debug, Form, PartialEq, Eq)]
-#[form(tag = "fluvio_specification")]
+#[form(tag = "fluvio")]
 struct FluvioIngressSpecification {
+    addr: String,
     topic: String,
-    fluvio: FluvioSpecification,
+    use_spu_local_address: Option<bool>,
+    tls: Option<TlsPolicy>,
+    client_id: Option<String>,
     partition: u32,
     #[form(name = "offset")]
     offset: OffsetSpecification,
@@ -46,7 +49,10 @@ impl FluvioIngressSpecification {
     fn build(self) -> Result<FluvioIngressConfiguration, BoxError> {
         let FluvioIngressSpecification {
             topic,
-            fluvio,
+            addr,
+            use_spu_local_address,
+            tls,
+            client_id,
             partition,
             offset,
             value_lanes,
@@ -56,9 +62,18 @@ impl FluvioIngressSpecification {
             relays,
         } = self;
 
+        let tls = match tls {
+            Some(tls) => tls.build(),
+            None => FluvioTlsPolicy::default(),
+        };
+
+        let mut fluvio = FluvioConfig::new(addr).with_tls(tls);
+        fluvio.use_spu_local_address = use_spu_local_address.unwrap_or_default();
+        fluvio.client_id = client_id;
+
         Ok(FluvioIngressConfiguration {
             topic,
-            fluvio: fluvio.build()?,
+            fluvio,
             partition,
             offset: offset.build()?,
             value_lanes,
@@ -86,40 +101,6 @@ impl OffsetSpecification {
             OffsetSpecification::End(None) => Ok(Offset::end()),
             OffsetSpecification::Absolute(n) => Ok(Offset::absolute(n)?),
         }
-    }
-}
-
-#[derive(Clone, Debug, Form, PartialEq, Eq)]
-#[form(tag = "fluvio")]
-struct FluvioSpecification {
-    addr: String,
-    use_spu_local_address: Option<bool>,
-    tls: Option<TlsPolicy>,
-    client_id: Option<String>,
-}
-
-impl FluvioSpecification {
-    fn build(self) -> Result<fluvio::FluvioConfig, BoxError> {
-        let FluvioSpecification {
-            addr,
-            use_spu_local_address,
-            tls,
-            client_id,
-        } = self;
-
-        let tls = match tls {
-            Some(tls) => tls.build(),
-            None => FluvioTlsPolicy::default(),
-        };
-
-        let mut config = fluvio::FluvioConfig::new(addr).with_tls(tls);
-        config.client_id = client_id;
-
-        if let Some(use_spu_local_address) = use_spu_local_address {
-            config.use_spu_local_address = use_spu_local_address;
-        }
-
-        Ok(config)
     }
 }
 
@@ -205,7 +186,7 @@ pub struct FluvioIngressConfiguration {
     /// The topic to consume from.
     pub topic: String,
     /// Fluvio library configuration.
-    pub fluvio: fluvio::FluvioConfig,
+    pub fluvio: FluvioConfig,
     /// The partition to consume from.
     pub partition: u32,
     /// The offset to start consuming from.

@@ -1,0 +1,24 @@
+[package]
+name = "fluvio_ingress_connector"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+publish = false
+
+[dependencies]
+swimos = { workspace = true, features = ["server", "agent"] }
+swimos_client = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "fs"] }
+example-util = { path = "../example_util" }
+swimos_connector = { workspace = true }
+swimos_connector_fluvio = { workspace = true, features = ["json"] }
+swimos_recon = { workspace = true }
+clap = { workspace = true, features = ["derive"] }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+serde_json = { workspace = true }
+rand = { workspace = true }
+fluvio = { workspace = true }
+bytes = { workspace = true }

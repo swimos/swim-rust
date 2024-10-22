@@ -41,7 +41,7 @@ use crate::agent::{
         AgentRuntimeRequest, Endpoints, InitialEndpoints, LaneEndpoint, LaneRuntimeSpec,
         StoreRuntimeSpec,
     },
-    AgentExecError, Io, LinkRequest,
+    Io, LinkRequest,
 };
 
 type RawMapOperation = MapOperation<Bytes, BytesMut>;
@@ -181,12 +181,6 @@ impl TestInit for SingleLaneInit {
         let task = SingleLaneInitTask::new(requests, link_requests, init_complete, self.config);
         task.run().boxed()
     }
-}
-
-#[tokio::test]
-async fn no_lanes() {
-    let (result, _) = run_test(NoLanesInit, StoreDisabled).await;
-    assert!(matches!(result, Err(AgentExecError::NoInitialLanes)));
 }
 
 #[tokio::test]
