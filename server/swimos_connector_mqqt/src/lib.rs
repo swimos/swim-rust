@@ -16,11 +16,10 @@ mod config;
 mod connector;
 mod error;
 mod facade;
-mod selector;
 
 pub use config::{
-    DataFormat, EgressDownlinkSpec, EgressLaneSpec, ExtractionSpec, KafkaEgressConfiguration,
-    KafkaIngressConfiguration, KafkaLogLevel, TopicSpecifier,
+    EgressDownlinkSpec, EgressLaneSpec, MqttEgressConfiguration, MqttIngressConfiguration,
+    Subscription,
 };
-pub use connector::{KafkaEgressConnector, KafkaIngressConnector};
-pub use error::{DoubleInitialization, KafkaConnectorError, KafkaSenderError};
+pub use connector::{MqttEgressConnector, MqttIngressConnector, MqttSender};
+pub use error::MqttConnectorError;

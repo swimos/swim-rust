@@ -12,15 +12,5 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-mod config;
-mod connector;
-mod error;
-mod facade;
-mod selector;
-
-pub use config::{
-    DataFormat, EgressDownlinkSpec, EgressLaneSpec, ExtractionSpec, KafkaEgressConfiguration,
-    KafkaIngressConfiguration, KafkaLogLevel, TopicSpecifier,
-};
-pub use connector::{KafkaEgressConnector, KafkaIngressConnector};
-pub use error::{DoubleInitialization, KafkaConnectorError, KafkaSenderError};
+mod integration;
+mod mock;

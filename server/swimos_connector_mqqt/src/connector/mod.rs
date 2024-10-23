@@ -12,15 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-mod config;
-mod connector;
-mod error;
-mod facade;
-mod selector;
+mod egress;
+mod ingress;
 
-pub use config::{
-    DataFormat, EgressDownlinkSpec, EgressLaneSpec, ExtractionSpec, KafkaEgressConfiguration,
-    KafkaIngressConfiguration, KafkaLogLevel, TopicSpecifier,
-};
-pub use connector::{KafkaEgressConnector, KafkaIngressConnector};
-pub use error::{DoubleInitialization, KafkaConnectorError, KafkaSenderError};
+pub use egress::{MqttEgressConnector, MqttSender};
+pub use ingress::MqttIngressConnector;
+
+const DEFAULT_CHANNEL_SIZE: usize = 16;

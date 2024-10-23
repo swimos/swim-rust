@@ -12,7 +12,6 @@ homepage.workspace = true
 default = []
 json = ["dep:serde_json"]
 avro = ["dep:apache-avro", "dep:chrono", "tokio/fs"]
-pubsub = []
 
 [dependencies]
 futures = { workspace = true }

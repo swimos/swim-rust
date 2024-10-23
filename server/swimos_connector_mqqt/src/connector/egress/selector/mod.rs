@@ -27,52 +27,51 @@ use swimos_connector::{
 };
 use swimos_model::Value;
 
-use crate::config::{
-    EgressDownlinkSpec, EgressLaneSpec, ExtractionSpec, KafkaEgressConfiguration, TopicSpecifier,
+use crate::{
+    config::{ExtractionSpec, TopicSpecifier},
+    EgressDownlinkSpec, EgressLaneSpec, MqttEgressConfiguration,
 };
 
 #[cfg(test)]
 mod tests;
 
+/// Extracts MQTT messages from an Swim lane/downlink event.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct MessageSelector {
+pub struct MessageExtractor {
     topic: TopicExtractor,
-    key: Option<FieldExtractor>,
     payload: Option<FieldExtractor>,
 }
 
-impl MessageSelector {
-    pub fn new(
-        topic: TopicExtractor,
-        key: Option<FieldExtractor>,
-        payload: Option<FieldExtractor>,
-    ) -> Self {
-        MessageSelector {
-            topic,
-            key,
-            payload,
-        }
+impl MessageExtractor {
+    pub fn new(topic: TopicExtractor, payload: Option<FieldExtractor>) -> Self {
+        MessageExtractor { topic, payload }
     }
 
-    pub fn select_topic<'a>(&'a self, key: Option<&'a Value>, value: &'a Value) -> Option<&'a str> {
-        let MessageSelector { topic, .. } = self;
+    /// Attempt to extract the MQTT topic from the event.
+    ///
+    /// # Arguments
+    /// * `key` - The map lane/downlink key (absent if not a map event).
+    /// * `value` - The value associated with the event.
+    pub fn extract_topic<'a>(
+        &'a self,
+        key: Option<&'a Value>,
+        value: &'a Value,
+    ) -> Option<&'a str> {
+        let MessageExtractor { topic, .. } = self;
         topic.select(key, value)
     }
 
-    pub fn select_key<'a>(&self, key: Option<&'a Value>, value: &'a Value) -> Option<&'a Value> {
-        let MessageSelector { key: key_sel, .. } = self;
-        match key_sel {
-            Some(sel) => sel.select(key, value),
-            None => None,
-        }
-    }
-
-    pub fn select_payload<'a>(
+    /// Attempt to extract the MQTT payload from the event.
+    ///
+    /// # Arguments
+    /// * `key` - The map lane/downlink key (absent if not a map event).
+    /// * `value` - The value associated with the event.
+    pub fn extract_payload<'a>(
         &self,
         key: Option<&'a Value>,
         value: &'a Value,
     ) -> Option<&'a Value> {
-        let MessageSelector { payload, .. } = self;
+        let MessageExtractor { payload, .. } = self;
         match payload {
             Some(sel) => sel.select(key, value),
             None => Some(value),
@@ -80,45 +79,68 @@ impl MessageSelector {
     }
 }
 
-impl<'a> From<MessageSelectorSpec<'a>> for MessageSelector {
-    fn from(value: MessageSelectorSpec<'a>) -> Self {
-        let MessageSelectorSpec {
-            topic,
-            key,
-            payload,
-        } = value;
+/// Container for message extractors for all lanes and downlinks associated with an MQTT egress
+/// agent.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct MessageExtractors {
+    value_lanes: HashMap<String, MessageExtractor>,
+    map_lanes: HashMap<String, MessageExtractor>,
+    value_downlinks: HashMap<Address<String>, MessageExtractor>,
+    map_downlinks: HashMap<Address<String>, MessageExtractor>,
+}
+
+impl MessageExtractors {
+    /// Get the extractor for the specified source.
+    ///
+    /// # Arguments
+    /// * `source` - The lane or downlink that produced an event.
+    pub fn select_source(&self, source: MessageSource<'_>) -> Option<&MessageExtractor> {
+        match source {
+            MessageSource::Lane(name) => self
+                .value_lanes
+                .get(name)
+                .or_else(|| self.map_lanes.get(name)),
+            MessageSource::Downlink(addr) => self
+                .value_downlinks
+                .get(addr)
+                .or_else(|| self.map_downlinks.get(addr)),
+        }
+    }
+}
+
+impl<'a> From<MessageExtractorSpec<'a>> for MessageExtractor {
+    fn from(value: MessageExtractorSpec<'a>) -> Self {
+        let MessageExtractorSpec { topic, payload } = value;
         let topic = match topic {
             TopicExtractorSpec::Fixed(s) => TopicExtractor::Fixed(s.to_string()),
             TopicExtractorSpec::Selector(spec) => TopicExtractor::Selector(spec.into()),
         };
-        MessageSelector::new(topic, key.map(Into::into), payload.map(Into::into))
+        MessageExtractor::new(topic, payload.map(Into::into))
     }
 }
 
-struct MessageSelectorSpec<'a> {
+struct MessageExtractorSpec<'a> {
     topic: TopicExtractorSpec<'a>,
-    key: Option<FieldExtractorSpec<'a>>,
     payload: Option<FieldExtractorSpec<'a>>,
 }
 
-impl MessageSelector {
+impl MessageExtractor {
     pub fn try_from_ext_spec(
         spec: &ExtractionSpec,
         fixed_topic: Option<&str>,
     ) -> Result<Self, InvalidExtractor> {
-        let spec = MessageSelectorSpec::try_from_ext_spec(spec, fixed_topic)?;
+        let spec = MessageExtractorSpec::try_from_ext_spec(spec, fixed_topic)?;
         Ok(spec.into())
     }
 }
 
-impl<'a> MessageSelectorSpec<'a> {
+impl<'a> MessageExtractorSpec<'a> {
     fn try_from_ext_spec(
         spec: &'a ExtractionSpec,
         fixed_topic: Option<&str>,
     ) -> Result<Self, InvalidExtractor> {
         let ExtractionSpec {
             topic_specifier,
-            key_selector,
             payload_selector,
         } = spec;
         let topic = match topic_specifier {
@@ -134,50 +156,19 @@ impl<'a> MessageSelectorSpec<'a> {
                 TopicExtractorSpec::Selector(parse_field_selector(s.as_str())?)
             }
         };
-        let key = key_selector
-            .as_ref()
-            .map(|s| parse_field_selector(s))
-            .transpose()?;
         let payload = payload_selector
             .as_ref()
             .map(|s| parse_field_selector(s))
             .transpose()?;
-        Ok(MessageSelectorSpec {
-            topic,
-            key,
-            payload,
-        })
+        Ok(MessageExtractorSpec { topic, payload })
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct MessageSelectors {
-    pub(crate) value_lanes: HashMap<String, MessageSelector>,
-    pub(crate) map_lanes: HashMap<String, MessageSelector>,
-    pub(crate) value_downlinks: HashMap<Address<String>, MessageSelector>,
-    pub(crate) map_downlinks: HashMap<Address<String>, MessageSelector>,
-}
-
-impl MessageSelectors {
-    pub fn select_source(&self, source: MessageSource<'_>) -> Option<&MessageSelector> {
-        match source {
-            MessageSource::Lane(name) => self
-                .value_lanes
-                .get(name)
-                .or_else(|| self.map_lanes.get(name)),
-            MessageSource::Downlink(addr) => self
-                .value_downlinks
-                .get(addr)
-                .or_else(|| self.map_downlinks.get(addr)),
-        }
-    }
-}
-
-impl TryFrom<&KafkaEgressConfiguration> for MessageSelectors {
+impl TryFrom<&MqttEgressConfiguration> for MessageExtractors {
     type Error = InvalidExtractors;
 
-    fn try_from(value: &KafkaEgressConfiguration) -> Result<Self, Self::Error> {
-        let KafkaEgressConfiguration {
+    fn try_from(value: &MqttEgressConfiguration) -> Result<Self, Self::Error> {
+        let MqttEgressConfiguration {
             fixed_topic,
             value_lanes,
             map_lanes,
@@ -197,7 +188,7 @@ impl TryFrom<&KafkaEgressConfiguration> for MessageSelectors {
                     return Err(InvalidExtractors::NameCollision(name));
                 }
                 Entry::Vacant(entry) => {
-                    let selector = MessageSelector::try_from_ext_spec(extractor, top)?;
+                    let selector = MessageExtractor::try_from_ext_spec(extractor, top)?;
                     entry.insert(selector);
                 }
             }
@@ -212,7 +203,7 @@ impl TryFrom<&KafkaEgressConfiguration> for MessageSelectors {
                     return Err(InvalidExtractors::NameCollision(name));
                 }
                 Entry::Vacant(entry) => {
-                    let selector = MessageSelector::try_from_ext_spec(extractor, top)?;
+                    let selector = MessageExtractor::try_from_ext_spec(extractor, top)?;
                     entry.insert(selector);
                 }
             }
@@ -224,7 +215,7 @@ impl TryFrom<&KafkaEgressConfiguration> for MessageSelectors {
                     return Err(InvalidExtractors::AddressCollision(address));
                 }
                 Entry::Vacant(entry) => {
-                    let selector = MessageSelector::try_from_ext_spec(extractor, top)?;
+                    let selector = MessageExtractor::try_from_ext_spec(extractor, top)?;
                     entry.insert(selector);
                 }
             }
@@ -239,12 +230,12 @@ impl TryFrom<&KafkaEgressConfiguration> for MessageSelectors {
                     return Err(InvalidExtractors::AddressCollision(address));
                 }
                 Entry::Vacant(entry) => {
-                    let selector = MessageSelector::try_from_ext_spec(extractor, top)?;
+                    let selector = MessageExtractor::try_from_ext_spec(extractor, top)?;
                     entry.insert(selector);
                 }
             }
         }
-        Ok(MessageSelectors {
+        Ok(MessageExtractors {
             value_lanes: value_lane_selectors,
             map_lanes: map_lane_selectors,
             value_downlinks: value_dl_selectors,

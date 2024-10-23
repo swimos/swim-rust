@@ -26,7 +26,7 @@ swimos_agent = { workspace = true }
 tracing = { workspace = true }
 serde_json = { workspace = true, optional = true }
 apache-avro = { workspace = true, optional = true }
-swimos_connector = { workspace = true, features = ["pubsub"] }
+swimos_connector = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]

@@ -16,6 +16,7 @@
 
 use std::fmt::{Debug, Display};
 
+use swimos_form::Form;
 use swimos_utilities::encoding::BytesStr;
 
 use swimos_model::Text;
@@ -30,7 +31,7 @@ pub struct RelativeAddress<T> {
 }
 
 /// A fully qualified address of a Swim lane.
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash, Form)]
 pub struct Address<T> {
     /// The host at which the lane can be found. If absent this will be inferred from the routing mesh.
     pub host: Option<T>,

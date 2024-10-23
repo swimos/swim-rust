@@ -85,6 +85,7 @@ swimos_introspection = { path = "server/swimos_introspection", version = "0.1.1"
 swimos_server_app = { path = "server/swimos_server_app", version = "0.1.1" }
 swimos_connector = { path = "server/swimos_connector", version = "0.1.1" }
 swimos_connector_kafka = { path = "server/swimos_connector_kafka", version = "0.1.1" }
+swimos_connector_mqtt = { path = "server/swimos_connector_mqtt", version = "0.1.1" }
 swimos = { path = "swimos", version = "0.1.1" }
 swimos_client = { path = "swimos_client", version = "0.1.1" }
 swimos_downlink = { path = "swimos_downlink", version = "0.1.1" }
@@ -184,4 +185,5 @@ hyper-util = "0.1.5"
 rdkafka = "0.36"
 apache-avro = "0.17.0"
 time = "0.3.36"
+rumqttc = "0.24.0"
 fluvio = "0.23.2"
