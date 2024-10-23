@@ -27,11 +27,15 @@ use crate::facade::MqttMessage;
 #[cfg(test)]
 mod tests;
 
+/// A selector that extracts a Recon value from an MQTT message.
 pub type MqttSelector = Coprod!(TopicSelector, PayloadSelector);
 
 pub type Lanes = swimos_connector::ingress::Lanes<MqttSelector>;
 pub type Relays = swimos_connector::selector::Relays<MqttSelector>;
 
+/// Deserializes the payload of an incoming MQTT message and, based on the contents, generates
+/// an event handler which will update the lanes of the connector agent and/or relay commands
+/// to lanes on other agents.
 pub struct MqttMessageSelector {
     payload_deserializer: BoxMessageDeserializer,
     lanes: Lanes,
@@ -47,6 +51,10 @@ impl MqttMessageSelector {
         }
     }
 
+    /// Produce an event handler from an incoming MQTT message.
+    ///
+    /// # Arguments
+    /// * `message` - The MQTT message.
     pub fn handle_message<M>(
         &self,
         message: &M,

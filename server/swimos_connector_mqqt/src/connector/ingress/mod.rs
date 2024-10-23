@@ -45,6 +45,18 @@ mod tests;
 
 use super::DEFAULT_CHANNEL_SIZE;
 
+/// A [connector](IngressConnector) to ingest a stream of MQTT messages into a Swim application. This should be used to
+/// provide a lifecycle for a [connector agent](ConnectorAgent).
+///
+/// The details of the MQTT broker and the topics to subscribe to are provided through the
+/// [configuration](MqttIngressConfiguration) which also includes descriptors of the lanes that the agent should
+/// expose. When the agent starts, the connector will register all of the lanes specified in the configuration and
+/// then attempt to open an MQTT client, which will be spawned into the agent's own task. Each time an MQTT message
+/// is received, an event handler will be executed in the agent which updates the states of the lanes and relays commands
+/// to other agents, according to the specification provided in the configuration.
+///
+/// If a message is received that is invalid with respect to the configuration, the entire agent will fail with an
+/// error.
 pub struct MqttIngressConnector<F> {
     factory: F,
     configuration: MqttIngressConfiguration,
@@ -62,6 +74,12 @@ impl<F> MqttIngressConnector<F> {
 }
 
 impl MqttIngressConnector<MqttFactory> {
+    /// Create an [`MqttIngressConnector`] with the provided configuration. The configuration is only validated when
+    /// the agent attempts to start so this will never fail.
+    ///
+    /// # Arguments
+    /// * `configuration` - The connector configuration, specifying the connection details for the MQTT client,
+    ///   the lanes that the connector agent should expose and the remotes lanes that commands should be relayed to.
     pub fn for_config(configuration: MqttIngressConfiguration) -> Self {
         let channel_size = configuration.channel_size.unwrap_or(DEFAULT_CHANNEL_SIZE);
         MqttIngressConnector::new(MqttFactory::new(channel_size), configuration)

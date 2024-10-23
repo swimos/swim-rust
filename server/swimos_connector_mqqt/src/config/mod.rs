@@ -25,19 +25,26 @@ pub struct MqttIngressConfiguration {
     /// The MQTT connection Url.
     pub url: String,
     /// Specifications for the value lanes to define for the connector. This includes a pattern to define a selector
-    /// that will pick out values to set to that lane, from a MQTT message.
+    /// that will pick out values to set to that lane, from an MQTT message.
     pub value_lanes: Vec<IngressValueLaneSpec>,
     /// Specifications for the map lanes to define for the connector. This includes a pattern to define a selector
-    /// that will pick out updates to apply to that lane, from a MQTT message.
+    /// that will pick out updates to apply to that lane, from an MQTT message.
     pub map_lanes: Vec<IngressMapLaneSpec>,
     pub relays: Vec<RelaySpecification>,
     /// Deserialization format to use to interpret the contents of the payloads of the MQTT messages.
     pub payload_deserializer: DataFormat,
     /// The MQTT topics to subscribe to.
     pub subscription: Subscription,
+    /// Length of time the MQTT client will keep an idle connection open (the connector agent will fail if this expires).
+    /// If not specified, the MQTT client's default will be used.
     pub keep_alive_secs: Option<u64>,
+    /// The maximum packet size for the MQTT client, in bytes.
+    /// If not specified, the MQTT client's default will be used.
     pub max_packet_size: Option<usize>,
+    /// The MPSC channel size used by the MQTT client to communicate with the MQTT runtime task. If not specified,
+    /// the default is 16.
     pub channel_size: Option<usize>,
+    /// Credentials for the connection to the MQTT broker.
     pub credentials: Option<Credentials>,
 }
 
@@ -63,13 +70,22 @@ pub struct MqttEgressConfiguration {
     pub map_downlinks: Vec<EgressDownlinkSpec>,
     /// Serialization format to use when writing payloads.
     pub payload_serializer: DataFormat,
+    /// Length of time the MQTT client will keep an idle connection open (the connector agent will fail if this expires).
+    /// If not specified, the MQTT client's default will be used.
     pub keep_alive_secs: Option<u64>,
+    /// The maximum packet size for the MQTT client, in bytes.
+    /// If not specified, the MQTT client's default will be used.
     pub max_packet_size: Option<usize>,
+    /// The maximum number of in-flight outgoing messages for the MQTT client.
     pub max_inflight: Option<u32>,
+    /// The MPSC channel size used by the MQTT client to communicate with the MQTT runtime task. If not specified,
+    /// the default is 16.
     pub channel_size: Option<usize>,
+    /// Credentials for the connection to the MQTT broker.
     pub credentials: Option<Credentials>,
 }
 
+/// Credentials to connect to an MQTT broker.
 #[derive(Clone, Debug, Form, PartialEq, Eq)]
 pub struct Credentials {
     pub username: String,
@@ -88,6 +104,7 @@ pub enum TopicSpecifier {
     Selector(#[form(header_body)] String),
 }
 
+/// A description of how to extract an MQTT messages from a lane/downlink event.
 #[derive(Clone, Debug, Default, Form, PartialEq, Eq)]
 pub struct ExtractionSpec {
     /// Chooses the topic for a value set to this lane.
@@ -96,6 +113,7 @@ pub struct ExtractionSpec {
     pub payload_selector: Option<String>,
 }
 
+/// A description of a lane for an MQTT egress agent.
 #[derive(Clone, Debug, Form, PartialEq, Eq)]
 pub struct EgressLaneSpec {
     /// A name to use for the lane.
@@ -104,6 +122,7 @@ pub struct EgressLaneSpec {
     pub extractor: ExtractionSpec,
 }
 
+/// A description of a downlink for an MQTT egress agent.
 #[derive(Clone, Debug, Form, PartialEq, Eq)]
 pub struct EgressDownlinkSpec {
     pub address: Address<String>,
@@ -111,12 +130,16 @@ pub struct EgressDownlinkSpec {
     pub extractor: ExtractionSpec,
 }
 
+/// Specifies one or more MQTT topics to subscribe to.
 #[derive(Clone, Debug, Form, PartialEq, Eq)]
 pub enum Subscription {
+    /// A single named topic.
     #[form(tag = "topic")]
     Topic(#[form(header_body)] String),
+    /// A list of named topics.
     #[form(tag = "topics")]
     Topics(#[form(header_body)] Vec<String>),
+    /// A list of MQTT topic subscription filters.
     #[form(tag = "filter")]
     Filters(#[form(header_body)] Vec<String>),
 }

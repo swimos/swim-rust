@@ -19,26 +19,37 @@ use swimos_connector::{
 };
 use thiserror::Error;
 
+/// Errors that can be produced by the Kafka connector.
 #[derive(Debug, Error)]
 pub enum MqttConnectorError {
+    /// The initialization phase of the connector was not completed.
     #[error("The connector was not initialized correctly.")]
     NotInitialized,
+    /// An error occurred attempting ot load or interpret the configuration.
     #[error(transparent)]
     Configuration(#[from] LoadError),
+    /// The extractors specified for an egress connector were not valid.
     #[error(transparent)]
     Extractors(#[from] InvalidExtractors),
+    /// The lanes specified for an ingress connector were not valid.
     #[error(transparent)]
     Lanes(#[from] InvalidLanes),
+    /// The MQTT client options were invalid.
     #[error(transparent)]
     Options(#[from] OptionError),
+    /// An error occurred in the MQTT cline runtime loop.
     #[error(transparent)]
     Client(#[from] ClientError),
+    /// A connection to the MQTT broker failed.
     #[error(transparent)]
     Connection(#[from] ConnectionError),
+    /// A selector failed to extract a required component from a message.
     #[error(transparent)]
     Selection(#[from] SelectorError),
+    /// An error occurred serializing deserializing the payload of an MQTT message.
     #[error(transparent)]
     Serialization(#[from] SerializationError),
+    /// An extractor failed to select a topic for an outgoing message.
     #[error("A topic was not selected for an outgoing message.")]
     MissingTopic,
 }

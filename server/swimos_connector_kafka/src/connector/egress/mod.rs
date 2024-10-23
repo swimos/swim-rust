@@ -68,7 +68,7 @@ impl<F: ProducerFactory> KafkaEgressConnector<F> {
 
 impl KafkaEgressConnector<KafkaFactory> {
     /// Create a [`KafkaEgressConnector`] with the provided configuration. The configuration is only validated when
-    /// the agent attempts to start so this will never fail.
+    /// the agent attempts to start, so this will never fail.
     ///
     /// # Arguments
     /// * `configuration` - The connector configuration, specifying the connection details for the Kafka consumer

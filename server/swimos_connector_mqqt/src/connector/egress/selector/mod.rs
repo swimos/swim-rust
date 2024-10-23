@@ -35,6 +35,7 @@ use crate::{
 #[cfg(test)]
 mod tests;
 
+/// Extracts MQTT messages from an Swim lane/downlink event.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MessageExtractor {
     topic: TopicExtractor,
@@ -46,6 +47,11 @@ impl MessageExtractor {
         MessageExtractor { topic, payload }
     }
 
+    /// Attempt to extract the MQTT topic from the event.
+    ///
+    /// # Arguments
+    /// * `key` - The map lane/downlink key (absent if not a map event).
+    /// * `value` - The value associated with the event.
     pub fn extract_topic<'a>(
         &'a self,
         key: Option<&'a Value>,
@@ -55,6 +61,11 @@ impl MessageExtractor {
         topic.select(key, value)
     }
 
+    /// Attempt to extract the MQTT payload from the event.
+    ///
+    /// # Arguments
+    /// * `key` - The map lane/downlink key (absent if not a map event).
+    /// * `value` - The value associated with the event.
     pub fn extract_payload<'a>(
         &self,
         key: Option<&'a Value>,
@@ -64,6 +75,35 @@ impl MessageExtractor {
         match payload {
             Some(sel) => sel.select(key, value),
             None => Some(value),
+        }
+    }
+}
+
+/// Container for message extractors for all lanes and downlinks associated with an MQTT egress
+/// agent.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct MessageExtractors {
+    value_lanes: HashMap<String, MessageExtractor>,
+    map_lanes: HashMap<String, MessageExtractor>,
+    value_downlinks: HashMap<Address<String>, MessageExtractor>,
+    map_downlinks: HashMap<Address<String>, MessageExtractor>,
+}
+
+impl MessageExtractors {
+    /// Get the extractor for the specified source.
+    ///
+    /// # Arguments
+    /// * `source` - The lane or downlink that produced an event.
+    pub fn select_source(&self, source: MessageSource<'_>) -> Option<&MessageExtractor> {
+        match source {
+            MessageSource::Lane(name) => self
+                .value_lanes
+                .get(name)
+                .or_else(|| self.map_lanes.get(name)),
+            MessageSource::Downlink(addr) => self
+                .value_downlinks
+                .get(addr)
+                .or_else(|| self.map_downlinks.get(addr)),
         }
     }
 }
@@ -121,29 +161,6 @@ impl<'a> MessageExtractorSpec<'a> {
             .map(|s| parse_field_selector(s))
             .transpose()?;
         Ok(MessageExtractorSpec { topic, payload })
-    }
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct MessageExtractors {
-    value_lanes: HashMap<String, MessageExtractor>,
-    map_lanes: HashMap<String, MessageExtractor>,
-    value_downlinks: HashMap<Address<String>, MessageExtractor>,
-    map_downlinks: HashMap<Address<String>, MessageExtractor>,
-}
-
-impl MessageExtractors {
-    pub fn select_source(&self, source: MessageSource<'_>) -> Option<&MessageExtractor> {
-        match source {
-            MessageSource::Lane(name) => self
-                .value_lanes
-                .get(name)
-                .or_else(|| self.map_lanes.get(name)),
-            MessageSource::Downlink(addr) => self
-                .value_downlinks
-                .get(addr)
-                .or_else(|| self.map_downlinks.get(addr)),
-        }
     }
 }
 

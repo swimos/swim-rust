@@ -43,10 +43,35 @@ mod tests;
 
 use super::DEFAULT_CHANNEL_SIZE;
 
+/// A [connector](EgressConnector) to export a stream values from a Swim agent to one or more MQTT topics. This
+/// should be used to provide a lifecycle for a [connector agent](ConnectorAgent).
+///
+/// The details of the MQTT broker and the topics to subscribe to are provided through the
+/// [configuration](MqttEgressConfiguration) which also includes descriptors of the lanes that the agent should
+/// expose and downlinks that it should open to remote lanes. When the agent starts, the connector will register all
+/// of the lanes and open all of the downlinks, specified in the configuration, and then attempt to open an MQTT client.
+/// Each time the state of one of the lanes changes, or a message is received on one of the downlinks, a message will
+/// be generated and sent via the client.
+///
+/// If the producer fails or a message cannot be serialized using the provided configuration, the agent will stop with
+/// an error.
 pub struct MqttEgressConnector<F: PublisherFactory> {
     factory: F,
     configuration: MqttEgressConfiguration,
     inner: RefCell<Option<ConnectorState<F>>>,
+}
+
+impl MqttEgressConnector<MqttFactory> {
+    /// Create an [`MqttEgressConnector`] with the provided configuration. The configuration is only validated when
+    /// the agent attempts to start, so this will never fail.
+    ///
+    /// # Arguments
+    /// * `configuration` - The connector configuration, specifying the connection details for the MQTT broker
+    ///   an the lanes that the connector agent should expose.
+    pub fn for_config(configuration: MqttEgressConfiguration) -> Self {
+        let channel_size = configuration.channel_size.unwrap_or(DEFAULT_CHANNEL_SIZE);
+        MqttEgressConnector::new(MqttFactory::new(channel_size), configuration)
+    }
 }
 
 impl<F: PublisherFactory> MqttEgressConnector<F> {
@@ -56,13 +81,6 @@ impl<F: PublisherFactory> MqttEgressConnector<F> {
             configuration,
             inner: Default::default(),
         }
-    }
-}
-
-impl MqttEgressConnector<MqttFactory> {
-    pub fn for_config(configuration: MqttEgressConfiguration) -> Self {
-        let channel_size = configuration.channel_size.unwrap_or(DEFAULT_CHANNEL_SIZE);
-        MqttEgressConnector::new(MqttFactory::new(channel_size), configuration)
     }
 }
 
