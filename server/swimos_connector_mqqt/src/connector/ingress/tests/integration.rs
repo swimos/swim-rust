@@ -17,6 +17,7 @@ use std::{
     time::Duration,
 };
 
+use crate::{config::Credentials, MqttIngressConfiguration, MqttIngressConnector, Subscription};
 use futures::{future::join, TryStreamExt};
 use rumqttc::MqttOptions;
 use swimos_agent::agent_model::{AgentSpec, ItemDescriptor, ItemFlags};
@@ -25,13 +26,9 @@ use swimos_connector::{
     config::{format::DataFormat, IngressMapLaneSpec, IngressValueLaneSpec},
     BaseConnector, ConnectorAgent, IngressConnector, IngressContext,
 };
+use swimos_connector_util::run_handler_with_futures;
 use swimos_model::Value;
 use swimos_utilities::trigger;
-
-use crate::{
-    config::Credentials, connector::test_util::run_handler_with_futures, MqttIngressConfiguration,
-    MqttIngressConnector, Subscription,
-};
 
 use super::mock::MockFactory;
 

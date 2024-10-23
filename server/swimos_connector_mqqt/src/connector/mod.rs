@@ -14,8 +14,6 @@
 
 mod egress;
 mod ingress;
-#[cfg(test)]
-mod test_util;
 
 pub use egress::{MqttEgressConnector, MqttSender};
 pub use ingress::MqttIngressConnector;

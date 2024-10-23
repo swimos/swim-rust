@@ -27,12 +27,11 @@ use swimos_model::Value;
 use swimos_recon::print_recon_compact;
 use swimos_utilities::trigger;
 
+use swimos_connector_util::{run_handler, run_handler_with_futures, TestSpawner};
+
 use crate::{
     config::{Credentials, ExtractionSpec, TopicSpecifier},
-    connector::{
-        egress::tests::mock::Outputs,
-        test_util::{run_handler, run_handler_with_futures, TestSpawner},
-    },
+    connector::egress::tests::mock::Outputs,
     facade::MqttMessage,
     EgressDownlinkSpec, EgressLaneSpec, MqttEgressConfiguration, MqttEgressConnector,
 };

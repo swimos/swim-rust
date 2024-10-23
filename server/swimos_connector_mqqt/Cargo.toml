@@ -30,3 +30,4 @@ parking_lot = { workspace = true }
 rand = { workspace = true }
 tokio-util = { workspace = true, features = ["codec"] }
 swimos_agent_protocol = { workspace = true }
+swimos_connector_util = { workspace = true }

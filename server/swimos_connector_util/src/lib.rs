@@ -229,20 +229,35 @@ where
 pub fn run_handler<A, H: EventHandler<A>>(
     agent: &A,
     spawner: &TestSpawner<A>,
+    handler: H,
+) -> HashSet<u64>
+where
+    A: AgentSpec,
+{
+    let mut command_buffer = BytesMut::new();
+    run_handler_with_commands(agent, spawner, handler, &mut command_buffer)
+}
+
+pub fn run_handler_with_commands<A, H: EventHandler<A>>(
+    agent: &A,
+    spawner: &TestSpawner<A>,
     mut handler: H,
-) -> HashSet<u64> {
+    command_buffer: &mut BytesMut,
+) -> HashSet<u64>
+where
+    A: AgentSpec,
+{
     let route_params = HashMap::new();
     let uri = make_uri();
     let meta = make_meta(&uri, &route_params);
     let mut join_lane_init = HashMap::new();
-    let mut command_buffer = BytesMut::new();
 
     let mut action_context = ActionContext::new(
         spawner,
         spawner,
         spawner,
         &mut join_lane_init,
-        &mut command_buffer,
+        command_buffer,
     );
 
     let mut modified = HashSet::new();
