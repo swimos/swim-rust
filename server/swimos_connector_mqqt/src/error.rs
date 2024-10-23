@@ -14,8 +14,8 @@
 
 use rumqttc::{ClientError, ConnectionError, OptionError};
 use swimos_connector::{
-    selector::{InvalidLaneSpec, InvalidLanes, SelectorError},
-    BadSelector, InvalidExtractors, LoadError, SerializationError,
+    BadSelector, InvalidExtractors, InvalidLaneSpec, InvalidLanes, LoadError, SelectorError,
+    SerializationError,
 };
 use thiserror::Error;
 

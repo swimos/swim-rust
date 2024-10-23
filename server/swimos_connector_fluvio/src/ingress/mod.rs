@@ -31,7 +31,7 @@ use swimos_agent::event_handler::{EventHandler, UnitHandler};
 use swimos_api::agent::WarpLaneKind;
 use swimos_connector::config::format::DataFormat;
 use swimos_connector::deser::{BoxMessageDeserializer, MessageView};
-use swimos_connector::ingress::{pubsub::MessageSelector, Lanes};
+use swimos_connector::ingress::{Lanes, MessageSelector};
 use swimos_connector::selector::PubSubSelector;
 use swimos_connector::{
     BaseConnector, ConnectorAgent, ConnectorStream, IngressConnector, IngressContext, LoadError,

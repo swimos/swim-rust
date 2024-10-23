@@ -27,7 +27,7 @@ uuid = { workspace = true }
 rdkafka = { workspace = true, features = ["cmake-build", "tokio"] }
 apache-avro = { workspace = true, optional = true }
 thiserror = { workspace = true }
-swimos_connector = { workspace = true, features = ["pubsub"] }
+swimos_connector = { workspace = true}
 frunk = { workspace = true }
 bytes = { workspace = true }
 

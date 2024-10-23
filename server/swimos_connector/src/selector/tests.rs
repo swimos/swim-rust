@@ -17,16 +17,16 @@ use super::{create_init_regex, field_regex, init_regex, RawSelectorDescriptor};
 use crate::config::{IngressMapLaneSpec, IngressValueLaneSpec};
 use crate::deser::{Deferred, MessageDeserializer, ReconDeserializer};
 use crate::selector::{
-    AttrSelector, BasicSelector, ChainSelector, IdentitySelector, IndexSelector, InvalidLaneSpec,
+    AttrSelector, BasicSelector, ChainSelector, IdentitySelector, IndexSelector,
     PubSubMapLaneSelector, SelectHandler, SlotSelector, ValueSelector,
 };
-use crate::BadSelector;
+use crate::{BadSelector, InvalidLaneSpec};
 use swimos_model::{Attr, Item};
 
 use super::InterpretableSelector;
 use crate::selector::{PubSubSelector, PubSubValueLaneSelector};
 use crate::{
-    selector::pubsub::{KeySelector, PayloadSelector, TopicSelector},
+    selector::{KeySelector, PayloadSelector, TopicSelector},
     test_support::{fail, run_handler, TestSpawner},
     ConnectorAgent,
 };
@@ -356,7 +356,7 @@ fn payload_selector_descriptor() {
     assert_eq!(selector.part, "$payload");
     assert!(selector.index.is_none());
     assert!(selector.components.is_empty());
-    assert_eq!(selector.suggested_name(), Some("payloadx"));
+    assert_eq!(selector.suggested_name(), Some("payload"));
 }
 
 #[test]

@@ -77,7 +77,6 @@ impl IngressMapLaneSpec {
 }
 
 /// Specification of a value relay for the connector.
-#[cfg(feature = "pubsub")]
 #[derive(Clone, Debug, Form, PartialEq, Eq)]
 #[form(tag = "ValueRelaySpec")]
 pub struct ValueRelaySpecification {
@@ -93,7 +92,6 @@ pub struct ValueRelaySpecification {
 }
 
 /// Specification of a map relay for the connector.
-#[cfg(feature = "pubsub")]
 #[derive(Clone, Debug, Form, PartialEq, Eq)]
 #[form(tag = "MapRelaySpec")]
 pub struct MapRelaySpecification {
@@ -114,7 +112,6 @@ pub struct MapRelaySpecification {
 }
 
 /// Specification of a relay for the connector.
-#[cfg(feature = "pubsub")]
 #[derive(Clone, Debug, Form, PartialEq, Eq)]
 pub enum RelaySpecification {
     /// Specification of a value relay for the connector.
@@ -123,7 +120,6 @@ pub enum RelaySpecification {
     Map(MapRelaySpecification),
 }
 
-#[cfg(feature = "pubsub")]
 impl<S> TryFrom<Vec<RelaySpecification>> for Relays<S>
 where
     S: InterpretableSelector,

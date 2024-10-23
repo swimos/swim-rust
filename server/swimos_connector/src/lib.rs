@@ -33,7 +33,7 @@ pub use connector::{
 };
 pub use error::{
     BadSelector, ConnectorInitError, DeserializationError, InvalidExtractor, InvalidExtractors,
-    LoadError, SerializationError,
+    InvalidLaneSpec, InvalidLanes, LoadError, SelectorError, SerializationError,
 };
 pub use generic::{ConnectorAgent, MapLaneSelectorFn, ValueLaneSelectorFn};
 pub use lifecycle::{EgressConnectorLifecycle, IngressConnectorLifecycle};

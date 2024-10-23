@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::selector::{SelectHandler, Selector, SelectorError, ValueSelector};
-use crate::{ConnectorAgent, MapLaneSelectorFn, ValueLaneSelectorFn};
+use crate::selector::{SelectHandler, Selector, ValueSelector};
+use crate::{ConnectorAgent, MapLaneSelectorFn, SelectorError, ValueLaneSelectorFn};
 use frunk::Coprod;
 use swimos_agent::event_handler::{Discard, HandlerActionExt};
 use swimos_agent::lanes::{MapLaneSelectRemove, MapLaneSelectUpdate, ValueLaneSelectSet};

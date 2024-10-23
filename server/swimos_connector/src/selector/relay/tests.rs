@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::selector::pubsub::relay::{
+use crate::selector::relay::{
     parse_lane_selector, parse_node_selector, parse_value_selector, LaneSelector, NodeSelector,
     PayloadSegment, RelayPayloadSelector, Segment,
 };

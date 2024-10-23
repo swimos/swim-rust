@@ -13,8 +13,7 @@
 // limitations under the License.
 
 use rdkafka::error::KafkaError;
-use swimos_connector::selector::{InvalidLanes, SelectorError};
-use swimos_connector::{LoadError, SerializationError};
+use swimos_connector::{InvalidLanes, LoadError, SelectorError, SerializationError};
 use thiserror::Error;
 
 /// Errors that can be produced by the Kafka connector.

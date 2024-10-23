@@ -16,8 +16,8 @@ use frunk::{hlist, Coprod};
 use swimos_agent::event_handler::{EventHandler, HandlerActionExt, Sequentially};
 use swimos_connector::{
     deser::{BoxMessageDeserializer, Deferred},
-    selector::{PayloadSelector, SelectHandler, SelectorError, TopicSelector},
-    ConnectorAgent,
+    selector::{PayloadSelector, SelectHandler, TopicSelector},
+    ConnectorAgent, SelectorError,
 };
 use swimos_model::Value;
 use tracing::trace;

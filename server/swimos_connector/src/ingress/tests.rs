@@ -15,12 +15,13 @@
 use crate::config::{IngressMapLaneSpec, IngressValueLaneSpec};
 use crate::deser::MessageDeserializer;
 use crate::deser::{Deferred, MessageView, ReconDeserializer};
+use crate::error::InvalidLanes;
 use crate::ingress::lanes::Lanes;
 use crate::selector::{
-    BasicSelector, InvalidLanes, KeySelector, MapLaneSelector, PayloadSelector, PubSubSelector,
-    PubSubValueLaneSelector, SelectHandler, SelectorError, SlotSelector,
+    BasicSelector, KeySelector, MapLaneSelector, PayloadSelector, PubSubSelector,
+    PubSubValueLaneSelector, SelectHandler, SlotSelector,
 };
-use crate::ConnectorAgent;
+use crate::{ConnectorAgent, SelectorError};
 use frunk::hlist;
 use futures::future::join;
 use std::{
@@ -29,7 +30,6 @@ use std::{
 };
 use swimos_agent::agent_lifecycle::HandlerContext;
 use swimos_agent::agent_model::{AgentSpec, ItemDescriptor, ItemFlags, WarpLaneKind};
-use swimos_agent::event_handler::HandlerActionExt;
 use swimos_connector_util::{run_handler, run_handler_with_futures, TestSpawner};
 use swimos_model::{Item, Value};
 use swimos_recon::print_recon_compact;
@@ -174,7 +174,7 @@ fn value_lane_selector_handler() {
 fn value_lane_selector_handler_optional_field() {
     let (agent, _) = setup_agent();
 
-    let selector = PubSubSelector::inject(PayloadSelector::from(vec![BasicSelector::Slot(
+    let selector = PubSubSelector::inject(PayloadSelector::from_chain(vec![BasicSelector::Slot(
         SlotSelector::for_field("other"),
     )]));
 
@@ -201,7 +201,7 @@ fn value_lane_selector_handler_optional_field() {
 
 #[test]
 fn value_lane_selector_handler_missing_field() {
-    let selector = PubSubSelector::inject(PayloadSelector::from(vec![BasicSelector::Slot(
+    let selector = PubSubSelector::inject(PayloadSelector::from_chain(vec![BasicSelector::Slot(
         SlotSelector::for_field("other"),
     )]));
 
@@ -227,10 +227,10 @@ fn value_lane_selector_handler_missing_field() {
 fn map_lane_selector_handler() {
     let (mut agent, ids) = setup_agent();
 
-    let key = PubSubSelector::inject(PayloadSelector::from(vec![BasicSelector::Slot(
+    let key = PubSubSelector::inject(PayloadSelector::from_chain(vec![BasicSelector::Slot(
         SlotSelector::for_field("key"),
     )]));
-    let value = PubSubSelector::inject(PayloadSelector::from(vec![BasicSelector::Slot(
+    let value = PubSubSelector::inject(PayloadSelector::from_chain(vec![BasicSelector::Slot(
         SlotSelector::for_field("value"),
     )]));
 
@@ -266,10 +266,10 @@ fn map_lane_selector_handler() {
 fn map_lane_selector_handler_optional_field() {
     let (agent, _) = setup_agent();
 
-    let key = PubSubSelector::inject(PayloadSelector::from(vec![BasicSelector::Slot(
+    let key = PubSubSelector::inject(PayloadSelector::from_chain(vec![BasicSelector::Slot(
         SlotSelector::for_field("key"),
     )]));
-    let value = PubSubSelector::inject(PayloadSelector::from(vec![BasicSelector::Slot(
+    let value = PubSubSelector::inject(PayloadSelector::from_chain(vec![BasicSelector::Slot(
         SlotSelector::for_field("value"),
     )]));
 
@@ -296,10 +296,10 @@ fn map_lane_selector_handler_optional_field() {
 
 #[test]
 fn map_lane_selector_handler_missing_field() {
-    let key = PubSubSelector::inject(PayloadSelector::from(vec![BasicSelector::Slot(
+    let key = PubSubSelector::inject(PayloadSelector::from_chain(vec![BasicSelector::Slot(
         SlotSelector::for_field("key"),
     )]));
-    let value = PubSubSelector::inject(PayloadSelector::from(vec![BasicSelector::Slot(
+    let value = PubSubSelector::inject(PayloadSelector::from_chain(vec![BasicSelector::Slot(
         SlotSelector::for_field("value"),
     )]));
 
@@ -325,10 +325,10 @@ fn map_lane_selector_handler_missing_field() {
 fn map_lane_selector_remove() {
     let (mut agent, ids) = setup_agent();
 
-    let key = PubSubSelector::inject(PayloadSelector::from(vec![BasicSelector::Slot(
+    let key = PubSubSelector::inject(PayloadSelector::from_chain(vec![BasicSelector::Slot(
         SlotSelector::for_field("key"),
     )]));
-    let value = PubSubSelector::inject(PayloadSelector::from(vec![BasicSelector::Slot(
+    let value = PubSubSelector::inject(PayloadSelector::from_chain(vec![BasicSelector::Slot(
         SlotSelector::for_field("value"),
     )]));
 
@@ -378,9 +378,10 @@ fn map_lane_selector_remove() {
     });
 }
 
-#[cfg(feature = "pubsub")]
 #[tokio::test]
 async fn handle_message() {
+    use swimos_agent::event_handler::HandlerActionExt;
+
     let value_specs = vec![IngressValueLaneSpec::new(None, "$key", true)];
     let map_specs = vec![IngressMapLaneSpec::new(
         "map",
@@ -394,7 +395,7 @@ async fn handle_message() {
 
     let (agent, ids) = setup_agent();
 
-    let selector = super::pubsub::MessageSelector::new(
+    let selector = super::MessageSelector::new(
         ReconDeserializer.boxed(),
         ReconDeserializer.boxed(),
         lanes,
@@ -433,7 +434,6 @@ async fn handle_message() {
     assert_eq!(modified, ids.values().copied().collect::<HashSet<_>>());
 }
 
-#[cfg(feature = "pubsub")]
 #[tokio::test]
 async fn handle_message_missing_field() {
     let value_specs = vec![IngressValueLaneSpec::new(None, "$key", true)];
@@ -447,7 +447,7 @@ async fn handle_message_missing_field() {
     let lanes =
         Lanes::try_from_lane_specs(&value_specs, &map_specs).expect("Invalid specifications.");
 
-    let selector = super::pubsub::MessageSelector::new(
+    let selector = super::MessageSelector::new(
         ReconDeserializer.boxed(),
         ReconDeserializer.boxed(),
         lanes,
@@ -469,7 +469,6 @@ async fn handle_message_missing_field() {
     assert!(matches!(result, Err(SelectorError::MissingRequiredLane(name)) if name == "map"));
 }
 
-#[cfg(feature = "pubsub")]
 #[tokio::test]
 async fn handle_message_bad_data() {
     let value_specs = vec![IngressValueLaneSpec::new(None, "$key", true)];
@@ -483,7 +482,7 @@ async fn handle_message_bad_data() {
     let lanes =
         Lanes::try_from_lane_specs(&value_specs, &map_specs).expect("Invalid specifications.");
 
-    let selector = super::pubsub::MessageSelector::new(
+    let selector = super::MessageSelector::new(
         ReconDeserializer.boxed(),
         ReconDeserializer.boxed(),
         lanes,
