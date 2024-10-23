@@ -89,6 +89,7 @@ impl PublisherFactory for MockFactory {
         match (options.transport(), expected_opts.transport()) {
             (Transport::Tls(_), Transport::Tls(_)) => {}
             (Transport::Tcp, Transport::Tcp) => {}
+            #[cfg(unix)]
             (Transport::Unix, Transport::Unix) => {}
             _ => panic!("Transports do not match."),
         }
