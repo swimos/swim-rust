@@ -23,3 +23,6 @@ pub use config::{
 };
 pub use connector::{MqttEgressConnector, MqttIngressConnector, MqttSender};
 pub use error::MqttConnectorError;
+
+#[cfg(test)]
+mod generator;
