@@ -164,7 +164,9 @@ where
     A: AgentSpec,
 {
     let mut spawner = TestSpawner::with_downlinks();
-    let modified = run_handler_with_futures_inner(agent, handler, &mut spawner).await;
+    let mut command_buffer = BytesMut::new();
+    let modified =
+        run_handler_with_futures_inner(agent, handler, &mut spawner, &mut command_buffer).await;
     (modified, spawner.take_downlinks())
 }
 
@@ -172,18 +174,37 @@ pub async fn run_handler_with_futures<A, H: EventHandler<A>>(agent: &A, handler:
 where
     A: AgentSpec,
 {
-    run_handler_with_futures_inner(agent, handler, &mut TestSpawner::default()).await
+    run_handler_with_futures_inner(
+        agent,
+        handler,
+        &mut TestSpawner::default(),
+        &mut BytesMut::new(),
+    )
+    .await
+}
+
+pub async fn run_handler_with_futures_and_cmds<A, H: EventHandler<A>>(
+    agent: &A,
+    handler: H,
+    command_buffer: &mut BytesMut,
+) -> HashSet<u64>
+where
+    A: AgentSpec,
+{
+    run_handler_with_futures_inner(agent, handler, &mut TestSpawner::default(), command_buffer)
+        .await
 }
 
 async fn run_handler_with_futures_inner<A, H: EventHandler<A>>(
     agent: &A,
     handler: H,
     spawner: &mut TestSpawner<A>,
+    command_buffer: &mut BytesMut,
 ) -> HashSet<u64>
 where
     A: AgentSpec,
 {
-    let mut modified = run_handler(agent, spawner, handler);
+    let mut modified = run_handler_with_commands(agent, spawner, handler, command_buffer);
     let mut handlers = vec![];
     let reg = move |req: LaneRequest<A>| {
         let LaneRequest {
@@ -211,10 +232,10 @@ where
 
     while !(handlers.is_empty() && spawner.suspended.is_empty()) {
         let m = if let Some(h) = handlers.pop() {
-            run_handler(agent, spawner, h)
+            run_handler_with_commands(agent, spawner, h, command_buffer)
         } else {
             let h = spawner.suspended.next().await.expect("No handler.");
-            run_handler(agent, spawner, h)
+            run_handler_with_commands(agent, spawner, h, command_buffer)
         };
         modified.extend(m);
         for request in

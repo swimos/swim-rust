@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::pin::pin;
+use std::time::Duration;
 
 use bytes::Bytes;
 use futures::future::join;
@@ -21,24 +21,30 @@ use rumqttc::{ClientError, MqttOptions, QoS};
 use swimos_utilities::trigger;
 use tracing::debug;
 
-async fn generate_data(mqtt_uri: String, mut stop: trigger::Receiver) -> Result<(), Box<dyn std::error::Error>> {
+pub const TOPIC: &str = "test/topic";
 
+pub async fn generate_data(
+    mqtt_uri: String,
+    mut stop: trigger::Receiver,
+) -> Result<(), Box<dyn std::error::Error>> {
     let opts = MqttOptions::parse_url(mqtt_uri)?;
 
     let (client, mut event_loop) = rumqttc::AsyncClient::new(opts, 0);
     let stop_cpy = stop.clone();
-    let events_task = async move {    
+    let events_task = async move {
         loop {
-           tokio::select! {
-                biased;
-                _ = &mut stop => break Ok(()),
-                event = event_loop.poll() => {
-                    match event {
-                        Ok(ev) => debug!(event = ?ev, "Processed MQTT event."),
-                        Err(err) => break Err(err),
-                    }
-                }
-           }
+            tokio::select! {
+                 biased;
+                 _ = &mut stop => break Ok(()),
+                 event = event_loop.poll() => {
+                     match event {
+                         Ok(ev) => debug!(event = ?ev, "Processed MQTT event."),
+                         Err(err) => {
+                             break Err(err);
+                         }
+                     }
+                 }
+            }
         }
     };
 
@@ -52,7 +58,10 @@ async fn generate_data(mqtt_uri: String, mut stop: trigger::Receiver) -> Result<
             for _ in 0..10 {
                 data.push(rand.gen_range('A'..='Z'));
             }
-            client.publish_bytes("test/topic", QoS::AtMostOnce, true, Bytes::from(data)).await?;
+            client
+                .publish_bytes(TOPIC, QoS::AtMostOnce, true, Bytes::from(data))
+                .await?;
+            tokio::time::sleep(Duration::from_millis(100)).await;
         }
         Ok(()) as Result<(), ClientError>
     };

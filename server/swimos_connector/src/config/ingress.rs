@@ -91,6 +91,17 @@ pub struct ValueRelaySpecification {
     pub required: bool,
 }
 
+impl ValueRelaySpecification {
+    pub fn new<S: Into<String>>(node: S, lane: S, payload: S, required: bool) -> Self {
+        ValueRelaySpecification {
+            node: node.into(),
+            lane: lane.into(),
+            payload: payload.into(),
+            required,
+        }
+    }
+}
+
 /// Specification of a map relay for the connector.
 #[derive(Clone, Debug, Form, PartialEq, Eq)]
 #[form(tag = "MapRelaySpec")]
@@ -109,6 +120,26 @@ pub struct MapRelaySpecification {
     /// If the value selector fails to select, then it will emit a map remove command to remove the
     /// corresponding entry.
     pub remove_when_no_value: bool,
+}
+
+impl MapRelaySpecification {
+    pub fn new<S: Into<String>>(
+        node: S,
+        lane: S,
+        key: S,
+        value: S,
+        required: bool,
+        remove_when_no_value: bool,
+    ) -> Self {
+        MapRelaySpecification {
+            node: node.into(),
+            lane: lane.into(),
+            key: key.into(),
+            value: value.into(),
+            required,
+            remove_when_no_value,
+        }
+    }
 }
 
 /// Specification of a relay for the connector.
