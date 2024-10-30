@@ -21,7 +21,7 @@ use rumqttc::{ClientError, MqttOptions, QoS};
 use swimos_utilities::trigger;
 use tracing::debug;
 
-pub const TOPIC: &str = "test/topic";
+pub const TOPIC: &str = "test/ingress";
 
 pub async fn generate_data(
     mqtt_uri: String,
