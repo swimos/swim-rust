@@ -8,6 +8,11 @@ license.workspace = true
 repository = "https://github.com/swimos/swim-rust/tree/main/server/swimos_connector_mqqt"
 homepage.workspace = true
 
+[features]
+default = []
+json = ["swimos_connector/json"]
+avro = ["swimos_connector/avro"]
+
 [dependencies]
 bytes = { workspace = true}
 futures = { workspace = true }

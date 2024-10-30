@@ -11,7 +11,7 @@ repository = "https://github.com/swimos/swim-rust/tree/main/server/swimos_connec
 [features]
 default = []
 json = ["swimos_connector/json"]
-avro = ["swimos_connector/json"]
+avro = ["swimos_connector/avro"]
 
 [dependencies]
 fluvio = { workspace = true }
