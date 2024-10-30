@@ -1,11 +1,11 @@
 [package]
-name = "swimos_connector_mqqt"
+name = "swimos_connector_mqtt"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
 description = "SwimOS Connector for MQTT"
 license.workspace = true
-repository = "https://github.com/swimos/swim-rust/tree/main/server/swimos_connector_mqqt"
+repository = "https://github.com/swimos/swim-rust/tree/main/server/swimos_connector_mqtt"
 homepage.workspace = true
 
 [features]
