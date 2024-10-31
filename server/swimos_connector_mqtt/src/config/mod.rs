@@ -12,11 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::str::FromStr;
+
 use swimos_api::address::Address;
 use swimos_connector::config::{
     format::DataFormat, IngressMapLaneSpec, IngressValueLaneSpec, RelaySpecification,
 };
 use swimos_form::Form;
+use swimos_recon::parser::{parse_recognize, ParseError};
 
 /// Configuration parameters for the MQTT ingress connector.
 #[derive(Clone, Debug, Form, PartialEq, Eq)]
@@ -46,6 +49,15 @@ pub struct MqttIngressConfiguration {
     pub channel_size: Option<usize>,
     /// Credentials for the connection to the MQTT broker.
     pub credentials: Option<Credentials>,
+}
+
+impl FromStr for MqttIngressConfiguration {
+    type Err = ParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let config = parse_recognize::<MqttIngressConfiguration>(s, true)?;
+        Ok(config)
+    }
 }
 
 /// Configuration parameters for the MQTT egress connector.

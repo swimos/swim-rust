@@ -12,17 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-mod config;
-mod connector;
-mod error;
-mod facade;
+use clap::Parser;
 
-pub use config::{
-    EgressDownlinkSpec, EgressLaneSpec, ExtractionSpec, MqttEgressConfiguration,
-    MqttIngressConfiguration, Subscription, TopicSpecifier,
-};
-pub use connector::{MqttEgressConnector, MqttIngressConnector, MqttSender};
-pub use error::MqttConnectorError;
-
-#[cfg(test)]
-mod generator;
+#[derive(Parser)]
+#[command(author, version, about, long_about = None)]
+pub struct Params {
+    /// Specify a Recon configuration file for the connector.
+    #[arg(long)]
+    pub config: Option<String>,
+    #[arg(long, default_value = "false")]
+    /// Specify that logging should be enabled.
+    pub enable_logging: bool,
+}
