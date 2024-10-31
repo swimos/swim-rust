@@ -1,18 +1,14 @@
 @mqtt {
     url: "mqtt://localhost:1883?client_id=example",
-    fixed_topic: "example/topic",
     value_lanes: {
-        @EgressLaneSpec {
+        @ValueLaneSpec {
             name: value,
-            extractor: @ExtractionSpec {
-                topic_specifier: @Fixed,
-                payload_selector: "$value"
-            }
+            selector: "$payload",
+            required: true
         }
     },
     map_lanes: {},
-    value_downlinks: {},
-    map_downlinks: {},
-    payload_serializer: @Json,
-    channel_size: 0
+    relays: {},
+    payload_deserializer: @Json,
+    subscription: @topic("example/topic")
 }

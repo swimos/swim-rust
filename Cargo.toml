@@ -46,6 +46,7 @@ members = [
     "example_apps/kafka_ingress_connector",
     "example_apps/kafka_egress_connector",
     "example_apps/mqtt_ingress_connector",
+    "example_apps/mqtt_egress_connector"
 ]
 
 [workspace.package]
