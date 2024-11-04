@@ -246,14 +246,14 @@ fn open_lanes(config: &KafkaEgressConfiguration, context: &mut dyn EgressContext
 
 fn open_downlinks(config: &KafkaEgressConfiguration, context: &mut dyn EgressContext) {
     let KafkaEgressConfiguration {
-        value_downlinks,
-        map_downlinks,
+        event_downlinks,
+        map_event_downlinks,
         ..
     } = config;
-    for value_dl in value_downlinks {
+    for value_dl in event_downlinks {
         context.open_event_downlink(value_dl.address.borrow_parts());
     }
-    for map_dl in map_downlinks {
+    for map_dl in map_event_downlinks {
         context.open_map_downlink(map_dl.address.borrow_parts());
     }
 }

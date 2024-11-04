@@ -61,11 +61,11 @@ fn make_config() -> MqttEgressConfiguration {
             name: MAP_LANE.to_string(),
             extractor: spec.clone(),
         }],
-        value_downlinks: vec![EgressDownlinkSpec {
+        event_downlinks: vec![EgressDownlinkSpec {
             address: Address::new(Some(HOST), NODE1, LANE).owned(),
             extractor: spec.clone(),
         }],
-        map_downlinks: vec![EgressDownlinkSpec {
+        map_event_downlinks: vec![EgressDownlinkSpec {
             address: Address::new(None, NODE2, LANE).owned(),
             extractor: spec,
         }],

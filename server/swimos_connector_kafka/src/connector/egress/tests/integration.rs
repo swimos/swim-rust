@@ -145,8 +145,8 @@ fn make_connector(
     is_busy: Arc<AtomicBool>,
     value_lanes: Vec<EgressLaneSpec>,
     map_lanes: Vec<EgressLaneSpec>,
-    value_downlinks: Vec<EgressDownlinkSpec>,
-    map_downlinks: Vec<EgressDownlinkSpec>,
+    event_downlinks: Vec<EgressDownlinkSpec>,
+    map_event_downlinks: Vec<EgressDownlinkSpec>,
 ) -> (MockFactory, KafkaEgressConnector<MockFactory>) {
     let configuration = KafkaEgressConfiguration {
         properties: props(),
@@ -156,8 +156,8 @@ fn make_connector(
         fixed_topic: Some(FIXED.to_string()),
         value_lanes,
         map_lanes,
-        value_downlinks,
-        map_downlinks,
+        event_downlinks,
+        map_event_downlinks,
         retry_timeout_ms: 5000,
     };
     let fac = MockFactory::new(is_busy);
@@ -217,8 +217,8 @@ async fn init_agent(agent: &ConnectorAgent, connector: &KafkaEgressConnector<Moc
 #[derive(Default)]
 struct TestEgressContext {
     lanes: Vec<(String, WarpLaneKind)>,
-    value_downlinks: Vec<Address<String>>,
-    map_downlinks: Vec<Address<String>>,
+    event_downlinks: Vec<Address<String>>,
+    map_event_downlinks: Vec<Address<String>>,
 }
 
 impl EgressContext for TestEgressContext {
@@ -227,11 +227,11 @@ impl EgressContext for TestEgressContext {
     }
 
     fn open_event_downlink(&mut self, address: Address<&str>) {
-        self.value_downlinks.push(address.owned());
+        self.event_downlinks.push(address.owned());
     }
 
     fn open_map_downlink(&mut self, address: Address<&str>) {
-        self.map_downlinks.push(address.owned());
+        self.map_event_downlinks.push(address.owned());
     }
 }
 
@@ -262,8 +262,8 @@ fn initialize_connector() {
 
     let TestEgressContext {
         lanes,
-        value_downlinks,
-        map_downlinks,
+        event_downlinks,
+        map_event_downlinks,
     } = context;
     assert_eq!(lanes.len(), 2);
     let lanes_map = lanes.into_iter().collect::<HashMap<_, _>>();
@@ -275,8 +275,8 @@ fn initialize_connector() {
     .into_iter()
     .collect::<HashMap<_, _>>();
 
-    assert_eq!(value_downlinks, vec![addr1()]);
-    assert_eq!(map_downlinks, vec![addr2()]);
+    assert_eq!(event_downlinks, vec![addr1()]);
+    assert_eq!(map_event_downlinks, vec![addr2()]);
     assert_eq!(lanes_map, expected_lanes);
 }
 
@@ -337,11 +337,11 @@ async fn connector_on_start() {
             .collect()
     );
     assert_eq!(
-        &extractors.value_downlinks,
+        &extractors.event_downlinks,
         &[(addr1(), selector.clone())].into_iter().collect()
     );
     assert_eq!(
-        &extractors.map_downlinks,
+        &extractors.map_event_downlinks,
         &[(addr2(), selector)].into_iter().collect()
     );
 }

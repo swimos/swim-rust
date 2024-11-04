@@ -51,14 +51,14 @@ fn make_config() -> MqttEgressConfiguration {
             },
         }],
         map_lanes: vec![],
-        value_downlinks: vec![EgressDownlinkSpec {
+        event_downlinks: vec![EgressDownlinkSpec {
             address: Address::new(None, "/node", "lane").owned(),
             extractor: ExtractionSpec {
                 topic_specifier: TopicSpecifier::Fixed,
                 payload_selector: None,
             },
         }],
-        map_downlinks: vec![],
+        map_event_downlinks: vec![],
         payload_serializer: DataFormat::String,
         keep_alive_secs: None,
         max_packet_size: None,

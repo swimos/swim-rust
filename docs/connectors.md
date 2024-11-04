@@ -14,5 +14,6 @@ Contents
     * [Fluvio Connector](fluvio.md) - An ingress connector for [Fluvio](https://www.fluvio.io/).
     * [Kafka Connectors](kafka.md) - Ingress and egress connectors for [Apache Kafka](https://kafka.apache.org/).
     * [MQTT Connectors](mqtt.md) - Ingress and egress connectors for [MQTT](https://mqtt.org/) brokers.
-2. The connector API.
+2. [Field selectors](selectors.md)
+3. The connector API.
     * TODO

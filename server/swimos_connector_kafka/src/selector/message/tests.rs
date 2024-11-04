@@ -48,8 +48,8 @@ fn empty_config() -> KafkaEgressConfiguration {
         fixed_topic: Some(FIXED_TOPIC.to_string()),
         value_lanes: vec![],
         map_lanes: vec![],
-        value_downlinks: vec![],
-        map_downlinks: vec![],
+        event_downlinks: vec![],
+        map_event_downlinks: vec![],
         retry_timeout_ms: 5000,
     }
 }
@@ -72,7 +72,7 @@ fn test_config() -> KafkaEgressConfiguration {
         },
     }];
     let map_lanes = vec;
-    let value_downlinks = vec![EgressDownlinkSpec {
+    let event_downlinks = vec![EgressDownlinkSpec {
         address: Address {
             host: Some(HOST.to_string()),
             node: NODE1.to_string(),
@@ -84,7 +84,7 @@ fn test_config() -> KafkaEgressConfiguration {
             payload_selector: Some("$value.payload".to_string()),
         },
     }];
-    let map_downlinks = vec![EgressDownlinkSpec {
+    let map_event_downlinks = vec![EgressDownlinkSpec {
         address: Address {
             host: Some(HOST.to_string()),
             node: NODE2.to_string(),
@@ -99,8 +99,8 @@ fn test_config() -> KafkaEgressConfiguration {
     KafkaEgressConfiguration {
         value_lanes,
         map_lanes,
-        value_downlinks,
-        map_downlinks,
+        event_downlinks,
+        map_event_downlinks,
         ..empty_config()
     }
 }
@@ -132,7 +132,7 @@ fn expected_extractors() -> MessageSelectors {
     )]
     .into_iter()
     .collect();
-    let value_downlinks = [(
+    let event_downlinks = [(
         Address::new(Some(HOST.to_string()), NODE1.to_string(), LANE.to_string()),
         MessageSelector::new(
             TopicExtractor::Fixed(FIXED_TOPIC.to_string()),
@@ -150,7 +150,7 @@ fn expected_extractors() -> MessageSelectors {
     )]
     .into_iter()
     .collect();
-    let map_downlinks = [(
+    let map_event_downlinks = [(
         Address::new(Some(HOST.to_string()), NODE2.to_string(), LANE.to_string()),
         MessageSelector::new(
             TopicExtractor::Fixed(FIXED_TOPIC.to_string()),
@@ -166,8 +166,8 @@ fn expected_extractors() -> MessageSelectors {
     MessageSelectors {
         value_lanes,
         map_lanes,
-        value_downlinks,
-        map_downlinks,
+        event_downlinks,
+        map_event_downlinks,
     }
 }
 
@@ -401,7 +401,7 @@ fn duplicate_value_downlink() {
         lane: LANE.to_string(),
     };
     let config = KafkaEgressConfiguration {
-        value_downlinks: vec![
+        event_downlinks: vec![
             EgressDownlinkSpec {
                 address: addr.clone(),
                 extractor: ExtractionSpec::default(),
@@ -428,7 +428,7 @@ fn duplicate_map_downlink() {
         lane: LANE.to_string(),
     };
     let config = KafkaEgressConfiguration {
-        map_downlinks: vec![
+        map_event_downlinks: vec![
             EgressDownlinkSpec {
                 address: addr.clone(),
                 extractor: ExtractionSpec::default(),
@@ -455,11 +455,11 @@ fn duplicate_value_and_map_downlink() {
         lane: LANE.to_string(),
     };
     let config = KafkaEgressConfiguration {
-        value_downlinks: vec![EgressDownlinkSpec {
+        event_downlinks: vec![EgressDownlinkSpec {
             address: addr.clone(),
             extractor: ExtractionSpec::default(),
         }],
-        map_downlinks: vec![EgressDownlinkSpec {
+        map_event_downlinks: vec![EgressDownlinkSpec {
             address: addr.clone(),
             extractor: ExtractionSpec::default(),
         }],

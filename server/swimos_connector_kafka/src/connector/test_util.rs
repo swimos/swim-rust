@@ -12,10 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::HashMap;
-
 #[cfg(feature = "json")]
-pub fn create_kafka_props() -> HashMap<String, String> {
+pub fn create_kafka_props() -> std::collections::HashMap<String, String> {
     [
         ("bootstrap.servers", "datagen.nstream.cloud:9092"),
         ("message.timeout.ms", "5000"),

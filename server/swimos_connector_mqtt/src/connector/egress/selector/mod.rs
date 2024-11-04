@@ -85,8 +85,8 @@ impl MessageExtractor {
 pub struct MessageExtractors {
     value_lanes: HashMap<String, MessageExtractor>,
     map_lanes: HashMap<String, MessageExtractor>,
-    value_downlinks: HashMap<Address<String>, MessageExtractor>,
-    map_downlinks: HashMap<Address<String>, MessageExtractor>,
+    event_downlinks: HashMap<Address<String>, MessageExtractor>,
+    map_event_downlinks: HashMap<Address<String>, MessageExtractor>,
 }
 
 impl MessageExtractors {
@@ -101,9 +101,9 @@ impl MessageExtractors {
                 .get(name)
                 .or_else(|| self.map_lanes.get(name)),
             MessageSource::Downlink(addr) => self
-                .value_downlinks
+                .event_downlinks
                 .get(addr)
-                .or_else(|| self.map_downlinks.get(addr)),
+                .or_else(|| self.map_event_downlinks.get(addr)),
         }
     }
 }
@@ -172,8 +172,8 @@ impl TryFrom<&MqttEgressConfiguration> for MessageExtractors {
             fixed_topic,
             value_lanes,
             map_lanes,
-            value_downlinks,
-            map_downlinks,
+            event_downlinks,
+            map_event_downlinks,
             ..
         } = value;
         let top = fixed_topic.as_ref().map(|s| s.as_str());
@@ -208,7 +208,7 @@ impl TryFrom<&MqttEgressConfiguration> for MessageExtractors {
                 }
             }
         }
-        for EgressDownlinkSpec { address, extractor } in value_downlinks {
+        for EgressDownlinkSpec { address, extractor } in event_downlinks {
             match value_dl_selectors.entry(address.clone()) {
                 Entry::Occupied(entry) => {
                     let (address, _) = entry.remove_entry();
@@ -220,7 +220,7 @@ impl TryFrom<&MqttEgressConfiguration> for MessageExtractors {
                 }
             }
         }
-        for EgressDownlinkSpec { address, extractor } in map_downlinks {
+        for EgressDownlinkSpec { address, extractor } in map_event_downlinks {
             if value_dl_selectors.contains_key(address) {
                 return Err(InvalidExtractors::AddressCollision(address.clone()));
             }
@@ -238,8 +238,8 @@ impl TryFrom<&MqttEgressConfiguration> for MessageExtractors {
         Ok(MessageExtractors {
             value_lanes: value_lane_selectors,
             map_lanes: map_lane_selectors,
-            value_downlinks: value_dl_selectors,
-            map_downlinks: map_dl_selectors,
+            event_downlinks: value_dl_selectors,
+            map_event_downlinks: map_dl_selectors,
         })
     }
 }

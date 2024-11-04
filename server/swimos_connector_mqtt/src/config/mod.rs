@@ -76,10 +76,10 @@ pub struct MqttEgressConfiguration {
     pub map_lanes: Vec<EgressLaneSpec>,
     /// Descriptors for the value downlinks (to remote lanes) of the connector agent and how to extract messages
     /// from the received events to send to the egress sink.
-    pub value_downlinks: Vec<EgressDownlinkSpec>,
+    pub event_downlinks: Vec<EgressDownlinkSpec>,
     /// Descriptors for the map downlinks (to remote lanes) of the connector agent and how to extract messages
     /// from the received events to send to the egress sink.
-    pub map_downlinks: Vec<EgressDownlinkSpec>,
+    pub map_event_downlinks: Vec<EgressDownlinkSpec>,
     /// Serialization format to use when writing payloads.
     pub payload_serializer: DataFormat,
     /// Length of time the MQTT client will keep an idle connection open (the connector agent will fail if this expires).

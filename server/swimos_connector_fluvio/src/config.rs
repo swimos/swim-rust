@@ -225,7 +225,7 @@ pub struct FluvioIngressConfiguration {
 
 impl FluvioIngressConfiguration {
     pub async fn from_file(path: impl AsRef<Path>) -> Result<FluvioIngressConfiguration, BoxError> {
-        let content = tokio::fs::read_to_string(path).await?;
+        let content: String = tokio::fs::read_to_string(path).await?;
         FluvioIngressConfiguration::from_str(&content)
     }
 }

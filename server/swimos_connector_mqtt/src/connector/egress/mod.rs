@@ -216,8 +216,8 @@ where
             url,
             value_lanes,
             map_lanes,
-            value_downlinks,
-            map_downlinks,
+            event_downlinks,
+            map_event_downlinks,
             keep_alive_secs,
             max_packet_size,
             max_inflight,
@@ -231,10 +231,10 @@ where
         for lane in map_lanes {
             context.open_lane(&lane.name, WarpLaneKind::Map);
         }
-        for downlink in value_downlinks {
+        for downlink in event_downlinks {
             context.open_event_downlink(downlink.address.borrow_parts());
         }
-        for downlink in map_downlinks {
+        for downlink in map_event_downlinks {
             context.open_map_downlink(downlink.address.borrow_parts());
         }
         let (publisher, driver) = open_client(

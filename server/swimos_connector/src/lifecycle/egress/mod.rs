@@ -100,17 +100,17 @@ bitflags! {
 #[derive(Default, Debug)]
 struct RequestCollector {
     lanes: Vec<(String, WarpLaneKind)>,
-    value_downlinks: Vec<Address<String>>,
-    map_downlinks: Vec<Address<String>>,
+    event_downlinks: Vec<Address<String>>,
+    map_event_downlinks: Vec<Address<String>>,
 }
 
 impl EgressContext for RequestCollector {
     fn open_event_downlink(&mut self, address: Address<&str>) {
-        self.value_downlinks.push(address.owned());
+        self.event_downlinks.push(address.owned());
     }
 
     fn open_map_downlink(&mut self, address: Address<&str>) {
-        self.map_downlinks.push(address.owned());
+        self.map_event_downlinks.push(address.owned());
     }
 
     fn open_lane(&mut self, name: &str, kind: WarpLaneKind) {
@@ -147,11 +147,11 @@ where
         });
         let RequestCollector {
             lanes,
-            value_downlinks,
-            map_downlinks,
+            event_downlinks,
+            map_event_downlinks,
         } = collector;
         let open_lanes = open_lanes(lanes, lanes_tx);
-        let open_downlinks = self.open_downlinks(value_downlinks, map_downlinks);
+        let open_downlinks = self.open_downlinks(event_downlinks, map_event_downlinks);
         let check_init = context.value(init_result).try_handler();
         check_init
             .followed_by(await_init)
@@ -270,8 +270,8 @@ where
 {
     fn open_downlinks(
         &self,
-        value_downlinks: Vec<Address<String>>,
-        map_downlinks: Vec<Address<String>>,
+        event_downlinks: Vec<Address<String>>,
+        map_event_downlinks: Vec<Address<String>>,
     ) -> impl EventHandler<ConnectorAgent> + '_ {
         let EgressConnectorLifecycle { sender, .. } = self;
         let context: HandlerContext<ConnectorAgent> = Default::default();
@@ -281,7 +281,7 @@ where
             .and_then(move |sender: &C::Sender| {
                 let mut open_value_dls = vec![];
                 let mut open_map_dls = vec![];
-                for address in value_downlinks {
+                for address in event_downlinks {
                     let open_dl = context
                         .event_downlink_builder::<Value>(
                             address.host.as_deref(),
@@ -295,7 +295,7 @@ where
                         .discard();
                     open_value_dls.push(open_dl);
                 }
-                for address in map_downlinks {
+                for address in map_event_downlinks {
                     let open_dl = context
                         .map_event_downlink_builder::<Value, Value>(
                             address.host.as_deref(),
