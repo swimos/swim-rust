@@ -146,12 +146,17 @@ pub struct EgressDownlinkSpec {
 #[derive(Clone, Debug, Form, PartialEq, Eq)]
 pub enum Subscription {
     /// A single named topic.
-    #[form(tag = "topic")]
     Topic(#[form(header_body)] String),
     /// A list of named topics.
-    #[form(tag = "topics")]
     Topics(#[form(header_body)] Vec<String>),
     /// A list of MQTT topic subscription filters.
-    #[form(tag = "filter")]
     Filters(#[form(header_body)] Vec<String>),
+}
+
+impl FromStr for MqttEgressConfiguration {
+    type Err = ParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        parse_recognize::<MqttEgressConfiguration>(s, true)
+    }
 }
