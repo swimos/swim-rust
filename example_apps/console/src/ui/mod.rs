@@ -434,7 +434,7 @@ fn on_command(
         Ok(AppCommand::Clear) => None,
         Ok(AppCommand::Controller(command)) => Some(
             controller
-                .perform_action(command)
+                .perform_action(*command)
                 .into_iter()
                 .map(|msg| format!("{}\n", msg))
                 .map(Cow::Owned)

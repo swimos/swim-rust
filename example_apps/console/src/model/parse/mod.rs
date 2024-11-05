@@ -103,9 +103,9 @@ pub fn parse_app_command(command: &str) -> Result<AppCommand, Cow<'static, str>>
         }),
         ["quit"] => Ok(AppCommand::Quit),
         ["clear"] => Ok(AppCommand::Clear),
-        _ => Ok(AppCommand::Controller(parse_controller_command(
+        _ => Ok(AppCommand::Controller(Box::new(parse_controller_command(
             command_parts.as_slice(),
-        )?)),
+        )?))),
     }
 }
 

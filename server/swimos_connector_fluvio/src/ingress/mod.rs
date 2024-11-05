@@ -112,7 +112,7 @@ where
         let relays = relays.clone();
 
         Ok(unfold(
-            ConnectorState::Uninit(configuration.clone(), factory.clone()),
+            ConnectorState::Uninit(Box::new(configuration.clone()), factory.clone()),
             move |state: ConnectorState<F::Client, F>| {
                 let topic = topic.clone();
                 let key_deser = key_deser.clone();
@@ -122,28 +122,29 @@ where
 
                 let fut = async move {
                     match state {
-                        ConnectorState::Uninit(config, factory) => match factory.open(config).await
-                        {
-                            Ok(consumer) => {
-                                let (key, value) =
-                                    match load_deserializers(key_deser, value_deser).await {
-                                        Ok((key, value)) => (key, value),
-                                        Err(e) => {
-                                            return Some((
-                                                Err(FluvioConnectorError::Configuration(e)),
-                                                ConnectorState::Failed,
-                                            ))
-                                        }
-                                    };
-                                poll_dispatch(
-                                    consumer,
-                                    topic,
-                                    MessageSelector::new(key, value, lanes, relays),
-                                )
-                                .await
+                        ConnectorState::Uninit(config, factory) => {
+                            match factory.open(*config).await {
+                                Ok(consumer) => {
+                                    let (key, value) =
+                                        match load_deserializers(key_deser, value_deser).await {
+                                            Ok((key, value)) => (key, value),
+                                            Err(e) => {
+                                                return Some((
+                                                    Err(FluvioConnectorError::Configuration(e)),
+                                                    ConnectorState::Failed,
+                                                ))
+                                            }
+                                        };
+                                    poll_dispatch(
+                                        consumer,
+                                        topic,
+                                        MessageSelector::new(key, value, lanes, relays),
+                                    )
+                                    .await
+                                }
+                                Err(e) => Some((Err(e), ConnectorState::Failed)),
                             }
-                            Err(e) => Some((Err(e), ConnectorState::Failed)),
-                        },
+                        }
                         ConnectorState::Running {
                             topic,
                             consumer,
@@ -185,7 +186,7 @@ where
 }
 
 enum ConnectorState<C, F> {
-    Uninit(FluvioIngressConfiguration, F),
+    Uninit(Box<FluvioIngressConfiguration>, F),
     Running {
         topic: String,
         consumer: C,
