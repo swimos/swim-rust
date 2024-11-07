@@ -17,7 +17,13 @@ pub mod lifecycle;
 #[cfg(test)]
 mod tests;
 
-use std::{borrow::Borrow, cell::RefCell, collections::VecDeque, fmt::Debug, marker::PhantomData};
+use std::{
+    borrow::Borrow,
+    cell::RefCell,
+    collections::VecDeque,
+    fmt::{Debug, Formatter},
+    marker::PhantomData,
+};
 
 use bytes::BytesMut;
 use static_assertions::assert_impl_all;
@@ -225,6 +231,13 @@ impl<C, T: Clone> HandlerAction<C> for ValueLaneGet<C, T> {
             let value = lane.read(T::clone);
             StepResult::done(value)
         }
+    }
+
+    fn describe(&self, context: &C, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        let lane = (self.projection)(context);
+        f.debug_struct("ValueLaneGet")
+            .field("id", &lane.id())
+            .finish()
     }
 }
 

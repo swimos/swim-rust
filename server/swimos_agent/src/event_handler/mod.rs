@@ -358,6 +358,14 @@ pub trait HandlerAction<Context> {
         meta: AgentMetadata,
         context: &Context,
     ) -> StepResult<Self::Completion>;
+
+    fn describe(
+        &self,
+        _context: &Context,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        write!(f, "OpaqueHandler")
+    }
 }
 
 /// A [`HandlerAction`] that does not produce a result.
@@ -409,6 +417,14 @@ where
         context: &Context,
     ) -> StepResult<Self::Completion> {
         (**self).step(action_context, meta, context)
+    }
+
+    fn describe(
+        &self,
+        context: &Context,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        (**self).describe(context, f)
     }
 }
 
