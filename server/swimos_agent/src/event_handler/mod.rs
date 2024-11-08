@@ -15,6 +15,7 @@
 use std::{
     any::{type_name, Any, TypeId},
     collections::HashMap,
+    fmt::Debug,
     marker::PhantomData,
 };
 
@@ -1523,6 +1524,18 @@ pub trait HandlerActionExt<Context>: HandlerAction<Context> {
         Discard::new(self)
     }
 
+    /// Attach an annotation to the handler. This will only show up in the description of the
+    /// handler and will not affect how it executes or the final result.
+    ///
+    /// # Arguments
+    /// * `annotation` - The annotation value.
+    fn annotated<S: Debug>(self, annotation: S) -> Annotated<S, Self>
+    where
+        Self: Sized,
+    {
+        Annotated::new(annotation, self)
+    }
+
     /// `BoxHandlerAction` without the `Send` requirement.
     fn boxed_local<'a>(self) -> LocalBoxHandlerAction<'a, Context, Self::Completion>
     where
@@ -2164,5 +2177,53 @@ impl<Context> HandlerAction<Context> for ScheduleTimerEvent {
         f: &mut std::fmt::Formatter<'_>,
     ) -> Result<(), std::fmt::Error> {
         write!(f, "{:?}", self)
+    }
+}
+
+/// Adds an annotation to an event handler. This will be visible in the description message for
+/// the handler but has not effect on how the handler executes or its final result.
+pub struct Annotated<S, H> {
+    annotation: S,
+    handler: H,
+}
+
+impl<S, H> Annotated<S, H> {
+    pub fn new(annotation: S, handler: H) -> Self {
+        Annotated {
+            annotation,
+            handler,
+        }
+    }
+}
+
+impl<S, Context, H> HandlerAction<Context> for Annotated<S, H>
+where
+    S: Debug,
+    H: HandlerAction<Context>,
+{
+    type Completion = H::Completion;
+
+    fn step(
+        &mut self,
+        action_context: &mut ActionContext<Context>,
+        meta: AgentMetadata,
+        context: &Context,
+    ) -> StepResult<Self::Completion> {
+        self.handler.step(action_context, meta, context)
+    }
+
+    fn describe(
+        &self,
+        context: &Context,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        let Annotated {
+            annotation,
+            handler,
+        } = self;
+        f.debug_struct("Annotated")
+            .field("annotation", annotation)
+            .field("handler", &Described::new(context, handler))
+            .finish()
     }
 }
