@@ -247,9 +247,9 @@ pub mod model {
 /// and stores.
 pub mod agent_model {
     pub use swimos_agent::agent_model::{
-        AgentModel, AgentSpec, ItemDescriptor, ItemFlags, ItemInitializer, ItemKind, ItemSpec,
-        MapLaneInitializer, MapStoreInitializer, ValueLaneInitializer, ValueStoreInitializer,
-        WriteResult,
+        AgentDescription, AgentModel, AgentSpec, ItemDescriptor, ItemFlags, ItemInitializer,
+        ItemKind, ItemSpec, MapLaneInitializer, MapStoreInitializer, ValueLaneInitializer,
+        ValueStoreInitializer, WriteResult,
     };
     pub use swimos_api::agent::{LaneKind, StoreKind, WarpLaneKind};
 

@@ -145,6 +145,10 @@ impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
             .map(|model| LaneSpecInsert(model.ordinal, model.model.clone()))
             .map(|insert| insert.into_tokens(root));
 
+        let item_name_cases = item_models
+            .iter()
+            .map(|model| ItemNameCase(model.ordinal, model.model.clone()));
+
         let value_match_blocks = value_lane_models
             .iter()
             .enumerate()
@@ -194,6 +198,16 @@ impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
                 fn default() -> Self {
                     Self {
                         #(#initializers),*
+                    }
+                }
+            }
+
+            #[automatically_derived]
+            impl #root::agent_model::AgentDescription for #agent_type {
+                fn item_name(&self, id: u64) -> ::core::option::Option<::std::borrow::Cow<'_, str>> {
+                    match id {
+                        #(#item_name_cases,)*
+                        _ => ::core::option::Option::None
                     }
                 }
             }
@@ -830,6 +844,16 @@ impl<'a> LaneSpecInsert<'a> {
         let spec =
             quote!(#root::agent_model::ItemSpec::new(#ordinal, #lifecycle_lane_name, #descriptor));
         quote!(::std::collections::HashMap::insert(&mut lanes, #external_lane_name, #spec))
+    }
+}
+
+struct ItemNameCase<'a>(u64, ItemModel<'a>);
+
+impl<'a> ToTokens for ItemNameCase<'a> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let ItemNameCase(ordinal, model) = self;
+        let external_lane_name = model.external_literal();
+        tokens.append_all(quote!(#ordinal => ::core::option::Option::Some(::std::borrow::Cow::Borrowed(#external_lane_name))));
     }
 }
 

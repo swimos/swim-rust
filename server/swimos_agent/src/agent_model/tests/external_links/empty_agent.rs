@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::HashMap;
+use std::{borrow::Cow, collections::HashMap};
 
 use bytes::BytesMut;
 use swimos_agent_protocol::MapMessage;
@@ -20,13 +20,21 @@ use swimos_api::agent::HttpLaneRequest;
 use uuid::Uuid;
 
 use crate::{
-    agent_model::{ItemSpec, MapLikeInitializer, ValueLikeInitializer, WriteResult},
+    agent_model::{
+        AgentDescription, ItemSpec, MapLikeInitializer, ValueLikeInitializer, WriteResult,
+    },
     event_handler::UnitHandler,
     AgentSpec,
 };
 
 #[derive(Clone, Copy, Default, Debug)]
 pub struct EmptyAgent;
+
+impl AgentDescription for EmptyAgent {
+    fn item_name(&self, _id: u64) -> Option<Cow<'_, str>> {
+        None
+    }
+}
 
 impl AgentSpec for EmptyAgent {
     type ValCommandHandler = UnitHandler;
@@ -81,5 +89,13 @@ impl AgentSpec for EmptyAgent {
 
     fn write_event(&self, _lane: &str, _buffer: &mut BytesMut) -> Option<WriteResult> {
         None
+    }
+
+    fn register_dynamic_item(
+        &self,
+        _name: &str,
+        _descriptor: crate::agent_model::ItemDescriptor,
+    ) -> Result<u64, swimos_api::error::DynamicRegistrationError> {
+        Err(swimos_api::error::DynamicRegistrationError::DynamicRegistrationsNotSupported)
     }
 }
