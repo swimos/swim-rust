@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use std::{
-    any::{Any, TypeId},
+    any::{type_name, Any, TypeId},
     collections::HashMap,
     marker::PhantomData,
 };
@@ -364,7 +364,7 @@ pub trait HandlerAction<Context> {
         _context: &Context,
         f: &mut std::fmt::Formatter<'_>,
     ) -> Result<(), std::fmt::Error> {
-        write!(f, "OpaqueHandler")
+        f.debug_tuple("OpaqueHandler").finish()
     }
 }
 
@@ -630,6 +630,16 @@ where
             StepResult::after_done()
         }
     }
+
+    fn describe(
+        &self,
+        _context: &Context,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        f.debug_struct("SideEffect")
+            .field("result_type", &type_name::<R>())
+            .finish()
+    }
 }
 
 impl<Context, I> HandlerAction<Context> for SideEffects<I>
@@ -654,6 +664,16 @@ where
             *done = true;
             StepResult::done(std::mem::take(results))
         }
+    }
+
+    fn describe(
+        &self,
+        _context: &Context,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        f.debug_struct("SideEffects")
+            .field("item_type", &type_name::<I::Item>())
+            .finish()
     }
 }
 
@@ -815,6 +835,42 @@ where
             StepResult::after_done()
         }
     }
+
+    fn describe(
+        &self,
+        context: &Context,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        let mut dbg = f.debug_struct("Map");
+        if let Map(Some((h, _))) = self {
+            dbg.field("input", &Described::new(context, h));
+        } else {
+            dbg.field("input", &CONSUMED);
+        }
+        dbg.field("result_type", &type_name::<T>()).finish()
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct Described<'a, Context, H> {
+    context: &'a Context,
+    handler: &'a H,
+}
+
+impl<'a, Context, H> Described<'a, Context, H> {
+    pub fn new(context: &'a Context, handler: &'a H) -> Self {
+        Described { context, handler }
+    }
+}
+
+impl<'a, Context, H> std::fmt::Debug for Described<'a, Context, H>
+where
+    H: HandlerAction<Context>,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Described { context, handler } = self;
+        handler.describe(context, f)
+    }
 }
 
 impl<Context, H1, H2, F> HandlerAction<Context> for AndThenContextual<H1, H2, F>
@@ -865,6 +921,30 @@ where
             _ => StepResult::after_done(),
         }
     }
+
+    fn describe(
+        &self,
+        context: &Context,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        match self {
+            AndThenContextual::First { first, .. } => f
+                .debug_struct("AndThenContextual")
+                .field("stage", &"First")
+                .field("first", &Described::new(context, first))
+                .field("second_type", &type_name::<H2>())
+                .field("result_type", &type_name::<H2::Completion>())
+                .finish(),
+            AndThenContextual::Second(second) => f
+                .debug_struct("AndThenContextual")
+                .field("stage", &"Second")
+                .field("second", &Described::new(context, second))
+                .field("second_type", &type_name::<H2>())
+                .field("result_type", &type_name::<H2::Completion>())
+                .finish(),
+            AndThenContextual::Done => f.debug_tuple("AndThenContextual").field(&CONSUMED).finish(),
+        }
+    }
 }
 
 impl<Context, H1, H2, F> HandlerAction<Context> for AndThen<H1, H2, F>
@@ -911,6 +991,30 @@ where
                 step_result
             }
             _ => StepResult::after_done(),
+        }
+    }
+
+    fn describe(
+        &self,
+        context: &Context,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        match self {
+            AndThen::First { first, .. } => f
+                .debug_struct("AndThen")
+                .field("stage", &"First")
+                .field("first", &Described::new(context, first))
+                .field("second_type", &type_name::<H2>())
+                .field("result_type", &type_name::<H2::Completion>())
+                .finish(),
+            AndThen::Second(second) => f
+                .debug_struct("AndThen")
+                .field("stage", &"Second")
+                .field("second", &Described::new(context, second))
+                .field("second_type", &type_name::<H2>())
+                .field("result_type", &type_name::<H2::Completion>())
+                .finish(),
+            AndThen::Done => f.debug_tuple("AndThen").field(&CONSUMED).finish(),
         }
     }
 }
@@ -965,6 +1069,30 @@ where
             _ => StepResult::after_done(),
         }
     }
+
+    fn describe(
+        &self,
+        context: &Context,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        match self {
+            AndThenTry::First { first, .. } => f
+                .debug_struct("AndThenTry")
+                .field("stage", &"First")
+                .field("first", &Described::new(context, first))
+                .field("second_type", &type_name::<H2>())
+                .field("result_type", &type_name::<H2::Completion>())
+                .finish(),
+            AndThenTry::Second(second) => f
+                .debug_struct("AndThenTry")
+                .field("stage", &"Second")
+                .field("second", &Described::new(context, second))
+                .field("second_type", &type_name::<H2>())
+                .field("result_type", &type_name::<H2::Completion>())
+                .finish(),
+            AndThenTry::Done => f.debug_tuple("AndThenTry").field(&CONSUMED).finish(),
+        }
+    }
 }
 
 impl<Context, H1, H2> HandlerAction<Context> for FollowedBy<H1, H2>
@@ -1013,6 +1141,29 @@ where
             _ => StepResult::after_done(),
         }
     }
+
+    fn describe(
+        &self,
+        context: &Context,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        match self {
+            FollowedBy::First { first, next } => f
+                .debug_struct("FollowedBy")
+                .field("stage", &"First")
+                .field("first", &Described::new(context, first))
+                .field("next", &Described::new(context, next))
+                .field("result_type", &type_name::<H2::Completion>())
+                .finish(),
+            FollowedBy::Second(second) => f
+                .debug_struct("FollowedBy")
+                .field("stage", &"Second")
+                .field("second", &Described::new(context, second))
+                .field("result_type", &type_name::<H2::Completion>())
+                .finish(),
+            FollowedBy::Done => f.debug_tuple("FollowedBy").field(&CONSUMED).finish(),
+        }
+    }
 }
 
 /// An event handler that immediately returns a constant value.
@@ -1048,6 +1199,18 @@ impl<T, Context> HandlerAction<Context> for ConstHandler<T> {
             StepResult::after_done()
         }
     }
+
+    fn describe(
+        &self,
+        _context: &Context,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        let ConstHandler(value) = self;
+        f.debug_struct("ConstHandler")
+            .field("value_type", &type_name::<T>())
+            .field("consumed", &value.is_none())
+            .finish()
+    }
 }
 
 impl<Context> HandlerAction<Context> for CNil {
@@ -1059,6 +1222,14 @@ impl<Context> HandlerAction<Context> for CNil {
         _meta: AgentMetadata,
         _context: &Context,
     ) -> StepResult<Self::Completion> {
+        match *self {}
+    }
+
+    fn describe(
+        &self,
+        _context: &Context,
+        _f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
         match *self {}
     }
 }
@@ -1079,6 +1250,25 @@ where
         match self {
             Coproduct::Inl(h) => h.step(action_context, meta, context),
             Coproduct::Inr(t) => t.step(action_context, meta, context),
+        }
+    }
+
+    fn describe(
+        &self,
+        context: &Context,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        match self {
+            Coproduct::Inl(h) => f
+                .debug_tuple("Coproduct")
+                .field(&"L")
+                .field(&Described::new(context, h))
+                .finish(),
+            Coproduct::Inr(h) => f
+                .debug_tuple("Coproduct")
+                .field(&"R")
+                .field(&Described::new(context, h))
+                .finish(),
         }
     }
 }
@@ -1106,6 +1296,14 @@ impl<Context> HandlerAction<Context> for GetAgentUri {
             StepResult::done(meta.agent_uri().clone())
         }
     }
+
+    fn describe(
+        &self,
+        _context: &Context,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        f.debug_tuple("GetAgentUri").finish()
+    }
 }
 
 /// Get a parameter from the route URI of the running agent.
@@ -1118,6 +1316,8 @@ impl<S> GetParameter<S> {
         GetParameter { key: Some(key) }
     }
 }
+
+const CONSUMED: &str = "<<CONSUMED>>";
 
 impl<Context, S: AsRef<str>> HandlerAction<Context> for GetParameter<S> {
     type Completion = Option<String>;
@@ -1134,6 +1334,19 @@ impl<Context, S: AsRef<str>> HandlerAction<Context> for GetParameter<S> {
         } else {
             StepResult::after_done()
         }
+    }
+
+    fn describe(
+        &self,
+        _context: &Context,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        let body = if let GetParameter { key: Some(name) } = self {
+            name.as_ref()
+        } else {
+            CONSUMED
+        };
+        f.debug_tuple("GetParameter").field(&body).finish()
     }
 }
 
@@ -1179,6 +1392,25 @@ impl<Context, T: RecognizerReadable> HandlerAction<Context> for Decode<T> {
             }
         }
     }
+
+    fn describe(
+        &self,
+        _context: &Context,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        let Decode {
+            buffer, complete, ..
+        } = self;
+        let content = if *complete {
+            CONSUMED
+        } else {
+            std::str::from_utf8(buffer.as_ref()).unwrap_or("<<BAD UTF8>>")
+        };
+        f.debug_struct("Decode")
+            .field("target_type", &type_name::<T>())
+            .field("content", &content)
+            .finish()
+    }
 }
 
 impl<Context, H1, H2> HandlerAction<Context> for Either<H1, H2>
@@ -1197,6 +1429,25 @@ where
         match self {
             Either::Left(h1) => h1.step(action_context, meta, context),
             Either::Right(h2) => h2.step(action_context, meta, context),
+        }
+    }
+
+    fn describe(
+        &self,
+        context: &Context,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        match self {
+            Either::Left(h) => f
+                .debug_tuple("Either")
+                .field(&"L")
+                .field(&Described::new(context, h))
+                .finish(),
+            Either::Right(h) => f
+                .debug_tuple("Either")
+                .field(&"R")
+                .field(&Described::new(context, h))
+                .finish(),
         }
     }
 }
@@ -1362,6 +1613,25 @@ where
             }
         }
     }
+
+    fn describe(
+        &self,
+        context: &Context,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        match self {
+            Sequentially::Init(_) => f
+                .debug_struct("Sequentially")
+                .field("handler_type", &type_name::<H>())
+                .finish(),
+            Sequentially::Running(_, current) => f
+                .debug_struct("Sequentially")
+                .field("handler_type", &type_name::<H>())
+                .field("current", &Described::new(context, current))
+                .finish(),
+            Sequentially::Done => f.debug_tuple("Sequentially").field(&CONSUMED).finish(),
+        }
+    }
 }
 
 /// Event handler that runs another handler and discards its result.
@@ -1385,6 +1655,17 @@ impl<Context, H: HandlerAction<Context>> HandlerAction<Context> for Discard<H> {
     ) -> StepResult<Self::Completion> {
         let Discard(inner) = self;
         inner.step(action_context, meta, context).map(|_| ())
+    }
+
+    fn describe(
+        &self,
+        context: &Context,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        let Discard(h) = self;
+        f.debug_tuple("Discard")
+            .field(&Described::new(context, h))
+            .finish()
     }
 }
 
@@ -1426,6 +1707,25 @@ where
             inner.step(action_context, meta, context).map(Option::Some)
         } else {
             StepResult::done(None)
+        }
+    }
+
+    fn describe(
+        &self,
+        context: &Context,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        match self {
+            Some(inner) => f
+                .debug_struct("Option")
+                .field("defined", &true)
+                .field("inner", &Described::new(context, inner))
+                .finish(),
+            None => f
+                .debug_struct("Option")
+                .field("defined", &false)
+                .field("inner_type", &type_name::<H>())
+                .finish(),
         }
     }
 }
@@ -1491,6 +1791,14 @@ impl<Context> HandlerAction<Context> for Stop {
         _context: &Context,
     ) -> StepResult<Self::Completion> {
         StepResult::Fail(EventHandlerError::StopInstructed)
+    }
+
+    fn describe(
+        &self,
+        _context: &Context,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        f.debug_tuple("Stop").finish()
     }
 }
 
@@ -1560,6 +1868,34 @@ where
                 },
             },
             JoinState::AfterDone => StepResult::after_done(),
+        }
+    }
+
+    fn describe(
+        &self,
+        context: &Context,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        let Join { state } = self;
+        match state {
+            JoinState::Init(h1, h2) => f
+                .debug_struct("Join")
+                .field("state", &"First")
+                .field("first_handler", &Described::new(context, h1))
+                .field("second_handler", &Described::new(context, h2))
+                .finish(),
+            JoinState::FirstDone(_, h2) => f
+                .debug_struct("Join")
+                .field("state", &"Second")
+                .field("first_handler_type", &type_name::<H1>())
+                .field("second_handler", &Described::new(context, h2))
+                .finish(),
+            JoinState::AfterDone => f
+                .debug_struct("Join")
+                .field("state", &CONSUMED)
+                .field("first_handler_type", &type_name::<H1>())
+                .field("second_handler_type", &type_name::<H2>())
+                .finish(),
         }
     }
 }
@@ -1661,6 +1997,44 @@ where
             Join3State::AfterDone => StepResult::after_done(),
         }
     }
+
+    fn describe(
+        &self,
+        context: &Context,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        let Join3 { state } = self;
+        match state {
+            Join3State::Init(h1, h2, h3) => f
+                .debug_struct("Join3")
+                .field("state", &"First")
+                .field("first_handler", &Described::new(context, h1))
+                .field("second_handler", &Described::new(context, h2))
+                .field("third_handler", &Described::new(context, h3))
+                .finish(),
+            Join3State::FirstDone(_, h2, h3) => f
+                .debug_struct("Join3")
+                .field("state", &"Second")
+                .field("first_handler_type", &type_name::<H1>())
+                .field("second_handler", &Described::new(context, h2))
+                .field("third_handler", &Described::new(context, h3))
+                .finish(),
+            Join3State::SecondDone(_, _, h3) => f
+                .debug_struct("Join3")
+                .field("state", &"Third")
+                .field("first_handler_type", &type_name::<H1>())
+                .field("second_handler_type", &type_name::<H2>())
+                .field("third_handler", &Described::new(context, h3))
+                .finish(),
+            Join3State::AfterDone => f
+                .debug_struct("Join3")
+                .field("state", &CONSUMED)
+                .field("first_handler_type", &type_name::<H1>())
+                .field("second_handler_type", &type_name::<H2>())
+                .field("third_handler_type", &type_name::<H3>())
+                .finish(),
+        }
+    }
 }
 
 /// An event handler that fails with the provided error.
@@ -1696,6 +2070,18 @@ where
             StepResult::after_done()
         }
     }
+
+    fn describe(
+        &self,
+        _context: &Context,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        let Fail { error, .. } = self;
+        f.debug_struct("Fail")
+            .field("dummy_type", &type_name::<T>())
+            .field("error", error)
+            .finish()
+    }
 }
 
 /// Computes a value from the parameters passed to the agent.
@@ -1728,9 +2114,18 @@ where
             StepResult::after_done()
         }
     }
+
+    fn describe(
+        &self,
+        _context: &Context,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        f.debug_tuple("WithParameters").finish()
+    }
 }
 
 /// Schedule the agent's `on_timer` event to be called.
+#[derive(Debug)]
 pub struct ScheduleTimerEvent {
     at: Option<Instant>,
     id: u64,
@@ -1761,5 +2156,13 @@ impl<Context> HandlerAction<Context> for ScheduleTimerEvent {
         } else {
             StepResult::after_done()
         }
+    }
+
+    fn describe(
+        &self,
+        _context: &Context,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        write!(f, "{:?}", self)
     }
 }
