@@ -102,6 +102,9 @@ pub trait SelectorFn<C> {
     /// The type of the component chosen by the [`Selector`].
     type Target: ?Sized;
 
+    /// The name of the selected component.
+    fn name(&self) -> &str;
+
     /// Bind the selector.
     ///
     /// #Arguments

@@ -21,6 +21,7 @@ use swimos_recon::parser::AsyncParseError;
 use swimos_utilities::routing::RouteUri;
 use tokio::time::Instant;
 
+use crate::agent_model::AgentDescription;
 use crate::event_handler::check_step::{check_is_complete, check_is_continue};
 use crate::event_handler::{GetParameter, ModificationFlags, WithParameters};
 
@@ -719,6 +720,8 @@ fn sequentially_handler() {
         lane: ValueLane<i32>,
     }
 
+    impl AgentDescription for TestAgent {}
+
     let set = ValueLaneSet::new(|agent: &TestAgent| &agent.lane, 5);
     let effect1 = SideEffect::from(|| values.borrow_mut().push(1));
     let effect2 = SideEffect::from(|| values.borrow_mut().push(2));
@@ -846,6 +849,8 @@ fn join_handler_modify() {
         lane2: ValueLane::new(1, 0),
     };
 
+    impl AgentDescription for TestAgent {}
+
     loop {
         match both.step(
             &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
@@ -956,6 +961,8 @@ fn join3_handler_modify() {
         lane2: ValueLane::new(1, 0),
         lane3: ValueLane::new(2, 0),
     };
+
+    impl AgentDescription for TestAgent {}
 
     loop {
         match both.step(

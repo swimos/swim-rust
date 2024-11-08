@@ -36,6 +36,7 @@ use crate::agent_model::downlink::{EventDownlinkHandle, MapDownlinkHandle, Value
 use crate::agent_model::downlink::{
     OpenEventDownlinkAction, OpenMapDownlinkAction, OpenValueDownlinkAction,
 };
+use crate::agent_model::AgentDescription;
 use crate::commander::{Commander, RegisterCommander};
 use crate::config::{MapDownlinkConfig, SimpleDownlinkConfig};
 use crate::downlink_lifecycle::ValueDownlinkLifecycle;
@@ -108,6 +109,81 @@ impl<Agent> Clone for HandlerContext<Agent> {
 
 impl<Agent> Copy for HandlerContext<Agent> {}
 
+impl<Agent: AgentDescription + 'static> HandlerContext<Agent> {
+    /// Create an event handler that will get the value of a value lane store of the agent.
+    ///
+    /// #Arguments
+    /// * `item` - Projection to the value lane or store.
+    pub fn get_value<Item, T>(
+        &self,
+        item: fn(&Agent) -> &Item,
+    ) -> impl HandlerAction<Agent, Completion = T> + Send + 'static
+    where
+        Item: ValueLikeItem<T>,
+        T: Clone + Send + 'static,
+    {
+        Item::get_handler::<Agent>(item)
+    }
+
+    /// Create an event handler that will transform the value of a value lane or store of the agent.
+    ///
+    /// #Arguments
+    /// * `item` - Projection to the value lane or store.
+    /// * `f` - A closure that produces a new value from a reference to the existing value.
+    pub fn transform_value<'a, Item, T, F>(
+        &self,
+        item: fn(&Agent) -> &Item,
+        f: F,
+    ) -> impl HandlerAction<Agent, Completion = ()> + Send + 'a
+    where
+        Agent: 'static,
+        Item: ValueLikeItem<T> + MutableValueLikeItem<T> + 'static,
+        T: 'static,
+        F: FnOnce(&T) -> T + Send + 'a,
+    {
+        Item::with_value_handler::<Item, Agent, F, T, T>(item, f)
+            .and_then(move |v| Item::set_handler(item, v))
+    }
+
+    /// Create an event handler that will inspect the value of a value lane or store and generate a result from it.
+    /// This differs from using [`Self::get_value`] in that it does not require a clone to be made of the existing value.
+    ///
+    /// #Arguments
+    /// * `item` - Projection to the value lane or store.
+    /// * `f` - A closure that produces a value from a reference to the current value of the item.
+    pub fn with_value<'a, Item, T, F, B, U>(
+        &self,
+        item: fn(&Agent) -> &Item,
+        f: F,
+    ) -> impl HandlerAction<Agent, Completion = U> + Send + 'a
+    where
+        Agent: 'static,
+        Item: ValueLikeItem<T> + 'static,
+        T: Borrow<B>,
+        B: 'static,
+        F: FnOnce(&B) -> U + Send + 'a,
+    {
+        Item::with_value_handler::<Item, Agent, F, B, U>(item, f)
+    }
+
+    /// Create an event handler that will set a new value into a value lane or store of the agent.
+    ///
+    /// #Arguments
+    /// * `item` - Projection to the value lane or store.
+    /// * `value` - The value to set.
+    pub fn set_value<Item, T>(
+        &self,
+        item: fn(&Agent) -> &Item,
+        value: T,
+    ) -> impl HandlerAction<Agent, Completion = ()> + Send + 'static
+    where
+        Item: MutableValueLikeItem<T>,
+        T: Send + 'static,
+    {
+        Item::set_handler::<Agent>(item, value)
+    }
+}
+
 impl<Agent: 'static> HandlerContext<Agent> {
     /// Create an event handler that resolves to a specific value.
     pub fn value<T>(&self, val: T) -> impl HandlerAction<Agent, Completion = T> {
@@ -168,79 +244,6 @@ impl<Agent: 'static> HandlerContext<Agent> {
         F: FnOnce(&HashMap<String, String>) -> T,
     {
         WithParameters::new(f)
-    }
-
-    /// Create an event handler that will get the value of a value lane store of the agent.
-    ///
-    /// #Arguments
-    /// * `item` - Projection to the value lane or store.
-    pub fn get_value<Item, T>(
-        &self,
-        item: fn(&Agent) -> &Item,
-    ) -> impl HandlerAction<Agent, Completion = T> + Send + 'static
-    where
-        Item: ValueLikeItem<T>,
-        T: Clone + Send + 'static,
-    {
-        Item::get_handler::<Agent>(item)
-    }
-
-    /// Create an event handler that will set a new value into a value lane or store of the agent.
-    ///
-    /// #Arguments
-    /// * `item` - Projection to the value lane or store.
-    /// * `value` - The value to set.
-    pub fn set_value<Item, T>(
-        &self,
-        item: fn(&Agent) -> &Item,
-        value: T,
-    ) -> impl HandlerAction<Agent, Completion = ()> + Send + 'static
-    where
-        Item: MutableValueLikeItem<T>,
-        T: Send + 'static,
-    {
-        Item::set_handler::<Agent>(item, value)
-    }
-
-    /// Create an event handler that will transform the value of a value lane or store of the agent.
-    ///
-    /// #Arguments
-    /// * `item` - Projection to the value lane or store.
-    /// * `f` - A closure that produces a new value from a reference to the existing value.
-    pub fn transform_value<'a, Item, T, F>(
-        &self,
-        item: fn(&Agent) -> &Item,
-        f: F,
-    ) -> impl HandlerAction<Agent, Completion = ()> + Send + 'a
-    where
-        Agent: 'static,
-        Item: ValueLikeItem<T> + MutableValueLikeItem<T> + 'static,
-        T: 'static,
-        F: FnOnce(&T) -> T + Send + 'a,
-    {
-        Item::with_value_handler::<Item, Agent, F, T, T>(item, f)
-            .and_then(move |v| Item::set_handler(item, v))
-    }
-
-    /// Create an event handler that will inspect the value of a value lane or store and generate a result from it.
-    /// This differs from using [`Self::get_value`] in that it does not require a clone to be made of the existing value.
-    ///
-    /// #Arguments
-    /// * `item` - Projection to the value lane or store.
-    /// * `f` - A closure that produces a value from a reference to the current value of the item.
-    pub fn with_value<'a, Item, T, F, B, U>(
-        &self,
-        item: fn(&Agent) -> &Item,
-        f: F,
-    ) -> impl HandlerAction<Agent, Completion = U> + Send + 'a
-    where
-        Agent: 'static,
-        Item: ValueLikeItem<T> + 'static,
-        T: Borrow<B>,
-        B: 'static,
-        F: FnOnce(&B) -> U + Send + 'a,
-    {
-        Item::with_value_handler::<Item, Agent, F, B, U>(item, f)
     }
 
     /// Create an event handler that will update an entry in a map lane or store of the agent.

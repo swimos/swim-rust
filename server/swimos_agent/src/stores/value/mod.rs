@@ -25,7 +25,7 @@ use swimos_form::write::StructuralWritable;
 use tokio_util::codec::Encoder;
 
 use crate::{
-    agent_model::WriteResult,
+    agent_model::{AgentDescription, WriteResult},
     event_handler::{ActionContext, EventHandlerError, HandlerAction, Modification, StepResult},
     item::{AgentItem, MutableValueLikeItem, ValueItem, ValueLikeItem},
     meta::AgentMetadata,
@@ -325,17 +325,19 @@ where
 {
     type GetHandler<C> = ValueStoreGet<C, T>
     where
-        C: 'static;
+        C: AgentDescription + 'static;
 
     type WithValueHandler<'a, C, F, B, U> = ValueStoreWithValue<C, T, F, B>
     where
         Self: 'static,
-        C: 'a,
+        C: AgentDescription + 'a,
         T: Borrow<B>,
         B: ?Sized + 'static,
         F: FnOnce(&B) -> U + Send + 'a;
 
-    fn get_handler<C: 'static>(projection: fn(&C) -> &Self) -> Self::GetHandler<C> {
+    fn get_handler<C: AgentDescription + 'static>(
+        projection: fn(&C) -> &Self,
+    ) -> Self::GetHandler<C> {
         ValueStoreGet::new(projection)
     }
 
@@ -344,7 +346,7 @@ where
         f: F,
     ) -> Self::WithValueHandler<'a, C, F, B, U>
     where
-        C: 'a,
+        C: AgentDescription + 'a,
         T: Borrow<B>,
         B: ?Sized + 'static,
         F: FnOnce(&B) -> U + Send + 'a,
@@ -359,9 +361,12 @@ where
 {
     type SetHandler<C> = ValueStoreSet<C, T>
     where
-        C: 'static;
+        C: AgentDescription + 'static;
 
-    fn set_handler<C: 'static>(projection: fn(&C) -> &Self, value: T) -> Self::SetHandler<C> {
+    fn set_handler<C: AgentDescription + 'static>(
+        projection: fn(&C) -> &Self,
+        value: T,
+    ) -> Self::SetHandler<C> {
         ValueStoreSet::new(projection, value)
     }
 }

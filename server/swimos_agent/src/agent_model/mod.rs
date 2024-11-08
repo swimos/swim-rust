@@ -193,7 +193,9 @@ pub type ValueLikeInitializer<T> = Box<dyn ItemInitializer<T, BytesMut> + Send +
 
 pub trait AgentDescription {
     /// Get the item name for an item ID.
-    fn item_name(&self, id: u64) -> Option<Cow<'_, str>>;
+    fn item_name(&self, _id: u64) -> Option<Cow<'_, str>> {
+        None
+    }
 }
 
 /// A trait which describes the lanes of an agent which can be run as a task attached to an

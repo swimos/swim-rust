@@ -361,6 +361,10 @@ impl ValueLaneSelectorFn {
 impl SelectorFn<ConnectorAgent> for ValueLaneSelectorFn {
     type Target = GenericValueLane;
 
+    fn name(&self) -> &str {
+        &self.name
+    }
+
     fn selector(self, context: &ConnectorAgent) -> impl Selector<Target = Self::Target> + '_ {
         let ConnectorAgent { value_lanes, .. } = context;
         let map = value_lanes.borrow();
@@ -389,6 +393,10 @@ impl SelectorFn<ConnectorAgent> for MapLaneSelectorFn {
         let ConnectorAgent { map_lanes, .. } = context;
         let map = map_lanes.borrow();
         LaneSelector::new(map, self.name)
+    }
+
+    fn name(&self) -> &str {
+        &self.name
     }
 }
 

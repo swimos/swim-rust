@@ -850,6 +850,10 @@ impl SelectorFn<TestAgent> for TestSelectorFn {
     fn selector(self, context: &TestAgent) -> impl Selector<Target = Self::Target> + '_ {
         TestSelector(context, self.0)
     }
+
+    fn name(&self) -> &str {
+        "lane"
+    }
 }
 
 struct TestSelector<'a>(&'a TestAgent, bool);

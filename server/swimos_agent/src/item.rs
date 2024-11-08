@@ -15,6 +15,7 @@
 use std::{borrow::Borrow, collections::HashMap};
 
 use crate::{
+    agent_model::AgentDescription,
     event_handler::{EventHandler, HandlerAction},
     lanes::map::MapLaneEvent,
 };
@@ -116,24 +117,26 @@ pub trait MutableMapLikeItem<K, V> {
 pub trait ValueLikeItem<T> {
     type GetHandler<C>: HandlerAction<C, Completion = T> + Send + 'static
     where
-        C: 'static;
+        C: AgentDescription + 'static;
 
     type WithValueHandler<'a, C, F, B, U>: HandlerAction<C, Completion = U> + Send + 'a
     where
         Self: 'static,
-        C: 'a,
+        C: AgentDescription + 'a,
         T: Borrow<B>,
         B: ?Sized + 'static,
         F: FnOnce(&B) -> U + Send + 'a;
 
-    fn get_handler<C: 'static>(projection: fn(&C) -> &Self) -> Self::GetHandler<C>;
+    fn get_handler<C: AgentDescription + 'static>(
+        projection: fn(&C) -> &Self,
+    ) -> Self::GetHandler<C>;
 
     fn with_value_handler<'a, Item, C, F, B, U>(
         projection: fn(&C) -> &Self,
         f: F,
     ) -> Self::WithValueHandler<'a, C, F, B, U>
     where
-        C: 'a,
+        C: AgentDescription + 'a,
         T: Borrow<B>,
         B: ?Sized + 'static,
         F: FnOnce(&B) -> U + Send + 'a;
@@ -142,9 +145,12 @@ pub trait ValueLikeItem<T> {
 pub trait MutableValueLikeItem<T> {
     type SetHandler<C>: EventHandler<C> + Send + 'static
     where
-        C: 'static;
+        C: AgentDescription + 'static;
 
-    fn set_handler<C: 'static>(projection: fn(&C) -> &Self, value: T) -> Self::SetHandler<C>;
+    fn set_handler<C: AgentDescription + 'static>(
+        projection: fn(&C) -> &Self,
+        value: T,
+    ) -> Self::SetHandler<C>;
 }
 
 /// Trait for abstracting over common functionality between Join Map and Join Value lanes.
