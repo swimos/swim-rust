@@ -12,7 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::any::type_name;
 use std::borrow::Borrow;
+use std::fmt::Formatter;
 use std::hash::Hash;
 use std::marker::PhantomData;
 use std::{cell::RefCell, collections::HashMap};
@@ -185,6 +187,7 @@ impl<C, K, V> MapStoreUpdate<C, K, V> {
 
 impl<C, K, V> HandlerAction<C> for MapStoreUpdate<C, K, V>
 where
+    C: AgentDescription,
     K: Clone + Eq + Hash,
 {
     type Completion = ();
@@ -210,6 +213,20 @@ where
             StepResult::after_done()
         }
     }
+
+    fn describe(&self, context: &C, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        let MapStoreUpdate {
+            projection,
+            key_value,
+        } = self;
+        let lane = (projection)(context);
+        let name = context.item_name(lane.id());
+        f.debug_struct("MapStoreUpdate")
+            .field("id", &lane.id())
+            .field("store_name", &name.as_ref().map(|s| s.as_ref()))
+            .field("consumed", &key_value.is_none())
+            .finish()
+    }
 }
 
 ///  An [event handler](crate::event_handler::EventHandler)`] that will remove an entry from the map.
@@ -229,6 +246,7 @@ impl<C, K, V> MapStoreRemove<C, K, V> {
 
 impl<C, K, V> HandlerAction<C> for MapStoreRemove<C, K, V>
 where
+    C: AgentDescription,
     K: Clone + Eq + Hash,
 {
     type Completion = ();
@@ -251,6 +269,17 @@ where
             StepResult::after_done()
         }
     }
+
+    fn describe(&self, context: &C, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        let MapStoreRemove { projection, key } = self;
+        let lane = (projection)(context);
+        let name = context.item_name(lane.id());
+        f.debug_struct("MapStoreRemove")
+            .field("id", &lane.id())
+            .field("store_name", &name.as_ref().map(|s| s.as_ref()))
+            .field("consumed", &key.is_none())
+            .finish()
+    }
 }
 
 ///  An [event handler](crate::event_handler::EventHandler)`] that will clear the map.
@@ -270,6 +299,7 @@ impl<C, K, V> MapStoreClear<C, K, V> {
 
 impl<C, K, V> HandlerAction<C> for MapStoreClear<C, K, V>
 where
+    C: AgentDescription,
     K: Clone + Eq + Hash,
 {
     type Completion = ();
@@ -293,6 +323,17 @@ where
             StepResult::after_done()
         }
     }
+
+    fn describe(&self, context: &C, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        let MapStoreClear { projection, done } = self;
+        let lane = (projection)(context);
+        let name = context.item_name(lane.id());
+        f.debug_struct("MapStoreClear")
+            .field("id", &lane.id())
+            .field("store_name", &name.as_ref().map(|s| s.as_ref()))
+            .field("consumed", done)
+            .finish()
+    }
 }
 
 ///  An [event handler](crate::event_handler::EventHandler)`] that will get an entry from the map.
@@ -314,6 +355,7 @@ impl<C, K, V> MapStoreGet<C, K, V> {
 
 impl<C, K, V> HandlerAction<C> for MapStoreGet<C, K, V>
 where
+    C: AgentDescription,
     K: Clone + Eq + Hash,
     V: Clone,
 {
@@ -338,6 +380,16 @@ where
             StepResult::after_done()
         }
     }
+
+    fn describe(&self, context: &C, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        let lane = (self.projection)(context);
+        let name = context.item_name(lane.id());
+        f.debug_struct("MapStoreGet")
+            .field("id", &lane.id())
+            .field("store_name", &name.as_ref().map(|s| s.as_ref()))
+            .field("consumed", &self.done)
+            .finish()
+    }
 }
 
 ///  An [event handler](crate::event_handler::EventHandler)`] that will read the entire state of a map store.
@@ -357,6 +409,7 @@ impl<C, K, V> MapStoreGetMap<C, K, V> {
 
 impl<C, K, V> HandlerAction<C> for MapStoreGetMap<C, K, V>
 where
+    C: AgentDescription,
     K: Clone + Eq + Hash,
     V: Clone,
 {
@@ -377,6 +430,16 @@ where
             StepResult::after_done()
         }
     }
+
+    fn describe(&self, context: &C, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        let lane = (self.projection)(context);
+        let name = context.item_name(lane.id());
+        f.debug_struct("MapStoreGetMap")
+            .field("id", &lane.id())
+            .field("store_name", &name.as_ref().map(|s| s.as_ref()))
+            .field("consumed", &self.done)
+            .finish()
+    }
 }
 
 ///  An [event handler](crate::event_handler::EventHandler)`] that may alter an entry in the map.
@@ -396,6 +459,7 @@ impl<C, K, V, F> MapStoreTransformEntry<C, K, V, F> {
 
 impl<C, K, V, F> HandlerAction<C> for MapStoreTransformEntry<C, K, V, F>
 where
+    C: AgentDescription,
     K: Clone + Eq + Hash,
     F: FnOnce(Option<&V>) -> Option<V>,
 {
@@ -428,6 +492,21 @@ where
             StepResult::after_done()
         }
     }
+
+    fn describe(&self, context: &C, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        let MapStoreTransformEntry {
+            projection,
+            key_and_f,
+        } = self;
+        let lane = projection(context);
+        let name = context.item_name(lane.id());
+
+        f.debug_struct("MapStoreTransformEntry")
+            .field("id", &lane.id())
+            .field("store_name", &name.as_ref().map(|s| s.as_ref()))
+            .field("consumed", &key_and_f.is_none())
+            .finish()
+    }
 }
 
 /// A [handler action][`HandlerAction`] that will produce a value by applying a closure to a reference to
@@ -454,6 +533,7 @@ impl<C, K, V, F, B: ?Sized> MapStoreWithEntry<C, K, V, F, B> {
 
 impl<C, K, V, F, B, U> HandlerAction<C> for MapStoreWithEntry<C, K, V, F, B>
 where
+    C: AgentDescription,
     K: Eq + Hash,
     B: ?Sized,
     V: Borrow<B>,
@@ -478,6 +558,17 @@ where
         } else {
             StepResult::after_done()
         }
+    }
+
+    fn describe(&self, context: &C, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        let lane = (self.projection)(context);
+        let name = context.item_name(lane.id());
+        f.debug_struct("MapStoreWithEntry")
+            .field("id", &lane.id())
+            .field("store_name", &name.as_ref().map(|s| s.as_ref()))
+            .field("result_type", &type_name::<U>())
+            .field("consumed", &self.key_and_f.is_none())
+            .finish()
     }
 }
 impl<K, V> MapLikeItem<K, V> for MapStore<K, V>
