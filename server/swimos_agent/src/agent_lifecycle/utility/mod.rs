@@ -182,6 +182,22 @@ impl<Agent: AgentDescription + 'static> HandlerContext<Agent> {
     {
         Item::set_handler::<Agent>(item, value)
     }
+
+    /// Create an event handler that will send a command to a command lane of the agent.
+    ///
+    /// # Arguments
+    /// * `lane` - Projection to the value lane.
+    /// * `value` - The value of the command.
+    pub fn command<T>(
+        &self,
+        lane: fn(&Agent) -> &CommandLane<T>,
+        value: T,
+    ) -> impl HandlerAction<Agent, Completion = ()> + Send + 'static
+    where
+        T: Send + 'static,
+    {
+        DoCommand::new(lane, value)
+    }
 }
 
 impl<Agent: 'static> HandlerContext<Agent> {
@@ -407,22 +423,6 @@ impl<Agent: 'static> HandlerContext<Agent> {
         V: Send + Clone + 'static,
     {
         Item::get_map_handler::<Agent>(item)
-    }
-
-    /// Create an event handler that will send a command to a command lane of the agent.
-    ///
-    /// # Arguments
-    /// * `lane` - Projection to the value lane.
-    /// * `value` - The value of the command.
-    pub fn command<T>(
-        &self,
-        lane: fn(&Agent) -> &CommandLane<T>,
-        value: T,
-    ) -> impl HandlerAction<Agent, Completion = ()> + Send + 'static
-    where
-        T: Send + 'static,
-    {
-        DoCommand::new(lane, value)
     }
 
     /// Create an event handler that will cue a demand lane to produce a value.

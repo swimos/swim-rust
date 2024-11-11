@@ -24,7 +24,7 @@ use swimos_recon::parser::AsyncParseError;
 use tokio_util::codec::Encoder;
 
 use crate::{
-    agent_model::WriteResult,
+    agent_model::{AgentDescription, WriteResult},
     event_handler::{
         ActionContext, AndThen, Decode, HandlerAction, HandlerActionExt, HandlerTrans,
         Modification, StepResult,
@@ -104,7 +104,7 @@ impl<Context, T> DoCommand<Context, T> {
     }
 }
 
-impl<Context, T> HandlerAction<Context> for DoCommand<Context, T> {
+impl<Context: AgentDescription, T> HandlerAction<Context> for DoCommand<Context, T> {
     type Completion = ();
 
     fn step(
@@ -128,6 +128,24 @@ impl<Context, T> HandlerAction<Context> for DoCommand<Context, T> {
             StepResult::after_done()
         }
     }
+
+    fn describe(
+        &self,
+        context: &Context,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        let DoCommand {
+            projection,
+            command,
+        } = self;
+        let lane = projection(context);
+        let name = context.item_name(lane.id());
+        f.debug_struct("DoCommand")
+            .field("id", &lane.id())
+            .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
+            .field("consumed", &command.is_none())
+            .finish()
+    }
 }
 
 impl<C, T> HandlerTrans<T> for ProjTransform<C, CommandLane<T>> {
@@ -143,7 +161,7 @@ pub type DecodeAndCommand<C, T> =
     AndThen<Decode<T>, DoCommand<C, T>, ProjTransform<C, CommandLane<T>>>;
 
 /// Create an event handler that will decode an incoming command and apply it to a command lane.
-pub fn decode_and_command<C, T: RecognizerReadable>(
+pub fn decode_and_command<C: AgentDescription, T: RecognizerReadable>(
     buffer: BytesMut,
     projection: fn(&C) -> &CommandLane<T>,
 ) -> DecodeAndCommand<C, T> {
