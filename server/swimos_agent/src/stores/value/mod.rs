@@ -13,8 +13,10 @@
 // limitations under the License.
 
 use std::{
+    any::type_name,
     borrow::Borrow,
     cell::{Cell, RefCell},
+    fmt::Formatter,
     marker::PhantomData,
 };
 
@@ -232,7 +234,7 @@ impl<C, T> ValueStoreSet<C, T> {
     }
 }
 
-impl<C, T: Clone> HandlerAction<C> for ValueStoreGet<C, T> {
+impl<C: AgentDescription, T: Clone> HandlerAction<C> for ValueStoreGet<C, T> {
     type Completion = T;
 
     fn step(
@@ -251,9 +253,18 @@ impl<C, T: Clone> HandlerAction<C> for ValueStoreGet<C, T> {
             StepResult::done(value)
         }
     }
+
+    fn describe(&self, context: &C, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        let lane = (self.projection)(context);
+        let name = context.item_name(lane.id());
+        f.debug_struct("ValueStoreGet")
+            .field("id", &lane.id())
+            .field("store_name", &name.as_ref().map(|s| s.as_ref()))
+            .finish()
+    }
 }
 
-impl<C, T> HandlerAction<C> for ValueStoreSet<C, T> {
+impl<C: AgentDescription, T> HandlerAction<C> for ValueStoreSet<C, T> {
     type Completion = ();
 
     fn step(
@@ -273,6 +284,21 @@ impl<C, T> HandlerAction<C> for ValueStoreSet<C, T> {
         } else {
             StepResult::Fail(EventHandlerError::SteppedAfterComplete)
         }
+    }
+
+    fn describe(
+        &self,
+        context: &C,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        let ValueStoreSet { projection, value } = self;
+        let lane = (projection)(context);
+        let name = context.item_name(lane.id());
+        f.debug_struct("ValueStoreSet")
+            .field("id", &lane.id())
+            .field("store_name", &name.as_ref().map(|s| s.as_ref()))
+            .field("consumed", &value.is_none())
+            .finish()
     }
 }
 
@@ -296,7 +322,7 @@ impl<C, T, F, B: ?Sized> ValueStoreWithValue<C, T, F, B> {
     }
 }
 
-impl<C, T, F, B, U> HandlerAction<C> for ValueStoreWithValue<C, T, F, B>
+impl<C: AgentDescription, T, F, B, U> HandlerAction<C> for ValueStoreWithValue<C, T, F, B>
 where
     T: Borrow<B>,
     B: ?Sized,
@@ -316,6 +342,20 @@ where
         } else {
             StepResult::after_done()
         }
+    }
+
+    fn describe(
+        &self,
+        context: &C,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        let lane = (self.projection)(context);
+        let name = context.item_name(lane.id());
+        f.debug_struct("ValueStoreWithValue")
+            .field("id", &lane.id())
+            .field("store_name", &name.as_ref().map(|s| s.as_ref()))
+            .field("result_type", &type_name::<U>())
+            .finish()
     }
 }
 
