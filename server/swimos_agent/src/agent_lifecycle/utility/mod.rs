@@ -375,6 +375,22 @@ impl<Agent: AgentDescription + 'static> HandlerContext<Agent> {
     {
         Cue::new(lane)
     }
+
+    /// Create an event handler that will supply an event to a supply lane.
+    ///
+    /// # Arguments
+    /// * `lane` - Projection to the supply lane.
+    /// * `value` - The value to supply.
+    pub fn supply<V>(
+        &self,
+        lane: fn(&Agent) -> &SupplyLane<V>,
+        value: V,
+    ) -> impl EventHandler<Agent> + Send + 'static
+    where
+        V: Send + 'static,
+    {
+        Supply::new(lane, value)
+    }
 }
 
 impl<Agent: 'static> HandlerContext<Agent> {
@@ -454,22 +470,6 @@ impl<Agent: 'static> HandlerContext<Agent> {
         V: 'static,
     {
         CueKey::new(lane, key)
-    }
-
-    /// Create an event handler that will supply an event to a supply lane.
-    ///
-    /// # Arguments
-    /// * `lane` - Projection to the supply lane.
-    /// * `value` - The value to supply.
-    pub fn supply<V>(
-        &self,
-        lane: fn(&Agent) -> &SupplyLane<V>,
-        value: V,
-    ) -> impl EventHandler<Agent> + Send + 'static
-    where
-        V: Send + 'static,
-    {
-        Supply::new(lane, value)
     }
 
     /// Suspend a future to be executed by the agent task. The future must result in another

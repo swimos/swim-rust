@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::fmt::Formatter;
 use std::{cell::RefCell, collections::VecDeque};
 
 use bytes::BytesMut;
@@ -23,6 +24,7 @@ use uuid::Uuid;
 use swimos_agent_protocol::encoding::lane::ValueLaneResponseEncoder;
 use swimos_form::write::StructuralWritable;
 
+use crate::agent_model::AgentDescription;
 use crate::event_handler::EventHandlerError;
 use crate::{
     agent_model::WriteResult,
@@ -142,7 +144,10 @@ impl<Context, T> Supply<Context, T> {
     }
 }
 
-impl<Context, T> HandlerAction<Context> for Supply<Context, T> {
+impl<Context, T> HandlerAction<Context> for Supply<Context, T>
+where
+    Context: AgentDescription,
+{
     type Completion = ();
 
     fn step(
@@ -162,6 +167,18 @@ impl<Context, T> HandlerAction<Context> for Supply<Context, T> {
         } else {
             StepResult::Fail(EventHandlerError::SteppedAfterComplete)
         }
+    }
+
+    fn describe(&self, context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        let Supply { projection, value } = self;
+        let lane = projection(context);
+        let name = context.item_name(lane.id());
+
+        f.debug_struct("Supply")
+            .field("id", &lane.id())
+            .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
+            .field("consumed", &value.is_none())
+            .finish()
     }
 }
 
