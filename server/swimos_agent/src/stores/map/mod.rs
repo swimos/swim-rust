@@ -23,7 +23,7 @@ use swimos_agent_protocol::encoding::store::MapStoreResponseEncoder;
 use swimos_form::write::StructuralWritable;
 use tokio_util::codec::Encoder;
 
-use crate::agent_model::WriteResult;
+use crate::agent_model::{AgentDescription, WriteResult};
 use crate::event_handler::{ActionContext, HandlerAction, Modification, StepResult};
 use crate::event_queue::EventQueue;
 use crate::item::{AgentItem, InspectableMapLikeItem, MapItem, MapLikeItem, MutableMapLikeItem};
@@ -487,17 +487,22 @@ where
 {
     type GetHandler<C> = MapStoreGet<C, K, V>
     where
-        C: 'static;
+        C: AgentDescription + 'static;
 
-    fn get_handler<C: 'static>(projection: fn(&C) -> &Self, key: K) -> Self::GetHandler<C> {
+    fn get_handler<C: AgentDescription + 'static>(
+        projection: fn(&C) -> &Self,
+        key: K,
+    ) -> Self::GetHandler<C> {
         MapStoreGet::new(projection, key)
     }
 
     type GetMapHandler<C> = MapStoreGetMap<C, K, V>
     where
-        C: 'static;
+        C: AgentDescription + 'static;
 
-    fn get_map_handler<C: 'static>(projection: fn(&C) -> &Self) -> Self::GetMapHandler<C> {
+    fn get_map_handler<C: AgentDescription + 'static>(
+        projection: fn(&C) -> &Self,
+    ) -> Self::GetMapHandler<C> {
         MapStoreGetMap::new(projection)
     }
 }
@@ -510,7 +515,7 @@ where
     type WithEntryHandler<'a, C, F, B, U> = MapStoreWithEntry<C, K, V, F, B>
     where
         Self: 'static,
-        C: 'a,
+        C: AgentDescription + 'a,
         B: ?Sized +'static,
         V: Borrow<B>,
         F: FnOnce(Option<&B>) -> U + Send + 'a;
@@ -522,7 +527,7 @@ where
     ) -> Self::WithEntryHandler<'a, C, F, B, U>
     where
         Self: 'static,
-        C: 'a,
+        C: AgentDescription + 'a,
         B: ?Sized + 'static,
         V: Borrow<B>,
         F: FnOnce(Option<&B>) -> U + Send + 'a,
@@ -538,17 +543,17 @@ where
 {
     type UpdateHandler<C> = MapStoreUpdate<C, K, V>
     where
-        C: 'static;
+        C: AgentDescription + 'static;
 
     type RemoveHandler<C> = MapStoreRemove<C, K, V>
     where
-        C: 'static;
+        C: AgentDescription + 'static;
 
     type ClearHandler<C> = MapStoreClear<C, K, V>
     where
-        C: 'static;
+        C: AgentDescription + 'static;
 
-    fn update_handler<C: 'static>(
+    fn update_handler<C: AgentDescription + 'static>(
         projection: fn(&C) -> &Self,
         key: K,
         value: V,
@@ -556,18 +561,23 @@ where
         MapStoreUpdate::new(projection, key, value)
     }
 
-    fn remove_handler<C: 'static>(projection: fn(&C) -> &Self, key: K) -> Self::RemoveHandler<C> {
+    fn remove_handler<C: AgentDescription + 'static>(
+        projection: fn(&C) -> &Self,
+        key: K,
+    ) -> Self::RemoveHandler<C> {
         MapStoreRemove::new(projection, key)
     }
 
-    fn clear_handler<C: 'static>(projection: fn(&C) -> &Self) -> Self::ClearHandler<C> {
+    fn clear_handler<C: AgentDescription + 'static>(
+        projection: fn(&C) -> &Self,
+    ) -> Self::ClearHandler<C> {
         MapStoreClear::new(projection)
     }
 
     type TransformEntryHandler<'a, C, F> = MapStoreTransformEntry<C, K, V, F>
     where
         Self: 'static,
-        C: 'a,
+        C: AgentDescription + 'a,
         F: FnOnce(Option<&V>) -> Option<V> + Send + 'a;
 
     fn transform_entry_handler<'a, C, F>(
@@ -577,7 +587,7 @@ where
     ) -> Self::TransformEntryHandler<'a, C, F>
     where
         Self: 'static,
-        C: 'a,
+        C: AgentDescription + 'a,
         F: FnOnce(Option<&V>) -> Option<V> + Send + 'a,
     {
         MapStoreTransformEntry::new(projection, key, f)

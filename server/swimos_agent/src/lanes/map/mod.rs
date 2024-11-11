@@ -32,7 +32,7 @@ pub mod lifecycle;
 mod tests;
 
 use crate::{
-    agent_model::WriteResult,
+    agent_model::{AgentDescription, WriteResult},
     event_handler::{
         ActionContext, AndThen, EventHandlerError, HandlerAction, HandlerActionExt, HandlerTrans,
         Modification, StepResult,
@@ -649,17 +649,22 @@ where
 {
     type GetHandler<C> = MapLaneGet<C, K, V>
     where
-        C: 'static;
+        C: AgentDescription + 'static;
 
-    fn get_handler<C: 'static>(projection: fn(&C) -> &Self, key: K) -> Self::GetHandler<C> {
+    fn get_handler<C: AgentDescription + 'static>(
+        projection: fn(&C) -> &Self,
+        key: K,
+    ) -> Self::GetHandler<C> {
         MapLaneGet::new(projection, key)
     }
 
     type GetMapHandler<C> = MapLaneGetMap<C, K, V>
     where
-        C: 'static;
+        C: AgentDescription + 'static;
 
-    fn get_map_handler<C: 'static>(projection: fn(&C) -> &Self) -> Self::GetMapHandler<C> {
+    fn get_map_handler<C: AgentDescription + 'static>(
+        projection: fn(&C) -> &Self,
+    ) -> Self::GetMapHandler<C> {
         MapLaneGetMap::new(projection)
     }
 }
@@ -672,7 +677,7 @@ where
     type WithEntryHandler<'a, C, F, B, U> = MapLaneWithEntry<C, K, V, F, B>
     where
         Self: 'static,
-        C: 'a,
+        C: AgentDescription + 'a,
         B: ?Sized +'static,
         V: Borrow<B>,
         F: FnOnce(Option<&B>) -> U + Send + 'a;
@@ -684,7 +689,7 @@ where
     ) -> Self::WithEntryHandler<'a, C, F, B, U>
     where
         Self: 'static,
-        C: 'a,
+        C: AgentDescription + 'a,
         B: ?Sized + 'static,
         V: Borrow<B>,
         F: FnOnce(Option<&B>) -> U + Send + 'a,
@@ -700,17 +705,17 @@ where
 {
     type UpdateHandler<C> = MapLaneUpdate<C, K, V>
     where
-        C: 'static;
+        C: AgentDescription + 'static;
 
     type RemoveHandler<C> = MapLaneRemove<C, K, V>
     where
-        C: 'static;
+        C: AgentDescription + 'static;
 
     type ClearHandler<C> = MapLaneClear<C, K, V>
     where
-        C: 'static;
+        C: AgentDescription + 'static;
 
-    fn update_handler<C: 'static>(
+    fn update_handler<C: AgentDescription + 'static>(
         projection: fn(&C) -> &Self,
         key: K,
         value: V,
@@ -718,18 +723,23 @@ where
         MapLaneUpdate::new(projection, key, value)
     }
 
-    fn remove_handler<C: 'static>(projection: fn(&C) -> &Self, key: K) -> Self::RemoveHandler<C> {
+    fn remove_handler<C: AgentDescription + 'static>(
+        projection: fn(&C) -> &Self,
+        key: K,
+    ) -> Self::RemoveHandler<C> {
         MapLaneRemove::new(projection, key)
     }
 
-    fn clear_handler<C: 'static>(projection: fn(&C) -> &Self) -> Self::ClearHandler<C> {
+    fn clear_handler<C: AgentDescription + 'static>(
+        projection: fn(&C) -> &Self,
+    ) -> Self::ClearHandler<C> {
         MapLaneClear::new(projection)
     }
 
     type TransformEntryHandler<'a, C, F> = MapLaneTransformEntry<C, K, V, F>
     where
         Self: 'static,
-        C: 'a,
+        C: AgentDescription + 'a,
         F: FnOnce(Option<&V>) -> Option<V> + Send + 'a;
 
     fn transform_entry_handler<'a, C, F>(
@@ -739,7 +749,7 @@ where
     ) -> Self::TransformEntryHandler<'a, C, F>
     where
         Self: 'static,
-        C: 'a,
+        C: AgentDescription + 'a,
         F: FnOnce(Option<&V>) -> Option<V> + Send + 'a,
     {
         MapLaneTransformEntry::new(projection, key, f)

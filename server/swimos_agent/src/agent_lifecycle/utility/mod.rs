@@ -198,69 +198,6 @@ impl<Agent: AgentDescription + 'static> HandlerContext<Agent> {
     {
         DoCommand::new(lane, value)
     }
-}
-
-impl<Agent: 'static> HandlerContext<Agent> {
-    /// Create an event handler that resolves to a specific value.
-    pub fn value<T>(&self, val: T) -> impl HandlerAction<Agent, Completion = T> {
-        ConstHandler::from(val)
-    }
-
-    /// Create an event handler that executes a side effect.
-    pub fn effect<F, T>(&self, f: F) -> impl HandlerAction<Agent, Completion = T>
-    where
-        F: FnOnce() -> T,
-    {
-        SideEffect::from(f)
-    }
-
-    /// Send a command to a lane (either on a remote host or locally to an agent on the same plane).
-    ///
-    /// # Arguments
-    /// * `host` - The target remote host or [`None`] for an agent in the same plane.
-    /// * `node` - The target node hosting the lane.
-    /// * `lane` - The name of the target lane.
-    /// * `command` - The value to send.
-    pub fn send_command<'a, T>(
-        &self,
-        host: Option<&str>,
-        node: &str,
-        lane: &str,
-        command: T,
-    ) -> impl EventHandler<Agent> + 'a
-    where
-        T: StructuralWritable + 'a,
-    {
-        let addr = Address::text(host, node, lane);
-        SendCommand::new(addr, command, true)
-    }
-
-    /// Create an event handler that will fetch the metadata of the agent instance.
-    pub fn get_agent_uri(
-        &self,
-    ) -> impl HandlerAction<Agent, Completion = RouteUri> + Send + 'static {
-        GetAgentUri::default()
-    }
-
-    /// Get the value of a parameter extracted from the route URI of the agent instance.
-    /// # Arguments
-    /// * `name` - The name of the parameter.
-    pub fn get_parameter<'a>(
-        &self,
-        name: &'a str,
-    ) -> impl HandlerAction<Agent, Completion = Option<String>> + Send + 'a {
-        GetParameter::new(name)
-    }
-
-    /// Compute a value from the parameters extracted from the route URI of the agent instance.
-    /// # Arguments
-    /// * `f` - The function to apply to the parameters.
-    pub fn with_parameters<F, T>(&self, f: F) -> impl HandlerAction<Agent, Completion = T>
-    where
-        F: FnOnce(&HashMap<String, String>) -> T,
-    {
-        WithParameters::new(f)
-    }
 
     /// Create an event handler that will update an entry in a map lane or store of the agent.
     ///
@@ -365,30 +302,6 @@ impl<Agent: 'static> HandlerContext<Agent> {
         Item::clear_handler::<Agent>(item)
     }
 
-    /// Create an event handler that replaces the entire contents of a map lane or store.
-    ///
-    /// #Arguments
-    /// * `item` - Projection to the map lane or store.
-    /// * `entries` - The new entries for the lane.
-    pub fn replace_map<Item, K, V, I>(
-        &self,
-        item: fn(&Agent) -> &Item,
-        entries: I,
-    ) -> impl HandlerAction<Agent, Completion = ()> + Send + 'static
-    where
-        Item: MutableMapLikeItem<K, V> + 'static,
-        K: Send + Clone + Eq + Hash + 'static,
-        V: Send + 'static,
-        I: IntoIterator<Item = (K, V)>,
-        I::IntoIter: Send + 'static,
-    {
-        let context = *self;
-        let insertions = entries
-            .into_iter()
-            .map(move |(k, v)| context.update(item, k, v));
-        self.clear(item).followed_by(Sequentially::new(insertions))
-    }
-
     /// Create an event handler that will attempt to get an entry from a map-like item of the agent.
     /// This includes map lanes and stores and join lanes.
     ///
@@ -423,6 +336,93 @@ impl<Agent: 'static> HandlerContext<Agent> {
         V: Send + Clone + 'static,
     {
         Item::get_map_handler::<Agent>(item)
+    }
+
+    /// Create an event handler that replaces the entire contents of a map lane or store.
+    ///
+    /// #Arguments
+    /// * `item` - Projection to the map lane or store.
+    /// * `entries` - The new entries for the lane.
+    pub fn replace_map<Item, K, V, I>(
+        &self,
+        item: fn(&Agent) -> &Item,
+        entries: I,
+    ) -> impl HandlerAction<Agent, Completion = ()> + Send + 'static
+    where
+        Item: MutableMapLikeItem<K, V> + 'static,
+        K: Send + Clone + Eq + Hash + 'static,
+        V: Send + 'static,
+        I: IntoIterator<Item = (K, V)>,
+        I::IntoIter: Send + 'static,
+    {
+        let context = *self;
+        let insertions = entries
+            .into_iter()
+            .map(move |(k, v)| context.update(item, k, v));
+        self.clear(item).followed_by(Sequentially::new(insertions))
+    }
+}
+
+impl<Agent: 'static> HandlerContext<Agent> {
+    /// Create an event handler that resolves to a specific value.
+    pub fn value<T>(&self, val: T) -> impl HandlerAction<Agent, Completion = T> {
+        ConstHandler::from(val)
+    }
+
+    /// Create an event handler that executes a side effect.
+    pub fn effect<F, T>(&self, f: F) -> impl HandlerAction<Agent, Completion = T>
+    where
+        F: FnOnce() -> T,
+    {
+        SideEffect::from(f)
+    }
+
+    /// Send a command to a lane (either on a remote host or locally to an agent on the same plane).
+    ///
+    /// # Arguments
+    /// * `host` - The target remote host or [`None`] for an agent in the same plane.
+    /// * `node` - The target node hosting the lane.
+    /// * `lane` - The name of the target lane.
+    /// * `command` - The value to send.
+    pub fn send_command<'a, T>(
+        &self,
+        host: Option<&str>,
+        node: &str,
+        lane: &str,
+        command: T,
+    ) -> impl EventHandler<Agent> + 'a
+    where
+        T: StructuralWritable + 'a,
+    {
+        let addr = Address::text(host, node, lane);
+        SendCommand::new(addr, command, true)
+    }
+
+    /// Create an event handler that will fetch the metadata of the agent instance.
+    pub fn get_agent_uri(
+        &self,
+    ) -> impl HandlerAction<Agent, Completion = RouteUri> + Send + 'static {
+        GetAgentUri::default()
+    }
+
+    /// Get the value of a parameter extracted from the route URI of the agent instance.
+    /// # Arguments
+    /// * `name` - The name of the parameter.
+    pub fn get_parameter<'a>(
+        &self,
+        name: &'a str,
+    ) -> impl HandlerAction<Agent, Completion = Option<String>> + Send + 'a {
+        GetParameter::new(name)
+    }
+
+    /// Compute a value from the parameters extracted from the route URI of the agent instance.
+    /// # Arguments
+    /// * `f` - The function to apply to the parameters.
+    pub fn with_parameters<F, T>(&self, f: F) -> impl HandlerAction<Agent, Completion = T>
+    where
+        F: FnOnce(&HashMap<String, String>) -> T,
+    {
+        WithParameters::new(f)
     }
 
     /// Create an event handler that will cue a demand lane to produce a value.

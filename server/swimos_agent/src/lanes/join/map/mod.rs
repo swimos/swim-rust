@@ -32,7 +32,7 @@ use swimos_form::{write::StructuralWritable, Form};
 use swimos_model::Text;
 use swimos_utilities::trigger;
 
-use crate::item::JoinLikeItem;
+use crate::{agent_model::AgentDescription, item::JoinLikeItem};
 use crate::{
     agent_model::{downlink::OpenEventDownlinkAction, WriteResult},
     config::SimpleDownlinkConfig,
@@ -743,17 +743,22 @@ where
 {
     type GetHandler<C> = JoinMapLaneGet<C, L, K, V>
     where
-        C: 'static;
+        C: AgentDescription + 'static;
 
     type GetMapHandler<C> = JoinMapLaneGetMap<C, L, K, V>
     where
-        C: 'static;
+        C: AgentDescription + 'static;
 
-    fn get_handler<C: 'static>(projection: fn(&C) -> &Self, key: K) -> Self::GetHandler<C> {
+    fn get_handler<C: AgentDescription + 'static>(
+        projection: fn(&C) -> &Self,
+        key: K,
+    ) -> Self::GetHandler<C> {
         JoinMapLaneGet::new(projection, key)
     }
 
-    fn get_map_handler<C: 'static>(projection: fn(&C) -> &Self) -> Self::GetMapHandler<C> {
+    fn get_map_handler<C: AgentDescription + 'static>(
+        projection: fn(&C) -> &Self,
+    ) -> Self::GetMapHandler<C> {
         JoinMapLaneGetMap::new(projection)
     }
 }
@@ -767,7 +772,7 @@ where
     type WithEntryHandler<'a, C, F, B, U> = JoinMapLaneWithEntry<C, L, K, V, F, B>
     where
         Self: 'static,
-        C: 'a,
+        C: AgentDescription + 'a,
         B: ?Sized + 'static,
         V: Borrow<B>,
         F: FnOnce(Option<&B>) -> U + Send + 'a;
@@ -779,7 +784,7 @@ where
     ) -> Self::WithEntryHandler<'a, C, F, B, U>
     where
         Self: 'static,
-        C: 'a,
+        C: AgentDescription + 'a,
         B: ?Sized + 'static,
         V: Borrow<B>,
         F: FnOnce(Option<&B>) -> U + Send + 'a,
