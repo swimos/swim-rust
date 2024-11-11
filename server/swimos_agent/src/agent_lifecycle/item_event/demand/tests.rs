@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{collections::HashMap, sync::Arc};
+use std::{borrow::Cow, collections::HashMap, sync::Arc};
 
 use bytes::BytesMut;
 use parking_lot::Mutex;
@@ -28,7 +28,7 @@ use crate::{
     agent_lifecycle::item_event::{
         tests::run_handler_expect_mod, DemandBranch, DemandLeaf, HLeaf, ItemEvent,
     },
-    agent_model::WriteResult,
+    agent_model::{AgentDescription, WriteResult},
     event_handler::{ActionContext, HandlerAction, Modification, StepResult},
     lanes::{
         demand::{lifecycle::on_cue::OnCue, DemandLane},
@@ -41,6 +41,17 @@ struct TestAgent {
     first: DemandLane<i32>,
     second: DemandLane<Text>,
     third: DemandLane<bool>,
+}
+
+impl AgentDescription for TestAgent {
+    fn item_name(&self, id: u64) -> Option<Cow<'_, str>> {
+        match id {
+            LANE_ID1 => Some(Cow::Borrowed("first")),
+            LANE_ID2 => Some(Cow::Borrowed("second")),
+            LANE_ID3 => Some(Cow::Borrowed("third")),
+            _ => None,
+        }
+    }
 }
 
 const LANE_ID1: u64 = 0;

@@ -16,6 +16,7 @@ use futures::future::Either;
 
 use crate::{
     agent_lifecycle::HandlerContext,
+    agent_model::AgentDescription,
     lanes::demand::{
         lifecycle::{
             on_cue::{OnCue, OnCueShared},
@@ -139,6 +140,7 @@ impl<Context, T, LC, L: HTree, R: HTree> HTree for DemandBranch<Context, T, LC, 
 
 impl<Context, T, LC, L, R> ItemEvent<Context> for DemandBranch<Context, T, LC, L, R>
 where
+    Context: AgentDescription,
     LC: DemandLaneLifecycle<T, Context>,
     L: HTree + ItemEvent<Context>,
     R: HTree + ItemEvent<Context>,
@@ -175,6 +177,7 @@ where
 impl<Context, Shared, T, LC, L, R> ItemEventShared<Context, Shared>
     for DemandBranch<Context, T, LC, L, R>
 where
+    Context: AgentDescription,
     LC: DemandLaneLifecycleShared<T, Context, Shared>,
     L: HTree + ItemEventShared<Context, Shared>,
     R: HTree + ItemEventShared<Context, Shared>,

@@ -361,6 +361,20 @@ impl<Agent: AgentDescription + 'static> HandlerContext<Agent> {
             .map(move |(k, v)| context.update(item, k, v));
         self.clear(item).followed_by(Sequentially::new(insertions))
     }
+
+    /// Create an event handler that will cue a demand lane to produce a value.
+    ///
+    /// # Arguments
+    /// * `lane` - Projection to the demand lane.
+    pub fn cue<T>(
+        &self,
+        lane: fn(&Agent) -> &DemandLane<T>,
+    ) -> impl EventHandler<Agent> + Send + 'static
+    where
+        T: Send + 'static,
+    {
+        Cue::new(lane)
+    }
 }
 
 impl<Agent: 'static> HandlerContext<Agent> {
@@ -423,20 +437,6 @@ impl<Agent: 'static> HandlerContext<Agent> {
         F: FnOnce(&HashMap<String, String>) -> T,
     {
         WithParameters::new(f)
-    }
-
-    /// Create an event handler that will cue a demand lane to produce a value.
-    ///
-    /// # Arguments
-    /// * `lane` - Projection to the demand lane.
-    pub fn cue<T>(
-        &self,
-        lane: fn(&Agent) -> &DemandLane<T>,
-    ) -> impl EventHandler<Agent> + Send + 'static
-    where
-        T: Send + 'static,
-    {
-        Cue::new(lane)
     }
 
     /// Create an event handler that will cue a key on a demand-map lane to produce a value.
