@@ -391,6 +391,23 @@ impl<Agent: AgentDescription + 'static> HandlerContext<Agent> {
     {
         Supply::new(lane, value)
     }
+
+    /// Create an event handler that will cue a key on a demand-map lane to produce a value.
+    ///
+    /// # Arguments
+    /// * `lane` - Projection to the demand-map lane.
+    /// * `key` - The key to cue.
+    pub fn cue_key<K, V>(
+        &self,
+        lane: fn(&Agent) -> &DemandMapLane<K, V>,
+        key: K,
+    ) -> impl EventHandler<Agent> + Send + 'static
+    where
+        K: Send + Eq + Clone + Hash + 'static,
+        V: 'static,
+    {
+        CueKey::new(lane, key)
+    }
 }
 
 impl<Agent: 'static> HandlerContext<Agent> {
@@ -453,23 +470,6 @@ impl<Agent: 'static> HandlerContext<Agent> {
         F: FnOnce(&HashMap<String, String>) -> T,
     {
         WithParameters::new(f)
-    }
-
-    /// Create an event handler that will cue a key on a demand-map lane to produce a value.
-    ///
-    /// # Arguments
-    /// * `lane` - Projection to the demand-map lane.
-    /// * `key` - The key to cue.
-    pub fn cue_key<K, V>(
-        &self,
-        lane: fn(&Agent) -> &DemandMapLane<K, V>,
-        key: K,
-    ) -> impl EventHandler<Agent> + Send + 'static
-    where
-        K: Send + Eq + Clone + Hash + 'static,
-        V: 'static,
-    {
-        CueKey::new(lane, key)
     }
 
     /// Suspend a future to be executed by the agent task. The future must result in another
