@@ -43,8 +43,6 @@ use crate::{
 use self::hosted::{EventDownlinkFactory, MapDownlinkFactory, ValueDownlinkFactory};
 pub use self::hosted::{EventDownlinkHandle, MapDownlinkHandle, ValueDownlinkHandle};
 
-use super::AgentDescription;
-
 struct Inner<LC> {
     address: Address<Text>,
     lifecycle: LC,
