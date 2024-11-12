@@ -223,6 +223,23 @@ where
             StepResult::after_done()
         }
     }
+
+    fn describe(
+        &self,
+        context: &Context,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        let AddDownlinkAction {
+            projection,
+            key,
+            started,
+            inner,
+        } = self;
+        let lane = (projection)(context);
+        let name = context.item_name(lane.id());
+
+        todo!()
+    }
 }
 
 impl<K, V> MapItem<K, V> for JoinValueLane<K, V>

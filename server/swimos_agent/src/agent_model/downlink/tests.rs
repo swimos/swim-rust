@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{collections::HashMap, sync::Arc};
+use std::{borrow::Cow, collections::HashMap, sync::Arc};
 
 use bytes::BytesMut;
 use futures::{stream::FuturesUnordered, StreamExt};
@@ -27,7 +27,7 @@ use swimos_utilities::routing::RouteUri;
 use tokio::time::Instant;
 
 use crate::{
-    agent_model::DownlinkSpawnRequest,
+    agent_model::{AgentDescription, DownlinkSpawnRequest},
     config::{MapDownlinkConfig, SimpleDownlinkConfig},
     downlink_lifecycle::{StatefulMapDownlinkLifecycle, StatefulValueDownlinkLifecycle},
     event_handler::{
@@ -40,6 +40,12 @@ use crate::{
 use super::{BoxDownlinkChannelFactory, OpenMapDownlinkAction, OpenValueDownlinkAction};
 
 struct TestAgent;
+
+impl AgentDescription for TestAgent {
+    fn item_name(&self, _id: u64) -> Option<Cow<'_, str>> {
+        None
+    }
+}
 
 #[derive(Default)]
 struct SpawnerInner {

@@ -16,6 +16,8 @@ mod hosted;
 #[cfg(test)]
 mod tests;
 
+use std::any::type_name;
+use std::fmt::Formatter;
 use std::{cell::RefCell, marker::PhantomData};
 
 use futures::future::BoxFuture;
@@ -40,6 +42,8 @@ use crate::{
 
 use self::hosted::{EventDownlinkFactory, MapDownlinkFactory, ValueDownlinkFactory};
 pub use self::hosted::{EventDownlinkHandle, MapDownlinkHandle, ValueDownlinkHandle};
+
+use super::AgentDescription;
 
 struct Inner<LC> {
     address: Address<Text>,
@@ -157,6 +161,26 @@ where
             StepResult::after_done()
         }
     }
+
+    fn describe(&self, _context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        let OpenValueDownlinkAction { inner, config, .. } = self;
+        if let Some(Inner { address, .. }) = inner {
+            f.debug_struct("OpenValueDownlinkAction")
+                .field("config", config)
+                .field("address", address)
+                .field("consumed", &false)
+                .field("type", &type_name::<T>())
+                .field("lifecycle_type", &type_name::<LC>())
+                .finish()
+        } else {
+            f.debug_struct("OpenValueDownlinkAction")
+                .field("config", config)
+                .field("consumed", &true)
+                .field("type", &type_name::<T>())
+                .field("lifecycle_type", &type_name::<LC>())
+                .finish()
+        }
+    }
 }
 
 impl<T, LC, Context> HandlerAction<Context> for OpenEventDownlinkAction<T, LC>
@@ -198,6 +222,26 @@ where
             StepResult::after_done()
         }
     }
+
+    fn describe(&self, _context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        let OpenEventDownlinkAction { inner, config, .. } = self;
+        if let Some(Inner { address, .. }) = inner {
+            f.debug_struct("OpenEventDownlinkAction")
+                .field("config", config)
+                .field("address", address)
+                .field("consumed", &false)
+                .field("type", &type_name::<T>())
+                .field("lifecycle_type", &type_name::<LC>())
+                .finish()
+        } else {
+            f.debug_struct("OpenEventDownlinkAction")
+                .field("config", config)
+                .field("consumed", &true)
+                .field("type", &type_name::<T>())
+                .field("lifecycle_type", &type_name::<LC>())
+                .finish()
+        }
+    }
 }
 
 impl<K, V, LC, Context> HandlerAction<Context> for OpenMapDownlinkAction<K, V, LC>
@@ -235,6 +279,32 @@ where
             StepResult::done(handle)
         } else {
             StepResult::after_done()
+        }
+    }
+
+    fn describe(
+        &self,
+        _context: &Context,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        let OpenMapDownlinkAction { inner, config, .. } = self;
+        if let Some(Inner { address, .. }) = inner {
+            f.debug_struct("OpenMapDownlinkAction")
+                .field("config", config)
+                .field("address", address)
+                .field("consumed", &false)
+                .field("key_type", &type_name::<K>())
+                .field("value_type", &type_name::<V>())
+                .field("lifecycle_type", &type_name::<LC>())
+                .finish()
+        } else {
+            f.debug_struct("OpenMapDownlinkAction")
+                .field("config", config)
+                .field("consumed", &true)
+                .field("key_type", &type_name::<K>())
+                .field("value_type", &type_name::<V>())
+                .field("lifecycle_type", &type_name::<LC>())
+                .finish()
         }
     }
 }
