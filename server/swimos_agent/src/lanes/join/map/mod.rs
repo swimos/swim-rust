@@ -392,7 +392,7 @@ where
 
 impl<Context, L, K, V, LC> HandlerAction<Context> for AddDownlinkAction<Context, L, K, V, LC>
 where
-    Context: 'static,
+    Context: AgentDescription + 'static,
     L: Clone + Eq + Hash + Send + 'static,
     K: Form + Clone + Eq + Hash + Send + Ord + 'static,
     V: Form + Send + 'static,
@@ -483,7 +483,7 @@ pub struct JoinMapAddDownlink<C, L, K, V> {
 
 impl<C, L, K, V> HandlerAction<C> for JoinMapAddDownlink<C, L, K, V>
 where
-    C: 'static,
+    C: AgentDescription + 'static,
     L: Any + Clone + Eq + Hash + Send + 'static,
     K: Any + Form + Clone + Eq + Hash + Ord + Send + 'static,
     V: Any + Form + Send + 'static,
@@ -580,6 +580,7 @@ impl<C, L, K, V> JoinMapLaneGet<C, L, K, V> {
 
 impl<C, L, K, V> HandlerAction<C> for JoinMapLaneGet<C, L, K, V>
 where
+    C: AgentDescription,
     K: Clone + Eq + Hash,
     V: Clone,
 {
@@ -623,6 +624,7 @@ impl<C, L, K, V> JoinMapLaneGetMap<C, L, K, V> {
 
 impl<C, L, K, V> HandlerAction<C> for JoinMapLaneGetMap<C, L, K, V>
 where
+    C: AgentDescription,
     K: Clone + Eq + Hash,
     V: Clone,
 {
@@ -662,6 +664,7 @@ impl<C, L, K, V> JoinMapLaneSync<C, L, K, V> {
 
 impl<C, L, K, V> HandlerAction<C> for JoinMapLaneSync<C, L, K, V>
 where
+    C: AgentDescription,
     K: Clone + Eq + Hash,
 {
     type Completion = ();
@@ -712,6 +715,7 @@ impl<C, L, K, V, F, B: ?Sized> JoinMapLaneWithEntry<C, L, K, V, F, B> {
 
 impl<'a, C, L, K, V, F, B, U> HandlerAction<C> for JoinMapLaneWithEntry<C, L, K, V, F, B>
 where
+    C: AgentDescription,
     K: Eq + Hash + 'static,
     C: 'a,
     B: ?Sized + 'static,
@@ -813,7 +817,7 @@ impl<L, C, K, V> JoinMapRemoveDownlink<L, C, K, V> {
 
 impl<L, C, K, V> HandlerAction<C> for JoinMapRemoveDownlink<L, C, K, V>
 where
-    C: 'static,
+    C: AgentDescription + 'static,
     L: Send + Eq + PartialEq + Hash + 'static,
     K: Eq + Clone + Hash + 'static,
     V: 'static,
@@ -857,9 +861,9 @@ where
 {
     type RemoveDownlinkHandler<C> = JoinMapRemoveDownlink<L, C, K, V>
     where
-        C: 'static;
+        C: AgentDescription + 'static;
 
-    fn remove_downlink_handler<C: 'static>(
+    fn remove_downlink_handler<C: AgentDescription + 'static>(
         projection: fn(&C) -> &Self,
         link_key: L,
     ) -> Self::RemoveDownlinkHandler<C> {

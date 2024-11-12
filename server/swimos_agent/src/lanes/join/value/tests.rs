@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use std::{
+    borrow::Cow,
     collections::HashMap,
     fmt::Debug,
     sync::{
@@ -29,6 +30,7 @@ use swimos_api::{
 use swimos_utilities::routing::RouteUri;
 
 use crate::{
+    agent_model::AgentDescription,
     event_handler::{
         ActionContext, BoxJoinLaneInit, EventHandlerError, HandlerAction, Modification, StepResult,
     },
@@ -107,6 +109,16 @@ fn make_meta<'a>(
 
 struct TestAgent {
     lane: JoinValueLane<i32, String>,
+}
+
+impl AgentDescription for TestAgent {
+    fn item_name(&self, id: u64) -> Option<Cow<'_, str>> {
+        if id == ID {
+            Some(Cow::Borrowed("lane"))
+        } else {
+            None
+        }
+    }
 }
 
 impl TestAgent {
