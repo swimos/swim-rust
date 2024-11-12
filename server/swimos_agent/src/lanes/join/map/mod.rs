@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use std::{
-    any::{Any, TypeId},
+    any::{type_name, Any, TypeId},
     borrow::Borrow,
     cell::RefCell,
     collections::{hash_map::Entry, BTreeSet, HashMap, HashSet},
@@ -32,7 +32,7 @@ use swimos_form::{write::StructuralWritable, Form};
 use swimos_model::Text;
 use swimos_utilities::trigger;
 
-use crate::{agent_model::AgentDescription, item::JoinLikeItem};
+use crate::{agent_model::AgentDescription, event_handler::Described, item::JoinLikeItem};
 use crate::{
     agent_model::{downlink::OpenEventDownlinkAction, WriteResult},
     config::SimpleDownlinkConfig,
@@ -445,6 +445,38 @@ where
             StepResult::after_done()
         }
     }
+
+    fn describe(
+        &self,
+        context: &Context,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        let AddDownlinkAction {
+            projection,
+            started,
+            inner,
+            ..
+        } = self;
+        let lane = (projection)(context);
+        let name = context.item_name(lane.id());
+        match inner {
+            Some(open_downlink) => f
+                .debug_struct("AddDownlinkAction")
+                .field("id", &lane.id())
+                .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
+                .field("started", started)
+                .field("consumed", &false)
+                .field("open_downlink", &Described::new(context, open_downlink))
+                .finish(),
+            None => f
+                .debug_struct("AddDownlinkAction")
+                .field("id", &lane.id())
+                .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
+                .field("started", started)
+                .field("consumed", &true)
+                .finish(),
+        }
+    }
 }
 
 impl<L, K, V> MapItem<K, V> for JoinMapLane<L, K, V>
@@ -464,9 +496,8 @@ where
 }
 
 #[derive(Default)]
-enum OpenDownlinkState<C, L, K, V> {
+enum OpenDownlinkState<C, L> {
     Init {
-        projection: fn(&C) -> &JoinMapLane<L, K, V>,
         link_key: L,
         address: Address<Text>,
     },
@@ -478,7 +509,8 @@ enum OpenDownlinkState<C, L, K, V> {
 }
 
 pub struct JoinMapAddDownlink<C, L, K, V> {
-    state: OpenDownlinkState<C, L, K, V>,
+    projection: fn(&C) -> &JoinMapLane<L, K, V>,
+    state: OpenDownlinkState<C, L>,
 }
 
 impl<C, L, K, V> HandlerAction<C> for JoinMapAddDownlink<C, L, K, V>
@@ -498,14 +530,10 @@ where
         meta: AgentMetadata,
         context: &C,
     ) -> StepResult<Self::Completion> {
-        let JoinMapAddDownlink { state } = self;
+        let JoinMapAddDownlink { projection, state } = self;
         loop {
             match std::mem::take(state) {
-                OpenDownlinkState::Init {
-                    projection,
-                    link_key,
-                    address,
-                } => {
+                OpenDownlinkState::Init { link_key, address } => {
                     let lane_id = projection(context).id();
                     let handler = if let Some(init) = action_context.join_lane_initializer(lane_id)
                     {
@@ -522,7 +550,7 @@ where
                         }
                     } else {
                         let action = AddDownlinkAction::new(
-                            projection,
+                            *projection,
                             link_key,
                             address,
                             DefaultJoinMapLifecycle,
@@ -543,6 +571,38 @@ where
             }
         }
     }
+
+    fn describe(
+        &self,
+        context: &C,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        let JoinMapAddDownlink { projection, state } = self;
+        let lane = (projection)(context);
+        let name = context.item_name(lane.id());
+        match state {
+            OpenDownlinkState::Init { address, .. } => f
+                .debug_struct("JoinMapAddDownlink")
+                .field("id", &lane.id())
+                .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
+                .field("address", address)
+                .field("state", &"Init")
+                .finish(),
+            OpenDownlinkState::Running { handler } => f
+                .debug_struct("JoinMapAddDownlink")
+                .field("id", &lane.id())
+                .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
+                .field("handler", &Described::new(context, handler))
+                .field("state", &"Running")
+                .finish(),
+            OpenDownlinkState::Done => f
+                .debug_struct("JoinMapAddDownlink")
+                .field("id", &lane.id())
+                .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
+                .field("state", &"Done")
+                .finish(),
+        }
+    }
 }
 
 impl<C, L, K, V> JoinMapAddDownlink<C, L, K, V> {
@@ -552,11 +612,8 @@ impl<C, L, K, V> JoinMapAddDownlink<C, L, K, V> {
         address: Address<Text>,
     ) -> Self {
         JoinMapAddDownlink {
-            state: OpenDownlinkState::Init {
-                projection,
-                link_key,
-                address,
-            },
+            projection,
+            state: OpenDownlinkState::Init { link_key, address },
         }
     }
 }
@@ -605,6 +662,20 @@ where
             StepResult::after_done()
         }
     }
+
+    fn describe(
+        &self,
+        context: &C,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        let lane = (self.projection)(context);
+        let name = context.item_name(lane.id());
+        f.debug_struct("JoinMapLaneGet")
+            .field("id", &lane.id())
+            .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
+            .field("consumed", &self.done)
+            .finish()
+    }
 }
 
 /// An [event handler](crate::event_handler::EventHandler)`] that will get an entry from the map.
@@ -644,6 +715,20 @@ where
         } else {
             StepResult::after_done()
         }
+    }
+
+    fn describe(
+        &self,
+        context: &C,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        let lane = (self.projection)(context);
+        let name = context.item_name(lane.id());
+        f.debug_struct("JoinMapLaneGetMap")
+            .field("id", &lane.id())
+            .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
+            .field("consumed", &self.done)
+            .finish()
     }
 }
 
@@ -686,6 +771,21 @@ where
         } else {
             StepResult::after_done()
         }
+    }
+
+    fn describe(
+        &self,
+        context: &C,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        let JoinMapLaneSync { projection, id } = self;
+        let lane = (projection)(context);
+        let name = context.item_name(lane.id());
+        f.debug_struct("JoinMapLaneSync")
+            .field("id", &lane.id())
+            .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
+            .field("sync_id", &id)
+            .finish()
     }
 }
 
@@ -736,6 +836,21 @@ where
         } else {
             StepResult::after_done()
         }
+    }
+
+    fn describe(
+        &self,
+        context: &C,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        let lane = (self.projection)(context);
+        let name = context.item_name(lane.id());
+        f.debug_struct("JoinMapLaneWithEntry")
+            .field("id", &lane.id())
+            .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
+            .field("result_type", &type_name::<U>())
+            .field("consumed", &self.f.is_none())
+            .finish()
     }
 }
 
@@ -850,6 +965,21 @@ where
             }
             None => StepResult::after_done(),
         }
+    }
+
+    fn describe(
+        &self,
+        context: &C,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        let JoinMapRemoveDownlink { projection, key } = self;
+        let lane = (projection)(context);
+        let name = context.item_name(lane.id());
+        f.debug_struct("JoinMapRemoveDownlink")
+            .field("id", &lane.id())
+            .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
+            .field("consumed", &key.is_none())
+            .finish()
     }
 }
 
