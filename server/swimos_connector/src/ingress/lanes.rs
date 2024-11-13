@@ -13,7 +13,8 @@
 // limitations under the License.
 
 use crate::config::{IngressMapLaneSpec, IngressValueLaneSpec};
-use crate::selector::{InvalidLaneSpec, InvalidLanes, MapLaneSelector, ValueLaneSelector};
+use crate::error::{InvalidLaneSpec, InvalidLanes};
+use crate::selector::{MapLaneSelector, ValueLaneSelector};
 use std::collections::HashSet;
 
 // Information about the lanes of the connector. These are computed from the configuration in the `on_start` handler

@@ -49,8 +49,8 @@ fn make_config() -> KafkaEgressConfiguration {
             },
         }],
         map_lanes: vec![],
-        value_downlinks: vec![],
-        map_downlinks: vec![],
+        event_downlinks: vec![],
+        map_event_downlinks: vec![],
         retry_timeout_ms: 5000,
     }
 }

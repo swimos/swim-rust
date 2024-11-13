@@ -43,7 +43,7 @@ use crate::{
     config::{EgressDownlinkSpec, EgressLaneSpec, KafkaEgressConfiguration, TopicSpecifier},
     connector::egress::{ConnectorState, KafkaEgressConnector},
     facade::{KafkaProducer, ProduceResult, ProducerFactory},
-    DataFormat, DownlinkAddress, ExtractionSpec, KafkaLogLevel,
+    DataFormat, ExtractionSpec, KafkaLogLevel,
 };
 
 fn props() -> HashMap<String, String> {
@@ -145,8 +145,8 @@ fn make_connector(
     is_busy: Arc<AtomicBool>,
     value_lanes: Vec<EgressLaneSpec>,
     map_lanes: Vec<EgressLaneSpec>,
-    value_downlinks: Vec<EgressDownlinkSpec>,
-    map_downlinks: Vec<EgressDownlinkSpec>,
+    event_downlinks: Vec<EgressDownlinkSpec>,
+    map_event_downlinks: Vec<EgressDownlinkSpec>,
 ) -> (MockFactory, KafkaEgressConnector<MockFactory>) {
     let configuration = KafkaEgressConfiguration {
         properties: props(),
@@ -156,8 +156,8 @@ fn make_connector(
         fixed_topic: Some(FIXED.to_string()),
         value_lanes,
         map_lanes,
-        value_downlinks,
-        map_downlinks,
+        event_downlinks,
+        map_event_downlinks,
         retry_timeout_ms: 5000,
     };
     let fac = MockFactory::new(is_busy);
@@ -171,16 +171,16 @@ const NODE1: &str = "/node1";
 const NODE2: &str = "/node2";
 const LANE: &str = "lane";
 
-fn addr1() -> DownlinkAddress {
-    DownlinkAddress {
+fn addr1() -> Address<String> {
+    Address {
         host: Some(HOST.to_string()),
         node: NODE1.to_string(),
         lane: LANE.to_string(),
     }
 }
 
-fn addr2() -> DownlinkAddress {
-    DownlinkAddress {
+fn addr2() -> Address<String> {
+    Address {
         host: None,
         node: NODE2.to_string(),
         lane: LANE.to_string(),
@@ -217,8 +217,8 @@ async fn init_agent(agent: &ConnectorAgent, connector: &KafkaEgressConnector<Moc
 #[derive(Default)]
 struct TestEgressContext {
     lanes: Vec<(String, WarpLaneKind)>,
-    value_downlinks: Vec<Address<String>>,
-    map_downlinks: Vec<Address<String>>,
+    event_downlinks: Vec<Address<String>>,
+    map_event_downlinks: Vec<Address<String>>,
 }
 
 impl EgressContext for TestEgressContext {
@@ -227,11 +227,11 @@ impl EgressContext for TestEgressContext {
     }
 
     fn open_event_downlink(&mut self, address: Address<&str>) {
-        self.value_downlinks.push(address.owned());
+        self.event_downlinks.push(address.owned());
     }
 
     fn open_map_downlink(&mut self, address: Address<&str>) {
-        self.map_downlinks.push(address.owned());
+        self.map_event_downlinks.push(address.owned());
     }
 }
 
@@ -262,8 +262,8 @@ fn initialize_connector() {
 
     let TestEgressContext {
         lanes,
-        value_downlinks,
-        map_downlinks,
+        event_downlinks,
+        map_event_downlinks,
     } = context;
     assert_eq!(lanes.len(), 2);
     let lanes_map = lanes.into_iter().collect::<HashMap<_, _>>();
@@ -275,8 +275,8 @@ fn initialize_connector() {
     .into_iter()
     .collect::<HashMap<_, _>>();
 
-    assert_eq!(value_downlinks, vec![Address::<String>::from(&addr1())]);
-    assert_eq!(map_downlinks, vec![Address::<String>::from(&addr2())]);
+    assert_eq!(event_downlinks, vec![addr1()]);
+    assert_eq!(map_event_downlinks, vec![addr2()]);
     assert_eq!(lanes_map, expected_lanes);
 }
 
@@ -325,26 +325,24 @@ async fn connector_on_start() {
     let selector =
         MessageSelector::try_from_ext_spec(&ExtractionSpec::default(), Some(FIXED)).unwrap();
     assert_eq!(
-        extractors.value_lanes(),
+        &extractors.value_lanes,
         &[(VALUE_LANE.to_string(), selector.clone())]
             .into_iter()
             .collect()
     );
     assert_eq!(
-        extractors.map_lanes(),
+        &extractors.map_lanes,
         &[(MAP_LANE.to_string(), selector.clone())]
             .into_iter()
             .collect()
     );
     assert_eq!(
-        extractors.value_downlinks(),
-        &[(Address::from(&addr1()), selector.clone())]
-            .into_iter()
-            .collect()
+        &extractors.event_downlinks,
+        &[(addr1(), selector.clone())].into_iter().collect()
     );
     assert_eq!(
-        extractors.map_downlinks(),
-        &[(Address::from(&addr2()), selector)].into_iter().collect()
+        &extractors.map_event_downlinks,
+        &[(addr2(), selector)].into_iter().collect()
     );
 }
 
@@ -516,8 +514,7 @@ async fn produce_message_from_map_lane() {
 
 #[tokio::test]
 async fn produce_message_from_value_dl() {
-    let addr = addr1();
-    let target = Address::<String>::from(&addr);
+    let target = addr1();
 
     let (factory, connector) = make_connector(
         Default::default(),
@@ -530,7 +527,7 @@ async fn produce_message_from_value_dl() {
             extractor: map_ext_spec(),
         }],
         vec![EgressDownlinkSpec {
-            address: addr,
+            address: target.clone(),
             extractor: value_ext_spec(),
         }],
         vec![EgressDownlinkSpec {
@@ -577,8 +574,7 @@ async fn produce_message_from_value_dl() {
 
 #[tokio::test]
 async fn produce_message_from_map_dl() {
-    let addr = addr2();
-    let target = Address::<String>::from(&addr);
+    let target = addr2();
 
     let (factory, connector) = make_connector(
         Default::default(),
@@ -595,7 +591,7 @@ async fn produce_message_from_map_dl() {
             extractor: value_ext_spec(),
         }],
         vec![EgressDownlinkSpec {
-            address: addr,
+            address: target.clone(),
             extractor: map_ext_spec(),
         }],
     );

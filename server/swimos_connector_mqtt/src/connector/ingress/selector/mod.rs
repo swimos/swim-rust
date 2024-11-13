@@ -12,45 +12,58 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::deser::{BoxMessageDeserializer, Deferred, MessageView};
-use crate::ingress::lanes::Lanes;
-use crate::selector::{PubSubSelector, Relays, SelectHandler, SelectorError};
-use crate::ConnectorAgent;
-use frunk::hlist;
+use frunk::{hlist, Coprod};
 use swimos_agent::event_handler::{EventHandler, HandlerActionExt, Sequentially};
+use swimos_connector::{
+    deser::{BoxMessageDeserializer, Deferred},
+    selector::{PayloadSelector, SelectHandler, TopicSelector},
+    ConnectorAgent, SelectorError,
+};
 use swimos_model::Value;
 use tracing::trace;
 
-// Uses the information about the lanes of the agent to convert messages into event handlers that update the lanes.
-pub struct MessageSelector {
-    key_deserializer: BoxMessageDeserializer,
-    value_deserializer: BoxMessageDeserializer,
-    lanes: Lanes<PubSubSelector>,
-    relays: Relays<PubSubSelector>,
+use crate::facade::MqttMessage;
+
+#[cfg(test)]
+mod tests;
+
+/// A selector that extracts a Recon value from an MQTT message.
+pub type MqttSelector = Coprod!(TopicSelector, PayloadSelector);
+
+pub type Lanes = swimos_connector::ingress::Lanes<MqttSelector>;
+pub type Relays = swimos_connector::selector::Relays<MqttSelector>;
+
+/// Deserializes the payload of an incoming MQTT message and, based on the contents, generates
+/// an event handler which will update the lanes of the connector agent and/or relay commands
+/// to lanes on other agents.
+pub struct MqttMessageSelector {
+    payload_deserializer: BoxMessageDeserializer,
+    lanes: Lanes,
+    relays: Relays,
 }
 
-impl MessageSelector {
-    pub fn new(
-        key_deserializer: BoxMessageDeserializer,
-        value_deserializer: BoxMessageDeserializer,
-        lanes: Lanes<PubSubSelector>,
-        relays: Relays<PubSubSelector>,
-    ) -> Self {
-        MessageSelector {
-            key_deserializer,
-            value_deserializer,
+impl MqttMessageSelector {
+    pub fn new(payload_deserializer: BoxMessageDeserializer, lanes: Lanes, relays: Relays) -> Self {
+        MqttMessageSelector {
+            payload_deserializer,
             lanes,
             relays,
         }
     }
 
-    pub fn handle_message<'a>(
+    /// Produce an event handler from an incoming MQTT message.
+    ///
+    /// # Arguments
+    /// * `message` - The MQTT message.
+    pub fn handle_message<M>(
         &self,
-        message: &'a MessageView<'a>,
-    ) -> Result<impl EventHandler<ConnectorAgent> + Send + 'static, SelectorError> {
-        let MessageSelector {
-            key_deserializer,
-            value_deserializer,
+        message: &M,
+    ) -> Result<impl EventHandler<ConnectorAgent> + Send + 'static, SelectorError>
+    where
+        M: MqttMessage + 'static,
+    {
+        let MqttMessageSelector {
+            payload_deserializer,
             lanes,
             relays,
         } = self;
@@ -66,9 +79,8 @@ impl MessageSelector {
 
         {
             let topic = Value::text(message.topic());
-            let key = Deferred::new(message.key, key_deserializer);
-            let value = Deferred::new(message.payload, value_deserializer);
-            let mut args = hlist![topic, key, value];
+            let payload = Deferred::new(message.payload(), payload_deserializer);
+            let mut args = hlist![topic, payload];
 
             for value_lane in value_lanes {
                 value_lane_handlers.push(value_lane.select_handler(&mut args)?);

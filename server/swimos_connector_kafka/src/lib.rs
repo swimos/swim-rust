@@ -19,11 +19,8 @@ mod facade;
 mod selector;
 
 pub use config::{
-    DataFormat, DownlinkAddress, EgressDownlinkSpec, EgressLaneSpec, ExtractionSpec,
-    KafkaEgressConfiguration, KafkaIngressConfiguration, KafkaLogLevel, TopicSpecifier,
+    DataFormat, EgressDownlinkSpec, EgressLaneSpec, ExtractionSpec, KafkaEgressConfiguration,
+    KafkaIngressConfiguration, KafkaLogLevel, TopicSpecifier,
 };
 pub use connector::{KafkaEgressConnector, KafkaIngressConnector};
-pub use error::{
-    DoubleInitialization, InvalidExtractor, InvalidExtractors, KafkaConnectorError,
-    KafkaSenderError,
-};
+pub use error::{DoubleInitialization, KafkaConnectorError, KafkaSenderError};

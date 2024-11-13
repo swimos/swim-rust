@@ -1,0 +1,14 @@
+@mqtt {
+    url: "mqtt://localhost:1883?client_id=example",
+    value_lanes: {
+        @ValueLaneSpec {
+            name: value,
+            selector: "$payload",
+            required: true
+        }
+    },
+    map_lanes: {},
+    relays: {},
+    payload_deserializer: @Json,
+    subscription: @Topic("example/topic")
+}

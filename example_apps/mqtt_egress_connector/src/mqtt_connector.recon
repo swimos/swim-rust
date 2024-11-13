@@ -1,0 +1,18 @@
+@mqtt {
+    url: "##BROKER##",
+    fixed_topic: "example/topic",
+    value_lanes: {
+        @EgressLaneSpec {
+            name: event,
+            extractor: @ExtractionSpec {
+                topic_specifier: @Fixed,
+                payload_selector: "$value"
+            }
+        }
+    },
+    map_lanes: {},
+    event_downlinks: {},
+    map_event_downlinks: {},
+    payload_serializer: @Json,
+    channel_size: 0
+}

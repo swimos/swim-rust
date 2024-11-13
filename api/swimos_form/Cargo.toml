@@ -19,3 +19,6 @@ num-bigint = { workspace = true }
 
 [dev-dependencies]
 trybuild = { workspace = true }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin)'] }

@@ -15,6 +15,7 @@
 use trybuild::TestCases;
 
 #[test]
+#[cfg_attr(tarpaulin, ignore)]
 fn test_derive() {
     let t = TestCases::new();
 

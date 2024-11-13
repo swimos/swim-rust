@@ -18,8 +18,7 @@ mod egress;
 mod ingress;
 
 pub use egress::{
-    DownlinkAddress, EgressDownlinkSpec, EgressLaneSpec, ExtractionSpec, KafkaEgressConfiguration,
-    TopicSpecifier,
+    EgressDownlinkSpec, EgressLaneSpec, ExtractionSpec, KafkaEgressConfiguration, TopicSpecifier,
 };
 pub use ingress::KafkaIngressConfiguration;
 pub use swimos_connector::config::format::DataFormat;

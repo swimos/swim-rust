@@ -18,17 +18,17 @@ use std::{
 };
 
 use swimos_api::address::Address;
-use swimos_connector::selector::{
-    BadSelector, ChainSelector, RawSelectorDescriptor, SelectorComponent, ValueSelector,
+use swimos_connector::{
+    selector::{
+        parse_field_selector, FieldExtractor, FieldExtractorSpec, TopicExtractor,
+        TopicExtractorSpec,
+    },
+    InvalidExtractor, InvalidExtractors, MessageSource,
 };
 use swimos_model::Value;
 
-use crate::{
-    config::{
-        EgressDownlinkSpec, EgressLaneSpec, ExtractionSpec, KafkaEgressConfiguration,
-        TopicSpecifier,
-    },
-    InvalidExtractor, InvalidExtractors,
+use crate::config::{
+    EgressDownlinkSpec, EgressLaneSpec, ExtractionSpec, KafkaEgressConfiguration, TopicSpecifier,
 };
 
 #[cfg(test)]
@@ -36,16 +36,16 @@ mod tests;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MessageSelector {
-    topic: TopicSelector,
-    key: Option<FieldSelector>,
-    payload: Option<FieldSelector>,
+    topic: TopicExtractor,
+    key: Option<FieldExtractor>,
+    payload: Option<FieldExtractor>,
 }
 
 impl MessageSelector {
     pub fn new(
-        topic: TopicSelector,
-        key: Option<FieldSelector>,
-        payload: Option<FieldSelector>,
+        topic: TopicExtractor,
+        key: Option<FieldExtractor>,
+        payload: Option<FieldExtractor>,
     ) -> Self {
         MessageSelector {
             topic,
@@ -80,66 +80,6 @@ impl MessageSelector {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct FieldSelector {
-    part: KeyOrValue,
-    selector: ChainSelector,
-}
-
-impl FieldSelector {
-    pub fn new(part: KeyOrValue, selector: ChainSelector) -> Self {
-        FieldSelector { part, selector }
-    }
-
-    pub fn select<'a>(&self, key: Option<&'a Value>, value: &'a Value) -> Option<&'a Value> {
-        let FieldSelector { part, selector } = self;
-        match part {
-            KeyOrValue::Key => key.and_then(|k| selector.select_value(k)),
-            KeyOrValue::Value => selector.select_value(value),
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum KeyOrValue {
-    Key,
-    Value,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum TopicSelector {
-    Fixed(String),
-    Selector(FieldSelector),
-}
-
-impl TopicSelector {
-    fn select<'a>(&'a self, key: Option<&'a Value>, value: &'a Value) -> Option<&'a str> {
-        match self {
-            TopicSelector::Fixed(s) => Some(s.as_str()),
-            TopicSelector::Selector(sel) => match sel.select(key, value) {
-                Some(Value::Text(s)) => Some(s.as_str()),
-                _ => None,
-            },
-        }
-    }
-}
-
-enum TopicSelectorSpec<'a> {
-    Fixed(Cow<'a, str>),
-    Selector(FieldSelectorSpec<'a>),
-}
-
-impl<'a> From<FieldSelectorSpec<'a>> for FieldSelector {
-    fn from(value: FieldSelectorSpec<'a>) -> Self {
-        let FieldSelectorSpec {
-            part,
-            index,
-            components,
-        } = value;
-        FieldSelector::new(part, ChainSelector::new(index, &components))
-    }
-}
-
 impl<'a> From<MessageSelectorSpec<'a>> for MessageSelector {
     fn from(value: MessageSelectorSpec<'a>) -> Self {
         let MessageSelectorSpec {
@@ -148,53 +88,17 @@ impl<'a> From<MessageSelectorSpec<'a>> for MessageSelector {
             payload,
         } = value;
         let topic = match topic {
-            TopicSelectorSpec::Fixed(s) => TopicSelector::Fixed(s.to_string()),
-            TopicSelectorSpec::Selector(spec) => TopicSelector::Selector(spec.into()),
+            TopicExtractorSpec::Fixed(s) => TopicExtractor::Fixed(s.to_string()),
+            TopicExtractorSpec::Selector(spec) => TopicExtractor::Selector(spec.into()),
         };
         MessageSelector::new(topic, key.map(Into::into), payload.map(Into::into))
     }
 }
 
 struct MessageSelectorSpec<'a> {
-    topic: TopicSelectorSpec<'a>,
-    key: Option<FieldSelectorSpec<'a>>,
-    payload: Option<FieldSelectorSpec<'a>>,
-}
-
-struct FieldSelectorSpec<'a> {
-    part: KeyOrValue,
-    index: Option<usize>,
-    components: Vec<SelectorComponent<'a>>,
-}
-
-impl<'a> TryFrom<RawSelectorDescriptor<'a>> for FieldSelectorSpec<'a> {
-    type Error = BadSelector;
-
-    fn try_from(value: RawSelectorDescriptor<'a>) -> Result<Self, Self::Error> {
-        let RawSelectorDescriptor {
-            part,
-            index,
-            components,
-        } = value;
-        match part {
-            "$key" => Ok(FieldSelectorSpec {
-                part: KeyOrValue::Key,
-                index,
-                components,
-            }),
-            "$value" => Ok(FieldSelectorSpec {
-                part: KeyOrValue::Value,
-                index,
-                components,
-            }),
-            _ => Err(BadSelector::InvalidRoot),
-        }
-    }
-}
-
-/// Attempt to parse a field selector from a string.
-fn parse_field_selector(descriptor: &str) -> Result<FieldSelectorSpec<'_>, BadSelector> {
-    RawSelectorDescriptor::try_from(descriptor)?.try_into()
+    topic: TopicExtractorSpec<'a>,
+    key: Option<FieldExtractorSpec<'a>>,
+    payload: Option<FieldExtractorSpec<'a>>,
 }
 
 impl MessageSelector {
@@ -220,14 +124,14 @@ impl<'a> MessageSelectorSpec<'a> {
         let topic = match topic_specifier {
             TopicSpecifier::Fixed => {
                 if let Some(top) = fixed_topic {
-                    TopicSelectorSpec::Fixed(Cow::Owned(top.to_string()))
+                    TopicExtractorSpec::Fixed(Cow::Owned(top.to_string()))
                 } else {
                     return Err(InvalidExtractor::NoTopic);
                 }
             }
-            TopicSpecifier::Specified(t) => TopicSelectorSpec::Fixed(Cow::Borrowed(t.as_str())),
+            TopicSpecifier::Specified(t) => TopicExtractorSpec::Fixed(Cow::Borrowed(t.as_str())),
             TopicSpecifier::Selector(s) => {
-                TopicSelectorSpec::Selector(parse_field_selector(s.as_str())?)
+                TopicExtractorSpec::Selector(parse_field_selector(s.as_str())?)
             }
         };
         let key = key_selector
@@ -248,27 +152,24 @@ impl<'a> MessageSelectorSpec<'a> {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MessageSelectors {
-    value_lanes: HashMap<String, MessageSelector>,
-    map_lanes: HashMap<String, MessageSelector>,
-    value_downlinks: HashMap<Address<String>, MessageSelector>,
-    map_downlinks: HashMap<Address<String>, MessageSelector>,
+    pub(crate) value_lanes: HashMap<String, MessageSelector>,
+    pub(crate) map_lanes: HashMap<String, MessageSelector>,
+    pub(crate) event_downlinks: HashMap<Address<String>, MessageSelector>,
+    pub(crate) map_event_downlinks: HashMap<Address<String>, MessageSelector>,
 }
 
 impl MessageSelectors {
-    pub fn value_lanes(&self) -> &HashMap<String, MessageSelector> {
-        &self.value_lanes
-    }
-
-    pub fn map_lanes(&self) -> &HashMap<String, MessageSelector> {
-        &self.map_lanes
-    }
-
-    pub fn value_downlinks(&self) -> &HashMap<Address<String>, MessageSelector> {
-        &self.value_downlinks
-    }
-
-    pub fn map_downlinks(&self) -> &HashMap<Address<String>, MessageSelector> {
-        &self.map_downlinks
+    pub fn select_source(&self, source: MessageSource<'_>) -> Option<&MessageSelector> {
+        match source {
+            MessageSource::Lane(name) => self
+                .value_lanes
+                .get(name)
+                .or_else(|| self.map_lanes.get(name)),
+            MessageSource::Downlink(addr) => self
+                .event_downlinks
+                .get(addr)
+                .or_else(|| self.map_event_downlinks.get(addr)),
+        }
     }
 }
 
@@ -280,8 +181,8 @@ impl TryFrom<&KafkaEgressConfiguration> for MessageSelectors {
             fixed_topic,
             value_lanes,
             map_lanes,
-            value_downlinks,
-            map_downlinks,
+            event_downlinks,
+            map_event_downlinks,
             ..
         } = value;
         let top = fixed_topic.as_ref().map(|s| s.as_str());
@@ -316,8 +217,7 @@ impl TryFrom<&KafkaEgressConfiguration> for MessageSelectors {
                 }
             }
         }
-        for EgressDownlinkSpec { address, extractor } in value_downlinks {
-            let address = Address::<String>::from(address);
+        for EgressDownlinkSpec { address, extractor } in event_downlinks {
             match value_dl_selectors.entry(address.clone()) {
                 Entry::Occupied(entry) => {
                     let (address, _) = entry.remove_entry();
@@ -329,9 +229,8 @@ impl TryFrom<&KafkaEgressConfiguration> for MessageSelectors {
                 }
             }
         }
-        for EgressDownlinkSpec { address, extractor } in map_downlinks {
-            let address = Address::<String>::from(address);
-            if value_dl_selectors.contains_key(&address) {
+        for EgressDownlinkSpec { address, extractor } in map_event_downlinks {
+            if value_dl_selectors.contains_key(address) {
                 return Err(InvalidExtractors::AddressCollision(address.clone()));
             }
             match map_dl_selectors.entry(address.clone()) {
@@ -348,8 +247,8 @@ impl TryFrom<&KafkaEgressConfiguration> for MessageSelectors {
         Ok(MessageSelectors {
             value_lanes: value_lane_selectors,
             map_lanes: map_lane_selectors,
-            value_downlinks: value_dl_selectors,
-            map_downlinks: map_dl_selectors,
+            event_downlinks: value_dl_selectors,
+            map_event_downlinks: map_dl_selectors,
         })
     }
 }

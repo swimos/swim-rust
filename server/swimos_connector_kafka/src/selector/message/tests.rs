@@ -15,15 +15,19 @@
 use std::collections::HashMap;
 
 use swimos_api::address::Address;
-use swimos_connector::deser::Endianness;
+use swimos_connector::{
+    deser::Endianness,
+    selector::{KeyOrValue, TopicExtractor},
+    InvalidExtractors,
+};
 use swimos_model::{Item, Value};
 
 use crate::{
     config::{EgressDownlinkSpec, EgressLaneSpec, KafkaEgressConfiguration, TopicSpecifier},
-    DataFormat, DownlinkAddress, ExtractionSpec, InvalidExtractors, KafkaLogLevel,
+    DataFormat, ExtractionSpec, KafkaLogLevel,
 };
 
-use super::{FieldSelector, KeyOrValue, MessageSelector, MessageSelectors, TopicSelector};
+use super::{FieldExtractor, MessageSelector, MessageSelectors};
 use swimos_connector::selector::{BasicSelector, ChainSelector, SlotSelector};
 
 const FIXED_TOPIC: &str = "fixed";
@@ -44,8 +48,8 @@ fn empty_config() -> KafkaEgressConfiguration {
         fixed_topic: Some(FIXED_TOPIC.to_string()),
         value_lanes: vec![],
         map_lanes: vec![],
-        value_downlinks: vec![],
-        map_downlinks: vec![],
+        event_downlinks: vec![],
+        map_event_downlinks: vec![],
         retry_timeout_ms: 5000,
     }
 }
@@ -68,8 +72,8 @@ fn test_config() -> KafkaEgressConfiguration {
         },
     }];
     let map_lanes = vec;
-    let value_downlinks = vec![EgressDownlinkSpec {
-        address: DownlinkAddress {
+    let event_downlinks = vec![EgressDownlinkSpec {
+        address: Address {
             host: Some(HOST.to_string()),
             node: NODE1.to_string(),
             lane: LANE.to_string(),
@@ -80,8 +84,8 @@ fn test_config() -> KafkaEgressConfiguration {
             payload_selector: Some("$value.payload".to_string()),
         },
     }];
-    let map_downlinks = vec![EgressDownlinkSpec {
-        address: DownlinkAddress {
+    let map_event_downlinks = vec![EgressDownlinkSpec {
+        address: Address {
             host: Some(HOST.to_string()),
             node: NODE2.to_string(),
             lane: LANE.to_string(),
@@ -95,8 +99,8 @@ fn test_config() -> KafkaEgressConfiguration {
     KafkaEgressConfiguration {
         value_lanes,
         map_lanes,
-        value_downlinks,
-        map_downlinks,
+        event_downlinks,
+        map_event_downlinks,
         ..empty_config()
     }
 }
@@ -105,9 +109,9 @@ fn expected_extractors() -> MessageSelectors {
     let value_lanes = [(
         VALUE_LANE.to_string(),
         MessageSelector::new(
-            TopicSelector::Fixed(FIXED_TOPIC.to_string()),
+            TopicExtractor::Fixed(FIXED_TOPIC.to_string()),
             None,
-            Some(FieldSelector::new(
+            Some(FieldExtractor::new(
                 KeyOrValue::Value,
                 ChainSelector::from(vec![BasicSelector::Slot(SlotSelector::for_field("field"))]),
             )),
@@ -118,9 +122,9 @@ fn expected_extractors() -> MessageSelectors {
     let map_lanes = [(
         MAP_LANE.to_string(),
         MessageSelector::new(
-            TopicSelector::Fixed(OTHER_TOPIC.to_string()),
+            TopicExtractor::Fixed(OTHER_TOPIC.to_string()),
             None,
-            Some(FieldSelector::new(
+            Some(FieldExtractor::new(
                 KeyOrValue::Value,
                 ChainSelector::default(),
             )),
@@ -128,15 +132,15 @@ fn expected_extractors() -> MessageSelectors {
     )]
     .into_iter()
     .collect();
-    let value_downlinks = [(
+    let event_downlinks = [(
         Address::new(Some(HOST.to_string()), NODE1.to_string(), LANE.to_string()),
         MessageSelector::new(
-            TopicSelector::Fixed(FIXED_TOPIC.to_string()),
-            Some(FieldSelector::new(
+            TopicExtractor::Fixed(FIXED_TOPIC.to_string()),
+            Some(FieldExtractor::new(
                 KeyOrValue::Value,
                 ChainSelector::from(vec![BasicSelector::Slot(SlotSelector::for_field("key"))]),
             )),
-            Some(FieldSelector::new(
+            Some(FieldExtractor::new(
                 KeyOrValue::Value,
                 ChainSelector::from(vec![BasicSelector::Slot(SlotSelector::for_field(
                     "payload",
@@ -146,12 +150,12 @@ fn expected_extractors() -> MessageSelectors {
     )]
     .into_iter()
     .collect();
-    let map_downlinks = [(
+    let map_event_downlinks = [(
         Address::new(Some(HOST.to_string()), NODE2.to_string(), LANE.to_string()),
         MessageSelector::new(
-            TopicSelector::Fixed(FIXED_TOPIC.to_string()),
+            TopicExtractor::Fixed(FIXED_TOPIC.to_string()),
             None,
-            Some(FieldSelector::new(
+            Some(FieldExtractor::new(
                 KeyOrValue::Value,
                 ChainSelector::default(),
             )),
@@ -162,8 +166,8 @@ fn expected_extractors() -> MessageSelectors {
     MessageSelectors {
         value_lanes,
         map_lanes,
-        value_downlinks,
-        map_downlinks,
+        event_downlinks,
+        map_event_downlinks,
     }
 }
 
@@ -186,7 +190,7 @@ fn test_value() -> Value {
 
 #[test]
 fn field_selector_key() {
-    let selector = FieldSelector::new(KeyOrValue::Key, ChainSelector::default());
+    let selector = FieldExtractor::new(KeyOrValue::Key, ChainSelector::default());
 
     let key = Value::from(5);
     let value = test_value();
@@ -200,7 +204,7 @@ fn field_selector_key() {
 
 #[test]
 fn field_selector_value() {
-    let selector = FieldSelector::new(
+    let selector = FieldExtractor::new(
         KeyOrValue::Value,
         ChainSelector::from(vec![BasicSelector::Slot(SlotSelector::for_field(
             "record_payload",
@@ -219,7 +223,7 @@ fn field_selector_value() {
 
 #[test]
 fn topic_selector_fixed() {
-    let selector = TopicSelector::Fixed("fixed".to_string());
+    let selector = TopicExtractor::Fixed("fixed".to_string());
     let key = Value::from("key");
     let value = test_value();
     let selected = selector.select(Some(&key), &value);
@@ -229,7 +233,7 @@ fn topic_selector_fixed() {
 
 #[test]
 fn topic_selector_key() {
-    let selector = TopicSelector::Selector(FieldSelector::new(
+    let selector = TopicExtractor::Selector(FieldExtractor::new(
         KeyOrValue::Key,
         ChainSelector::default(),
     ));
@@ -242,7 +246,7 @@ fn topic_selector_key() {
 
 #[test]
 fn topic_selector_value() {
-    let selector = TopicSelector::Selector(FieldSelector::new(
+    let selector = TopicExtractor::Selector(FieldExtractor::new(
         KeyOrValue::Value,
         ChainSelector::from(vec![BasicSelector::Slot(SlotSelector::for_field(
             "record_topic",
@@ -258,12 +262,12 @@ fn topic_selector_value() {
 #[test]
 fn message_selector() {
     let selector = MessageSelector::new(
-        TopicSelector::Fixed(FIXED_TOPIC.to_string()),
-        Some(FieldSelector::new(
+        TopicExtractor::Fixed(FIXED_TOPIC.to_string()),
+        Some(FieldExtractor::new(
             KeyOrValue::Key,
             ChainSelector::default(),
         )),
-        Some(FieldSelector::new(
+        Some(FieldExtractor::new(
             KeyOrValue::Value,
             ChainSelector::from(vec![BasicSelector::Slot(SlotSelector::for_field(
                 "record_payload",
@@ -285,9 +289,9 @@ fn message_selector() {
 #[test]
 fn message_selector_no_key_selector() {
     let selector = MessageSelector::new(
-        TopicSelector::Fixed(FIXED_TOPIC.to_string()),
+        TopicExtractor::Fixed(FIXED_TOPIC.to_string()),
         None,
-        Some(FieldSelector::new(
+        Some(FieldExtractor::new(
             KeyOrValue::Value,
             ChainSelector::from(vec![BasicSelector::Slot(SlotSelector::for_field(
                 "record_payload",
@@ -309,8 +313,8 @@ fn message_selector_no_key_selector() {
 #[test]
 fn message_selector_no_value_selector() {
     let selector = MessageSelector::new(
-        TopicSelector::Fixed(FIXED_TOPIC.to_string()),
-        Some(FieldSelector::new(
+        TopicExtractor::Fixed(FIXED_TOPIC.to_string()),
+        Some(FieldExtractor::new(
             KeyOrValue::Key,
             ChainSelector::default(),
         )),
@@ -391,27 +395,26 @@ fn duplicate_value_and_map_lane() {
 
 #[test]
 fn duplicate_value_downlink() {
-    let addr = DownlinkAddress {
+    let addr = Address {
         host: Some(HOST.to_string()),
         node: NODE1.to_string(),
         lane: LANE.to_string(),
     };
-    let expected = Address::<String>::from(&addr);
     let config = KafkaEgressConfiguration {
-        value_downlinks: vec![
+        event_downlinks: vec![
             EgressDownlinkSpec {
                 address: addr.clone(),
                 extractor: ExtractionSpec::default(),
             },
             EgressDownlinkSpec {
-                address: addr,
+                address: addr.clone(),
                 extractor: ExtractionSpec::default(),
             },
         ],
         ..empty_config()
     };
     if let Err(InvalidExtractors::AddressCollision(address)) = MessageSelectors::try_from(&config) {
-        assert_eq!(address, expected);
+        assert_eq!(address, addr);
     } else {
         panic!("Expected name collision error.");
     }
@@ -419,27 +422,26 @@ fn duplicate_value_downlink() {
 
 #[test]
 fn duplicate_map_downlink() {
-    let addr = DownlinkAddress {
+    let addr = Address {
         host: Some(HOST.to_string()),
         node: NODE1.to_string(),
         lane: LANE.to_string(),
     };
-    let expected = Address::<String>::from(&addr);
     let config = KafkaEgressConfiguration {
-        map_downlinks: vec![
+        map_event_downlinks: vec![
             EgressDownlinkSpec {
                 address: addr.clone(),
                 extractor: ExtractionSpec::default(),
             },
             EgressDownlinkSpec {
-                address: addr,
+                address: addr.clone(),
                 extractor: ExtractionSpec::default(),
             },
         ],
         ..empty_config()
     };
     if let Err(InvalidExtractors::AddressCollision(address)) = MessageSelectors::try_from(&config) {
-        assert_eq!(address, expected);
+        assert_eq!(address, addr);
     } else {
         panic!("Expected name collision error.");
     }
@@ -447,25 +449,24 @@ fn duplicate_map_downlink() {
 
 #[test]
 fn duplicate_value_and_map_downlink() {
-    let addr = DownlinkAddress {
+    let addr = Address {
         host: Some(HOST.to_string()),
         node: NODE1.to_string(),
         lane: LANE.to_string(),
     };
-    let expected = Address::<String>::from(&addr);
     let config = KafkaEgressConfiguration {
-        value_downlinks: vec![EgressDownlinkSpec {
+        event_downlinks: vec![EgressDownlinkSpec {
             address: addr.clone(),
             extractor: ExtractionSpec::default(),
         }],
-        map_downlinks: vec![EgressDownlinkSpec {
-            address: addr,
+        map_event_downlinks: vec![EgressDownlinkSpec {
+            address: addr.clone(),
             extractor: ExtractionSpec::default(),
         }],
         ..empty_config()
     };
     if let Err(InvalidExtractors::AddressCollision(address)) = MessageSelectors::try_from(&config) {
-        assert_eq!(address, expected);
+        assert_eq!(address, addr);
     } else {
         panic!("Expected name collision error.");
     }

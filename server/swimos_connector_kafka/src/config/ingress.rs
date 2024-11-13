@@ -16,10 +16,9 @@ use super::{DataFormat, KafkaLogLevel};
 use std::collections::HashMap;
 use std::path::Path;
 use std::str::FromStr;
-use swimos_connector::config::{
-    IngressMapLaneSpec, IngressValueLaneSpec, PubSubRelaySpecification,
-};
-use swimos_connector::selector::{BadSelector, PubSubSelector, Relays};
+use swimos_connector::config::{IngressMapLaneSpec, IngressValueLaneSpec, RelaySpecification};
+use swimos_connector::selector::{PubSubSelector, Relays};
+use swimos_connector::BadSelector;
 use swimos_form::Form;
 use swimos_recon::parser::parse_recognize;
 
@@ -36,7 +35,7 @@ struct KafkaIngressSpecification {
     key_deserializer: DataFormat,
     payload_deserializer: DataFormat,
     topics: Vec<String>,
-    relays: Vec<PubSubRelaySpecification>,
+    relays: Vec<RelaySpecification>,
 }
 
 impl KafkaIngressSpecification {
@@ -89,7 +88,7 @@ pub struct KafkaIngressConfiguration {
 
 impl KafkaIngressConfiguration {
     pub async fn from_file(path: impl AsRef<Path>) -> Result<KafkaIngressConfiguration, BoxError> {
-        let content = tokio::fs::read_to_string(path).await?;
+        let content: String = tokio::fs::read_to_string(path).await?;
         KafkaIngressConfiguration::from_str(&content)
     }
 }

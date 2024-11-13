@@ -15,7 +15,7 @@
 use std::{cell::RefCell, collections::HashMap, sync::Arc, time::Duration};
 
 use super::ConnHandlerContext;
-use crate::selector::message::{MessageSelector, MessageSelectors};
+use crate::selector::message::MessageSelectors;
 use crate::{
     config::KafkaEgressConfiguration,
     facade::{KafkaFactory, KafkaProducer, ProduceResult, ProducerFactory},
@@ -68,7 +68,7 @@ impl<F: ProducerFactory> KafkaEgressConnector<F> {
 
 impl KafkaEgressConnector<KafkaFactory> {
     /// Create a [`KafkaEgressConnector`] with the provided configuration. The configuration is only validated when
-    /// the agent attempts to start so this will never fail.
+    /// the agent attempts to start, so this will never fail.
     ///
     /// # Arguments
     /// * `configuration` - The connector configuration, specifying the connection details for the Kafka consumer
@@ -246,30 +246,15 @@ fn open_lanes(config: &KafkaEgressConfiguration, context: &mut dyn EgressContext
 
 fn open_downlinks(config: &KafkaEgressConfiguration, context: &mut dyn EgressContext) {
     let KafkaEgressConfiguration {
-        value_downlinks,
-        map_downlinks,
+        event_downlinks,
+        map_event_downlinks,
         ..
     } = config;
-    for value_dl in value_downlinks {
-        context.open_event_downlink(<Address<&str>>::from(&value_dl.address));
+    for value_dl in event_downlinks {
+        context.open_event_downlink(value_dl.address.borrow_parts());
     }
-    for map_dl in map_downlinks {
-        context.open_map_downlink(<Address<&str>>::from(&map_dl.address));
-    }
-}
-
-impl MessageSelectors {
-    pub fn select_source(&self, source: MessageSource<'_>) -> Option<&MessageSelector> {
-        match source {
-            MessageSource::Lane(name) => self
-                .value_lanes()
-                .get(name)
-                .or_else(|| self.map_lanes().get(name)),
-            MessageSource::Downlink(addr) => self
-                .value_downlinks()
-                .get(addr)
-                .or_else(|| self.map_downlinks().get(addr)),
-        }
+    for map_dl in map_event_downlinks {
+        context.open_map_downlink(map_dl.address.borrow_parts());
     }
 }
 

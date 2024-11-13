@@ -1,4 +1,7 @@
-use crate::selector::{BadSelector, PubSubSelector, Relay, Relays};
+use crate::{
+    selector::{InterpretableSelector, Relay, Relays},
+    BadSelector,
+};
 use swimos_form::Form;
 
 /// Specification of a value lane for the connector.
@@ -73,60 +76,102 @@ impl IngressMapLaneSpec {
     }
 }
 
-/// Specification of a relay for the connector.
-#[cfg(feature = "pubsub")]
+/// Specification of a value relay for the connector.
 #[derive(Clone, Debug, Form, PartialEq, Eq)]
-pub enum PubSubRelaySpecification {
-    /// Specification of a value relay for the connector.
-    Value {
-        /// A node URI selector. See [`crate::selector::NodeSelector`] for more information.
-        node: String,
-        /// A lane URI selector. See [`crate::selector::LaneSelector`] for more information.
-        lane: String,
-        /// A payload URI selector. See [`crate::selector::RelayPayloadSelector::value`] for more information.
-        payload: String,
-        /// Whether the payload selector must yield a value. If it does not, then the selector will
-        /// yield an error.
-        required: bool,
-    },
-    /// Specification of a map relay for the connector.
-    Map {
-        /// A node URI selector. See [`crate::selector::NodeSelector`] for more information.
-        node: String,
-        /// A lane URI selector. See [`crate::selector::LaneSelector`] for more information.
-        lane: String,
-        /// A payload URI selector. See [`crate::selector::RelayPayloadSelector::map`] for more information.
-        key: String,
-        /// A payload URI selector. See [`crate::selector::RelayPayloadSelector::map`] for more information.
-        value: String,
-        /// Whether the payload selector must yield a value. If it does not, then the selector will
-        /// yield an error.
-        required: bool,
-        /// If the value selector fails to select, then it will emit a map remove command to remove the
-        /// corresponding entry.
-        remove_when_no_value: bool,
-    },
+#[form(tag = "ValueRelaySpec")]
+pub struct ValueRelaySpecification {
+    /// A node URI selector. See [`crate::selector::NodeSelector`] for more information.
+    pub node: String,
+    /// A lane URI selector. See [`crate::selector::LaneSelector`] for more information.
+    pub lane: String,
+    /// A payload URI selector. See [`crate::selector::RelayPayloadSelector::value`] for more information.
+    pub payload: String,
+    /// Whether the payload selector must yield a value. If it does not, then the selector will
+    /// yield an error.
+    pub required: bool,
 }
 
-#[cfg(feature = "pubsub")]
-impl TryFrom<Vec<PubSubRelaySpecification>> for Relays<PubSubSelector> {
+impl ValueRelaySpecification {
+    pub fn new<S: Into<String>>(node: S, lane: S, payload: S, required: bool) -> Self {
+        ValueRelaySpecification {
+            node: node.into(),
+            lane: lane.into(),
+            payload: payload.into(),
+            required,
+        }
+    }
+}
+
+/// Specification of a map relay for the connector.
+#[derive(Clone, Debug, Form, PartialEq, Eq)]
+#[form(tag = "MapRelaySpec")]
+pub struct MapRelaySpecification {
+    /// A node URI selector. See [`crate::selector::NodeSelector`] for more information.
+    pub node: String,
+    /// A lane URI selector. See [`crate::selector::LaneSelector`] for more information.
+    pub lane: String,
+    /// A payload URI selector. See [`crate::selector::RelayPayloadSelector::map`] for more information.
+    pub key: String,
+    /// A payload URI selector. See [`crate::selector::RelayPayloadSelector::map`] for more information.
+    pub value: String,
+    /// Whether the payload selector must yield a value. If it does not, then the selector will
+    /// yield an error.
+    pub required: bool,
+    /// If the value selector fails to select, then it will emit a map remove command to remove the
+    /// corresponding entry.
+    pub remove_when_no_value: bool,
+}
+
+impl MapRelaySpecification {
+    pub fn new<S: Into<String>>(
+        node: S,
+        lane: S,
+        key: S,
+        value: S,
+        required: bool,
+        remove_when_no_value: bool,
+    ) -> Self {
+        MapRelaySpecification {
+            node: node.into(),
+            lane: lane.into(),
+            key: key.into(),
+            value: value.into(),
+            required,
+            remove_when_no_value,
+        }
+    }
+}
+
+/// Specification of a relay for the connector.
+#[derive(Clone, Debug, Form, PartialEq, Eq)]
+pub enum RelaySpecification {
+    /// Specification of a value relay for the connector.
+    Value(ValueRelaySpecification),
+    /// Specification of a map relay for the connector.
+    Map(MapRelaySpecification),
+}
+
+impl<S> TryFrom<Vec<RelaySpecification>> for Relays<S>
+where
+    S: InterpretableSelector,
+{
     type Error = BadSelector;
 
-    fn try_from(value: Vec<PubSubRelaySpecification>) -> Result<Self, Self::Error> {
+    fn try_from(value: Vec<RelaySpecification>) -> Result<Self, Self::Error> {
         use crate::selector::{
             parse_lane_selector, parse_map_selector, parse_node_selector, parse_value_selector,
         };
 
-        let mut chain = Vec::with_capacity(value.len());
+        let mut chain: Vec<Relay<S>> = Vec::with_capacity(value.len());
 
         for spec in value {
             match spec {
-                PubSubRelaySpecification::Value {
+                RelaySpecification::Value(ValueRelaySpecification {
                     node,
                     lane,
                     payload,
                     required,
-                } => {
+                }) => {
                     let relay = Relay::new(
                         parse_node_selector(node.as_str())?,
                         parse_lane_selector(lane.as_str())?,
@@ -134,14 +179,14 @@ impl TryFrom<Vec<PubSubRelaySpecification>> for Relays<PubSubSelector> {
                     );
                     chain.push(relay);
                 }
-                PubSubRelaySpecification::Map {
+                RelaySpecification::Map(MapRelaySpecification {
                     node,
                     lane,
                     key,
                     value,
                     required,
                     remove_when_no_value,
-                } => {
+                }) => {
                     let relay = Relay::new(
                         parse_node_selector(node.as_str())?,
                         parse_lane_selector(lane.as_str())?,

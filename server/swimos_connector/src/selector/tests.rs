@@ -12,20 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use super::{create_init_regex, field_regex, init_regex, SelectorDescriptor};
-use super::{MessageField, SelectorComponent};
+use super::SelectorComponent;
+use super::{create_init_regex, field_regex, init_regex, RawSelectorDescriptor};
 use crate::config::{IngressMapLaneSpec, IngressValueLaneSpec};
-use crate::deser::{Deferred, MessageDeserializer, MessagePart, ReconDeserializer};
+use crate::deser::{Deferred, MessageDeserializer, ReconDeserializer};
 use crate::selector::{
-    parse_selector, AttrSelector, BadSelector, BasicSelector, ChainSelector, IdentitySelector,
-    IndexSelector, InvalidLaneSpec, MapLaneSelector, SelectHandler, SlotSelector,
-    ValueLaneSelector, ValueSelector,
+    AttrSelector, BasicSelector, ChainSelector, IdentitySelector, IndexSelector,
+    PubSubMapLaneSelector, SelectHandler, SlotSelector, ValueSelector,
 };
+use crate::{BadSelector, InvalidLaneSpec};
 use swimos_model::{Attr, Item};
 
+use super::InterpretableSelector;
 use crate::selector::{PubSubSelector, PubSubValueLaneSelector};
 use crate::{
-    selector::pubsub::{KeySelector, PayloadSelector, TopicSelector},
+    selector::{KeySelector, PayloadSelector, TopicSelector},
     test_support::{fail, run_handler, TestSpawner},
     ConnectorAgent,
 };
@@ -35,6 +36,16 @@ use std::ops::Deref;
 use swimos_agent::agent_model::{AgentSpec, ItemDescriptor};
 use swimos_api::agent::WarpLaneKind;
 use swimos_model::Value;
+
+/// Attempt to parse a descriptor for a selector from a string.
+pub fn parse_selector(descriptor: &str) -> Result<PubSubSelector, BadSelector> {
+    let maybe_sel = PubSubSelector::try_interp(&RawSelectorDescriptor::try_from(descriptor)?)?;
+    if let Some(sel) = maybe_sel {
+        Ok(sel)
+    } else {
+        Err(BadSelector::InvalidRoot)
+    }
+}
 
 #[test]
 fn init_regex_creation() {
@@ -156,44 +167,25 @@ fn match_slot_non_latin() {
     }
 }
 
-impl<'a> SelectorDescriptor<'a> {
-    pub fn for_part(part: MessagePart, index: Option<usize>) -> Self {
-        SelectorDescriptor::Part {
-            part,
-            index,
-            components: vec![],
-        }
-    }
-
-    pub fn push(&mut self, component: SelectorComponent<'a>) {
-        if let Self::Part { components, .. } = self {
-            components.push(component);
-        }
-    }
-}
-
 #[test]
 fn parse_simple() {
     let key = parse_selector("$key").expect("Parse failed.");
-    assert_eq!(key, SelectorDescriptor::for_part(MessagePart::Key, None));
+    assert_eq!(key, PubSubSelector::inject(KeySelector::default()));
 
     let payload = parse_selector("$payload").expect("Parse failed.");
-    assert_eq!(
-        payload,
-        SelectorDescriptor::for_part(MessagePart::Payload, None)
-    );
+    assert_eq!(payload, PubSubSelector::inject(PayloadSelector::default()));
 
     let indexed = parse_selector("$key[2]").expect("Parse failed.");
     assert_eq!(
         indexed,
-        SelectorDescriptor::for_part(MessagePart::Key, Some(2))
+        PubSubSelector::inject(KeySelector::new(ChainSelector::new(Some(2), &[])))
     );
 }
 
 #[test]
 fn parse_topic() {
     let topic = parse_selector("$topic").expect("Parse failed.");
-    assert_eq!(topic, SelectorDescriptor::Topic);
+    assert_eq!(topic, PubSubSelector::inject(TopicSelector));
 
     assert_eq!(
         parse_selector("$topic[0]"),
@@ -208,33 +200,47 @@ fn parse_topic() {
 #[test]
 fn parse_one_component() {
     let first = parse_selector("$key.@attr").expect("Parse failed.");
-    let mut expected_first = SelectorDescriptor::for_part(MessagePart::Key, None);
-    expected_first.push(SelectorComponent::new(true, "attr", None));
+    let parts = ChainSelector::from(vec![BasicSelector::Attr(AttrSelector::new(
+        "attr".to_string(),
+    ))]);
+    let expected_first = PubSubSelector::inject(KeySelector::new(parts));
     assert_eq!(first, expected_first);
 
     let second = parse_selector("$payload.slot").expect("Parse failed.");
-    let mut expected_second = SelectorDescriptor::for_part(MessagePart::Payload, None);
-    expected_second.push(SelectorComponent::new(false, "slot", None));
+    let parts = ChainSelector::from(vec![BasicSelector::Slot(SlotSelector::for_field(
+        "slot".to_string(),
+    ))]);
+    let expected_second = PubSubSelector::inject(PayloadSelector::new(parts));
     assert_eq!(second, expected_second);
 
     let third = parse_selector("$key.@attr[3]").expect("Parse failed.");
-    let mut expected_third = SelectorDescriptor::for_part(MessagePart::Key, None);
-    expected_third.push(SelectorComponent::new(true, "attr", Some(3)));
+    let parts = ChainSelector::from(vec![
+        BasicSelector::Attr(AttrSelector::new("attr".to_string())),
+        BasicSelector::Index(IndexSelector::new(3)),
+    ]);
+    let expected_third = PubSubSelector::inject(KeySelector::new(parts));
     assert_eq!(third, expected_third);
 
     let fourth = parse_selector("$payload[6].slot[8]").expect("Parse failed.");
-    let mut expected_fourth = SelectorDescriptor::for_part(MessagePart::Payload, Some(6));
-    expected_fourth.push(SelectorComponent::new(false, "slot", Some(8)));
+    let parts = ChainSelector::from(vec![
+        BasicSelector::Index(IndexSelector::new(6)),
+        BasicSelector::Slot(SlotSelector::for_field("slot".to_string())),
+        BasicSelector::Index(IndexSelector::new(8)),
+    ]);
+    let expected_fourth = PubSubSelector::inject(PayloadSelector::new(parts));
     assert_eq!(fourth, expected_fourth);
 }
 
 #[test]
 fn multi_component_selector() {
     let selector = parse_selector("$payload.red.@green[7].blue").expect("Parse failed.");
-    let mut expected = SelectorDescriptor::for_part(MessagePart::Payload, None);
-    expected.push(SelectorComponent::new(false, "red", None));
-    expected.push(SelectorComponent::new(true, "green", Some(7)));
-    expected.push(SelectorComponent::new(false, "blue", None));
+    let parts = ChainSelector::from(vec![
+        BasicSelector::Slot(SlotSelector::for_field("red".to_string())),
+        BasicSelector::Attr(AttrSelector::new("green".to_string())),
+        BasicSelector::Index(IndexSelector::new(7)),
+        BasicSelector::Slot(SlotSelector::for_field("blue".to_string())),
+    ]);
+    let expected = PubSubSelector::inject(PayloadSelector::new(parts));
     assert_eq!(selector, expected);
 }
 
@@ -328,94 +334,92 @@ fn chain_selector() {
 
 #[test]
 fn topic_selector_descriptor() {
-    let selector = parse_selector("$topic").expect("Invalid selector.");
-    assert_eq!(selector.field(), MessageField::Topic);
-    assert!(selector.selector().is_none());
+    let selector = RawSelectorDescriptor::try_from("$topic").expect("Invalid selector.");
+    assert_eq!(selector.part, "$topic");
+    assert!(selector.index.is_none());
+    assert!(selector.components.is_empty());
     assert_eq!(selector.suggested_name(), Some("topic"));
 }
 
 #[test]
 fn key_selector_descriptor() {
-    let selector = parse_selector("$key").expect("Invalid selector.");
-    assert_eq!(selector.field(), MessageField::Key);
-    assert_eq!(selector.selector(), Some(ChainSelector::from(vec![])));
+    let selector = RawSelectorDescriptor::try_from("$key").expect("Invalid selector.");
+    assert_eq!(selector.part, "$key");
+    assert!(selector.index.is_none());
+    assert!(selector.components.is_empty());
     assert_eq!(selector.suggested_name(), Some("key"));
 }
 
 #[test]
 fn payload_selector_descriptor() {
-    let selector = parse_selector("$payload").expect("Invalid selector.");
-    assert_eq!(selector.field(), MessageField::Payload);
-    assert_eq!(selector.selector(), Some(ChainSelector::from(vec![])));
+    let selector = RawSelectorDescriptor::try_from("$payload").expect("Invalid selector.");
+    assert_eq!(selector.part, "$payload");
+    assert!(selector.index.is_none());
+    assert!(selector.components.is_empty());
     assert_eq!(selector.suggested_name(), Some("payload"));
 }
 
 #[test]
 fn indexed_selector_descriptor() {
-    let selector = parse_selector("$payload[1]").expect("Invalid selector.");
-    assert_eq!(selector.field(), MessageField::Payload);
-    assert_eq!(
-        selector.selector(),
-        Some(ChainSelector::from(vec![BasicSelector::Index(
-            IndexSelector::new(1)
-        )]))
-    );
+    let selector = RawSelectorDescriptor::try_from("$payload[1]").expect("Invalid selector.");
+    assert_eq!(selector.part, "$payload");
+    assert_eq!(selector.index, Some(1));
+    assert!(selector.components.is_empty());
     assert!(selector.suggested_name().is_none());
 }
 
 #[test]
 fn attr_selector_descriptor() {
-    let selector = parse_selector("$payload.@attr").expect("Invalid selector.");
-    assert_eq!(selector.field(), MessageField::Payload);
+    let selector = RawSelectorDescriptor::try_from("$payload.@attr").expect("Invalid selector.");
+    assert_eq!(selector.part, "$payload");
+    assert!(selector.index.is_none());
     assert_eq!(
-        selector.selector(),
-        Some(ChainSelector::from(vec![BasicSelector::Attr(
-            AttrSelector::new("attr".to_string())
-        )]))
+        selector.components,
+        vec![SelectorComponent::new(true, "attr", None)],
     );
     assert_eq!(selector.suggested_name(), Some("attr"));
 }
 
 #[test]
 fn slot_selector_descriptor() {
-    let selector = parse_selector("$payload.slot").expect("Invalid selector.");
-    assert_eq!(selector.field(), MessageField::Payload);
+    let selector = RawSelectorDescriptor::try_from("$payload.slot").expect("Invalid selector.");
+    assert_eq!(selector.part, "$payload");
+    assert!(selector.index.is_none());
     assert_eq!(
-        selector.selector(),
-        Some(ChainSelector::from(vec![BasicSelector::Slot(
-            SlotSelector::for_field("slot")
-        )]))
+        selector.components,
+        vec![SelectorComponent::new(false, "slot", None)],
     );
     assert_eq!(selector.suggested_name(), Some("slot"));
 }
 
 #[test]
 fn complex_selector_descriptor_named() {
-    let selector = parse_selector("$payload.@attr[3].inner").expect("Invalid selector.");
-    assert_eq!(selector.field(), MessageField::Payload);
+    let selector =
+        RawSelectorDescriptor::try_from("$payload.@attr[3].inner").expect("Invalid selector.");
+    assert_eq!(selector.part, "$payload");
+    assert!(selector.index.is_none());
     assert_eq!(
-        selector.selector(),
-        Some(ChainSelector::from(vec![
-            BasicSelector::Attr(AttrSelector::new("attr".to_string())),
-            BasicSelector::Index(IndexSelector::new(3)),
-            BasicSelector::Slot(SlotSelector::for_field("inner"))
-        ]))
+        selector.components,
+        vec![
+            SelectorComponent::new(true, "attr", Some(3)),
+            SelectorComponent::new(false, "inner", None),
+        ],
     );
     assert_eq!(selector.suggested_name(), Some("inner"));
 }
 
 #[test]
 fn complex_selector_descriptor_unnamed() {
-    let selector = parse_selector("$payload.@attr[3].inner[0]").expect("Invalid selector.");
-    assert_eq!(selector.field(), MessageField::Payload);
+    let selector =
+        RawSelectorDescriptor::try_from("$payload.@attr[3].inner[0]").expect("Invalid selector.");
+    assert_eq!(selector.part, "$payload");
+    assert!(selector.index.is_none());
     assert_eq!(
-        selector.selector(),
-        Some(ChainSelector::from(vec![
-            BasicSelector::Attr(AttrSelector::new("attr".to_string())),
-            BasicSelector::Index(IndexSelector::new(3)),
-            BasicSelector::Slot(SlotSelector::for_field("inner")),
-            BasicSelector::Index(IndexSelector::new(0)),
-        ]))
+        selector.components,
+        vec![
+            SelectorComponent::new(true, "attr", Some(3)),
+            SelectorComponent::new(false, "inner", Some(0)),
+        ],
     );
     assert!(selector.suggested_name().is_none());
 }
@@ -423,7 +427,7 @@ fn complex_selector_descriptor_unnamed() {
 #[test]
 fn value_lane_selector_from_spec_inferred_name() {
     let spec = IngressValueLaneSpec::new(None, "$key", true);
-    let selector = ValueLaneSelector::try_from(&spec).expect("Bad specification.");
+    let selector = PubSubValueLaneSelector::try_from(&spec).expect("Bad specification.");
     assert_eq!(selector.name(), "key");
     assert!(&selector.is_required());
     let delegate_selector = selector
@@ -440,7 +444,7 @@ fn value_lane_selector_from_spec_inferred_name() {
 #[test]
 fn value_lane_selector_from_spec_named() {
     let spec = IngressValueLaneSpec::new(Some("field"), "$key[0]", false);
-    let selector = ValueLaneSelector::try_from(&spec).expect("Bad specification.");
+    let selector = PubSubValueLaneSelector::try_from(&spec).expect("Bad specification.");
     assert_eq!(selector.name(), "field");
     assert!(!&selector.is_required());
     let delegate_selector = selector
@@ -458,21 +462,21 @@ fn value_lane_selector_from_spec_named() {
 #[test]
 fn value_lane_selector_from_spec_inferred_unnamed() {
     let spec = IngressValueLaneSpec::new(None, "$key[0]", true);
-    let error = ValueLaneSelector::try_from(&spec).expect_err("Should fail.");
+    let error = PubSubValueLaneSelector::try_from(&spec).expect_err("Should fail.");
     assert_eq!(error, InvalidLaneSpec::NameCannotBeInferred);
 }
 
 #[test]
 fn value_lane_selector_from_spec_bad_selector() {
     let spec = IngressValueLaneSpec::new(None, "$wrong", true);
-    let error = ValueLaneSelector::try_from(&spec).expect_err("Should fail.");
+    let error = PubSubValueLaneSelector::try_from(&spec).expect_err("Should fail.");
     assert_eq!(error, InvalidLaneSpec::Selector(BadSelector::InvalidRoot));
 }
 
 #[test]
 fn map_lane_selector_from_spec() {
     let spec = IngressMapLaneSpec::new("field", "$key", "$payload", true, false);
-    let selector = MapLaneSelector::try_from(&spec).expect("Bad specification.");
+    let selector = PubSubMapLaneSelector::try_from(&spec).expect("Bad specification.");
     assert_eq!(selector.name(), "field");
     assert!(!selector.is_required());
     assert!(selector.remove_when_no_value());
@@ -495,14 +499,14 @@ fn map_lane_selector_from_spec() {
 #[test]
 fn map_lane_selector_from_spec_bad_key() {
     let spec = IngressMapLaneSpec::new("field", "$other", "$payload", true, false);
-    let error = MapLaneSelector::try_from(&spec).expect_err("Should fail.");
+    let error = PubSubMapLaneSelector::try_from(&spec).expect_err("Should fail.");
     assert_eq!(error, InvalidLaneSpec::Selector(BadSelector::InvalidRoot));
 }
 
 #[test]
 fn map_lane_selector_from_spec_bad_value() {
     let spec = IngressMapLaneSpec::new("field", "$key", "$other", true, false);
-    let error = MapLaneSelector::try_from(&spec).expect_err("Should fail.");
+    let error = PubSubMapLaneSelector::try_from(&spec).expect_err("Should fail.");
     assert_eq!(error, InvalidLaneSpec::Selector(BadSelector::InvalidRoot));
 }
 
