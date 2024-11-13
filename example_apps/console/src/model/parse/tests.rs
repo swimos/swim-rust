@@ -105,7 +105,7 @@ fn mixed_tokens3() {
 
 fn to_controller(cmd: AppCommand) -> ControllerCommand {
     if let AppCommand::Controller(c) = cmd {
-        c
+        *c
     } else {
         panic!("Unexpected command kind.");
     }

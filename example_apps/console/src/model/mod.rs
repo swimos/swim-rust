@@ -160,7 +160,7 @@ pub enum AppCommand {
     Quit,
     Clear,
     Help { command_name: Option<String> },
-    Controller(ControllerCommand),
+    Controller(Box<ControllerCommand>),
 }
 
 #[derive(Debug)]
