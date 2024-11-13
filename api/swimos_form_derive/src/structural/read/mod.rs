@@ -127,7 +127,6 @@ impl<'a> ToTokens for DeriveStructuralReadable<'a, SegregatedStructModel<'a>> {
                     type #builder_name #type_gen = #builder_type;
                     #select_index
 
-                    #[automatically_derived]
                     #[allow(non_snake_case)]
                     fn #select_feed_name #impl_gen(state: &mut #builder_name #type_gen, index: u32, event: #root::read::ReadEvent<'_>)
                         -> ::core::option::Option<::core::result::Result<(), #root::read::ReadError>>
@@ -136,7 +135,6 @@ impl<'a> ToTokens for DeriveStructuralReadable<'a, SegregatedStructModel<'a>> {
                         #select_feed
                     }
 
-                    #[automatically_derived]
                     #[allow(non_snake_case)]
                     fn #on_done_name #impl_gen(state: &mut #builder_name #type_gen) -> ::core::result::Result<#target, #root::read::ReadError>
                     #where_clause
@@ -144,7 +142,6 @@ impl<'a> ToTokens for DeriveStructuralReadable<'a, SegregatedStructModel<'a>> {
                         #on_done
                     }
 
-                    #[automatically_derived]
                     #[allow(non_snake_case)]
                     fn #on_reset_name #impl_gen(state: &mut #builder_name #type_gen)
                     #where_clause
@@ -279,7 +276,6 @@ impl<'a> ToTokens for DeriveStructuralReadable<'a, SegregatedEnumModel<'a>> {
                         type #builder_name #type_gen = #builder_type;
                         #select_index
 
-                        #[automatically_derived]
                         #[allow(non_snake_case)]
                         fn #select_feed_name #impl_gen(state: &mut #builder_name #type_gen, index: u32, event: #root::read::ReadEvent<'_>)
                             -> ::core::option::Option<::core::result::Result<(), #root::read::ReadError>>
@@ -288,7 +284,6 @@ impl<'a> ToTokens for DeriveStructuralReadable<'a, SegregatedEnumModel<'a>> {
                             #select_feed
                         }
 
-                        #[automatically_derived]
                         #[allow(non_snake_case)]
                         fn #on_done_name #impl_gen(state: &mut #builder_name #type_gen) -> ::core::result::Result<#enum_ty, #root::read::ReadError>
                         #where_clause
@@ -296,7 +291,6 @@ impl<'a> ToTokens for DeriveStructuralReadable<'a, SegregatedEnumModel<'a>> {
                             #on_done
                         }
 
-                        #[automatically_derived]
                         #[allow(non_snake_case)]
                         fn #on_reset_name #impl_gen(state: &mut #builder_name #type_gen)
                         #where_clause
@@ -322,7 +316,6 @@ impl<'a> ToTokens for DeriveStructuralReadable<'a, SegregatedEnumModel<'a>> {
 
                     #state
 
-                    #[automatically_derived]
                     #[allow(non_snake_case)]
                     #[inline]
                     fn #select_var_name #impl_gen(name: &str) -> ::core::option::Option<#builder_name #type_gen>
@@ -391,31 +384,37 @@ impl<'a> ToTokens for RecognizerState<'a> {
         } = self;
         let it = enumerate_fields(fields);
 
-        let builder_types = it.clone().map(|grp| match grp {
-            FieldGroup::Tag(fld)
-            | FieldGroup::Item(fld)
-            | FieldGroup::DelegateBody(fld)
-            | FieldGroup::Attribute(fld) => {
-                let ty = fld.field_ty;
-                quote!(::core::option::Option<#ty>)
-            }
-            FieldGroup::Header {
-                tag_body,
-                header_fields,
-            } => match tag_body {
-                Some(fld) if header_fields.is_empty() => {
+        let builder_types = it
+            .clone()
+            .map(|grp| match grp {
+                FieldGroup::Tag(fld)
+                | FieldGroup::Item(fld)
+                | FieldGroup::DelegateBody(fld)
+                | FieldGroup::Attribute(fld) => {
                     let ty = fld.field_ty;
-                    quote!(::core::option::Option<#ty>)
+                    let t: syn::Type = parse_quote!(::core::option::Option<#ty>);
+                    t
                 }
-                ow => {
-                    let header_fields = HeaderFieldsState {
-                        tag_body: ow,
-                        header_fields,
-                    };
-                    quote!(::core::option::Option<#header_fields>)
-                }
-            },
-        });
+                FieldGroup::Header {
+                    tag_body,
+                    header_fields,
+                } => match tag_body {
+                    Some(fld) if header_fields.is_empty() => {
+                        let ty = fld.field_ty;
+                        let t: syn::Type = parse_quote!(::core::option::Option<#ty>);
+                        t
+                    }
+                    ow => {
+                        let header_fields = HeaderFieldsState {
+                            tag_body: ow,
+                            header_fields,
+                        };
+                        let t: syn::Type = parse_quote!(::core::option::Option<#header_fields>);
+                        t
+                    }
+                },
+            })
+            .collect();
 
         let recognizer_types = it.map(|grp| match grp {
             FieldGroup::Tag(fld) => {
@@ -460,10 +459,30 @@ impl<'a> ToTokens for RecognizerState<'a> {
             },
         });
 
+        let builder_tuple = nested_tuple(builder_types);
+
         tokens.append_all(quote! {
-            ((#(#builder_types,)*), (#(#recognizer_types,)*), ::core::marker::PhantomData<fn() -> #target>)
+            (#builder_tuple, (#(#recognizer_types,)*), ::core::marker::PhantomData<fn() -> #target>)
         });
     }
+}
+
+fn nested_tuple(parts: Vec<syn::Type>) -> syn::Type {
+    let mut tup: syn::Type = parse_quote!(());
+    for t in parts.into_iter().rev() {
+        tup = parse_quote!((#t, #tup));
+    }
+    tup
+}
+
+fn index_nested(base: syn::Expr, index: usize) -> syn::Expr {
+    let mut expr = base;
+    let mut i = index;
+    while i > 0 {
+        expr = parse_quote!(#expr.1);
+        i -= 1;
+    }
+    parse_quote!(#expr.0)
 }
 
 struct HeaderFieldsState<'a> {
@@ -479,14 +498,18 @@ impl<'a> ToTokens for HeaderFieldsState<'a> {
         } = self;
         let it = tag_body.iter().chain(header_fields.iter());
 
-        let builder_types = it.clone().map(|fld| {
-            let ty = fld.field_ty;
-            quote!(::core::option::Option<#ty>)
-        });
+        let builder_types = it
+            .clone()
+            .map(|fld| {
+                let ty = fld.field_ty;
+                let t: syn::Type = parse_quote!(::core::option::Option<#ty>);
+                t
+            })
+            .collect();
 
-        tokens.append_all(quote! {
-            (#(#builder_types,)*)
-        });
+        let builder_tuple = nested_tuple(builder_types);
+
+        tokens.append_all(builder_tuple.into_token_stream());
     }
 }
 
@@ -681,7 +704,6 @@ impl<'a> ToTokens for SelectIndexFnLabelled<'a> {
         };
 
         tokens.append_all(quote! {
-            #[automatically_derived]
             #[allow(non_snake_case)]
             fn #fn_name(key: #root::read::LabelledFieldKey<'_>) -> ::core::option::Option<u32> {
                 match key {
@@ -772,7 +794,6 @@ impl<'a> ToTokens for SelectIndexFnOrdinal<'a> {
         };
 
         tokens.append_all(quote! {
-            #[automatically_derived]
             #[allow(non_snake_case)]
             fn #fn_name(key: #root::read::OrdinalFieldKey<'_>) -> ::core::option::Option<u32> {
                 match key {
@@ -880,8 +901,9 @@ impl<'a> ToTokens for SelectFeedFn<'a> {
 
             let idx = syn::Index::from(i);
             let case_index = i as u32;
+            let fields_indexed = index_nested(parse_quote!(fields), i);
             quote! {
-                #case_index => #root::read::feed_field(#name, &mut fields.#idx, &mut recognizers.#idx, event),
+                #case_index => #root::read::feed_field(#name, &mut #fields_indexed, &mut recognizers.#idx, event),
             }
         });
 
@@ -921,12 +943,12 @@ impl<'a> ToTokens for OnDoneFn<'a> {
         let it = enumerate_fields(fields);
 
         let validators = it.clone().enumerate().map(|(i, grp)| {
-            let idx = syn::Index::from(i);
+            let indexed = index_nested(parse_quote!(fields), i);
             match grp {
                 FieldGroup::Tag(fld) => {
                     let name = fld.resolve_name();
                     quote! {
-                        if fields.#idx.is_none() {
+                        if #indexed.is_none() {
                             missing.push(#root::model::Text::new(#name));
                         }
                     }
@@ -938,9 +960,9 @@ impl<'a> ToTokens for OnDoneFn<'a> {
                             let ty = fld.field_ty;
 
                             quote! {
-                                if fields.#idx.is_none() {
-                                    fields.#idx = <#ty as #root::read::RecognizerReadable>::on_absent();
-                                    if fields.#idx.is_none() {
+                                if #indexed.is_none() {
+                                    #indexed = <#ty as #root::read::RecognizerReadable>::on_absent();
+                                    if #indexed.is_none() {
                                         missing.push(#root::model::Text::new(#name));
                                     }
                                 }
@@ -949,17 +971,17 @@ impl<'a> ToTokens for OnDoneFn<'a> {
                         ow => {
                             let mut acc = TokenStream::new();
                             acc.append_all(quote! {
-                                let header = ::core::option::Option::get_or_insert_with(&mut fields.#idx, ::core::default::Default::default);
+                                let header = ::core::option::Option::get_or_insert_with(&mut #indexed, ::core::default::Default::default);
                             });
                             ow.iter().chain(header_fields.iter()).enumerate().fold(acc, |mut out, (j, fld)| {
-                                let inner_idx = syn::Index::from(j);
+                                let header_indexed = index_nested(parse_quote!(header), j);
                                 let name = fld.resolve_name();
                                 let ty = fld.field_ty;
 
                                 out.append_all(quote! {
-                                    if header.#inner_idx.is_none() {
-                                        header.#inner_idx = <#ty as #root::read::RecognizerReadable>::on_absent();
-                                        if header.#inner_idx.is_none() {
+                                    if #header_indexed.is_none() {
+                                        #header_indexed = <#ty as #root::read::RecognizerReadable>::on_absent();
+                                        if #header_indexed.is_none() {
                                             missing.push(#root::model::Text::new(#name));
                                         }
                                     }
@@ -974,9 +996,9 @@ impl<'a> ToTokens for OnDoneFn<'a> {
                     let ty = fld.field_ty;
 
                     quote! {
-                        if fields.#idx.is_none() {
-                            fields.#idx = <#ty as #root::read::RecognizerReadable>::on_absent();
-                            if fields.#idx.is_none() {
+                        if #indexed.is_none() {
+                            #indexed = <#ty as #root::read::RecognizerReadable>::on_absent();
+                            if #indexed.is_none() {
                                 missing.push(#root::model::Text::new(#name));
                             }
                         }
@@ -986,38 +1008,9 @@ impl<'a> ToTokens for OnDoneFn<'a> {
 
         });
 
-        let field_dest = it.clone().map(|grp| match grp {
-            FieldGroup::Item(fld)
-            | FieldGroup::DelegateBody(fld)
-            | FieldGroup::Attribute(fld)
-            | FieldGroup::Tag(fld) => {
-                let name = &fld.selector;
-                quote!(::core::option::Option::Some(#name))
-            }
-            FieldGroup::Header {
-                tag_body,
-                header_fields,
-            } => match tag_body {
-                Some(fld) if header_fields.is_empty() => {
-                    let name = &fld.selector;
-                    quote!(::core::option::Option::Some(#name))
-                }
-                ow => {
-                    let header_fields = ow.iter().chain(header_fields.iter()).map(|fld| {
-                        let name = &fld.selector;
-                        quote!(::core::option::Option::Some(#name))
-                    });
-                    quote!(::core::option::Option::Some((#(#header_fields,)*)))
-                }
-            },
-        });
+        let field_dest = groups_match(it.clone().collect());
 
         let num_fields = inner.fields_model.fields.len();
-        let num_blocks = fields.num_field_blocks();
-        let field_takes = (0..num_blocks).map(|i| {
-            let idx = syn::Index::from(i);
-            quote!(fields.#idx.take())
-        });
 
         let make_result = match inner.fields_model.type_kind {
             CompoundTypeKind::Labelled => {
@@ -1066,12 +1059,52 @@ impl<'a> ToTokens for OnDoneFn<'a> {
 
             #(#validators)*
 
-            if let (#(#field_dest,)*) = (#(#field_takes,)*) {
+            if let #field_dest = ::core::mem::take(fields) {
                 ::core::result::Result::Ok(#make_result)
             } else {
                 ::core::result::Result::Err(#root::read::ReadError::MissingFields(missing))
             }
         })
+    }
+}
+
+fn groups_match(groups: Vec<FieldGroup<'_>>) -> syn::Pat {
+    if groups.is_empty() {
+        parse_quote!(())
+    } else {
+        let mut pat_builder = parse_quote!(_);
+        for group in groups.into_iter().rev() {
+            match group {
+                FieldGroup::Item(fld)
+                | FieldGroup::DelegateBody(fld)
+                | FieldGroup::Attribute(fld)
+                | FieldGroup::Tag(fld) => {
+                    let name = &fld.selector;
+                    pat_builder = parse_quote!((::core::option::Option::Some(#name), #pat_builder));
+                }
+                FieldGroup::Header {
+                    tag_body,
+                    header_fields,
+                } => {
+                    match tag_body {
+                        Some(fld) if header_fields.is_empty() => {
+                            let name = &fld.selector;
+                            pat_builder =
+                                parse_quote!((::core::option::Option::Some(#name), #pat_builder));
+                        }
+                        ow => {
+                            let mut header_pat: syn::Pat = parse_quote!(_);
+                            for fld in header_fields.iter().rev().chain(ow.iter()) {
+                                let name = &fld.selector;
+                                header_pat = parse_quote!((::core::option::Option::Some(#name), #header_pat));
+                            }
+                            pat_builder = parse_quote!((::core::option::Option::Some(#header_pat), #pat_builder));
+                        }
+                    }
+                }
+            }
+        }
+        pat_builder
     }
 }
 
@@ -1092,8 +1125,9 @@ impl<'a> ToTokens for ResetFn<'a> {
 
         let field_resets = (0..*num_fields).map(|i| {
             let idx = syn::Index::from(i);
+            let indexed = index_nested(parse_quote!(fields), i);
             quote! {
-                fields.#idx = ::core::option::Option::None;
+                #indexed = ::core::option::Option::None;
                 #root::read::Recognizer::reset(&mut recognizers.#idx);
             }
         });
@@ -1523,7 +1557,6 @@ impl<'a> ToTokens for HeaderSelectIndexFn<'a> {
         };
 
         tokens.append_all(quote! {
-            #[automatically_derived]
             #[allow(non_snake_case)]
             fn #fn_name(key: #root::read::HeaderFieldKey<'_>) -> ::core::option::Option<u32> {
                 match key {
@@ -1549,10 +1582,11 @@ impl<'a> ToTokens for HeaderFeedFn<'a> {
         let cases = it.enumerate().map(|(i, fld)| {
             let name = fld.resolve_name();
 
+            let indexed = index_nested(parse_quote!(fields), i);
             let idx = syn::Index::from(i);
             let case_index = i as u32;
             quote! {
-                #case_index => #root::read::feed_field(#name, &mut fields.#idx, &mut recognizers.#idx, event),
+                #case_index => #root::read::feed_field(#name, &mut #indexed, &mut recognizers.#idx, event),
             }
         });
 
@@ -1663,7 +1697,6 @@ impl<'a> ToTokens for HeaderRecognizerFns<'a> {
             type #builder_name #type_gen = #header_builder_type;
             #select_index
 
-            #[automatically_derived]
             #[allow(non_snake_case)]
             fn #select_feed_name #impl_gen(state: &mut #builder_name #type_gen, index: u32, event: #root::read::ReadEvent<'_>)
                 -> ::core::option::Option<::core::result::Result<(), #root::read::ReadError>>
@@ -1672,7 +1705,6 @@ impl<'a> ToTokens for HeaderRecognizerFns<'a> {
                 #select_feed
             }
 
-            #[automatically_derived]
             #[allow(non_snake_case)]
             fn #on_reset_name #impl_gen(state: &mut #builder_name #type_gen)
             #where_clause

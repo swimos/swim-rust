@@ -596,6 +596,38 @@ fn generic_duplicated_bound_2() {
 }
 
 #[test]
+fn many_fields() {
+    #[derive(Form, Default)]
+
+    struct Many {
+        field1: u64,
+        field2: u64,
+        field3: u64,
+        field4: u64,
+        field5: u64,
+        field6: u64,
+        field7: u64,
+        field8: u64,
+        field9: u64,
+        field10: u64,
+        field11: u64,
+        field12: u64,
+        field13: u64,
+        field14: u64,
+        field15: u64,
+        field16: u64,
+        field17: u64,
+        field18: u64,
+        field19: u64,
+        field20: u64,
+    }
+
+    let s = Many::default();
+
+    let _ = s.as_value();
+}
+
+#[test]
 fn test_newtype() {
     {
         #[derive(Form, Debug, PartialEq, Clone)]
