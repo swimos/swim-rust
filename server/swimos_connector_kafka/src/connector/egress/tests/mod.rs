@@ -38,8 +38,8 @@ fn empty_config() -> KafkaEgressConfiguration {
         fixed_topic: Some(FIXED_TOPIC.to_string()),
         value_lanes: vec![],
         map_lanes: vec![],
-        value_downlinks: vec![],
-        map_downlinks: vec![],
+        event_downlinks: vec![],
+        map_event_downlinks: vec![],
         retry_timeout_ms: 5000,
     }
 }
@@ -67,7 +67,7 @@ fn addr2() -> Address<String> {
 
 fn downlinks_config() -> KafkaEgressConfiguration {
     KafkaEgressConfiguration {
-        value_downlinks: vec![EgressDownlinkSpec {
+        event_downlinks: vec![EgressDownlinkSpec {
             address: addr1(),
             extractor: ExtractionSpec {
                 topic_specifier: TopicSpecifier::Fixed,
@@ -75,7 +75,7 @@ fn downlinks_config() -> KafkaEgressConfiguration {
                 payload_selector: None,
             },
         }],
-        map_downlinks: vec![EgressDownlinkSpec {
+        map_event_downlinks: vec![EgressDownlinkSpec {
             address: addr2(),
             extractor: ExtractionSpec {
                 topic_specifier: TopicSpecifier::Fixed,

@@ -1,7 +1,7 @@
 @kafka {
     properties: {
         "message.timeout.ms": "5000",
-        "group.id": rust-consumer-test,
+        "group.id": rust-producer-test,
         "bootstrap.servers": "##SERVERS##"
     },
     log_level: @Debug,
@@ -19,7 +19,7 @@
         }
     },
     map_lanes: {},
-    value_downlinks: {},
-    map_downlinks: {},
+    event_downlinks: {},
+    map_event_downlinks: {},
     retry_timeout_ms: 5000
 }

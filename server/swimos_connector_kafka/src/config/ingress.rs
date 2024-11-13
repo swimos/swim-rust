@@ -88,7 +88,7 @@ pub struct KafkaIngressConfiguration {
 
 impl KafkaIngressConfiguration {
     pub async fn from_file(path: impl AsRef<Path>) -> Result<KafkaIngressConfiguration, BoxError> {
-        let content = tokio::fs::read_to_string(path).await?;
+        let content: String = tokio::fs::read_to_string(path).await?;
         KafkaIngressConfiguration::from_str(&content)
     }
 }

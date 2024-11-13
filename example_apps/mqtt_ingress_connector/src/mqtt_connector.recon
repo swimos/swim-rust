@@ -10,5 +10,5 @@
     map_lanes: {},
     relays: {},
     payload_deserializer: @Json,
-    subscription: @topic("example/topic")
+    subscription: @Topic("example/topic")
 }

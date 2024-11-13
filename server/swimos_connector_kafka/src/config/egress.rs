@@ -12,9 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, str::FromStr};
 use swimos_api::address::Address;
 use swimos_form::Form;
+use swimos_recon::parser::{parse_recognize, ParseError};
 
 use super::{DataFormat, KafkaLogLevel};
 
@@ -38,12 +39,12 @@ pub struct KafkaEgressConfiguration {
     /// Descriptors for the map lanes of the connector agent and how to extract messages
     /// from them to send to the egress sink.
     pub map_lanes: Vec<EgressLaneSpec>,
-    /// Descriptors for the value downlinks (to remote lanes) of the connector agent and how to extract messages
+    /// Descriptors for the event downlinks (to remote lanes) of the connector agent and how to extract messages
     /// from the received events to send to the egress sink.
-    pub value_downlinks: Vec<EgressDownlinkSpec>,
-    /// Descriptors for the map downlinks (to remote lanes) of the connector agent and how to extract messages
+    pub event_downlinks: Vec<EgressDownlinkSpec>,
+    /// Descriptors for the map-event downlinks (to remote lanes) of the connector agent and how to extract messages
     /// from the received events to send to the egress sink.
-    pub map_downlinks: Vec<EgressDownlinkSpec>,
+    pub map_event_downlinks: Vec<EgressDownlinkSpec>,
     /// Time to wait before retrying a message if the connector is initially busy, in milliseconds.
     pub retry_timeout_ms: u64,
 }
@@ -88,4 +89,12 @@ pub struct EgressDownlinkSpec {
     pub address: Address<String>,
     /// Specification for extracting the Kafka message from the downlink events.
     pub extractor: ExtractionSpec,
+}
+
+impl FromStr for KafkaEgressConfiguration {
+    type Err = ParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        parse_recognize::<KafkaEgressConfiguration>(s, true)
+    }
 }

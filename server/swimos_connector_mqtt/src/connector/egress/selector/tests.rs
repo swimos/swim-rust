@@ -100,14 +100,14 @@ fn make_config() -> MqttEgressConfiguration {
                 payload_selector: Some("$value".to_string()),
             },
         }],
-        value_downlinks: vec![EgressDownlinkSpec {
+        event_downlinks: vec![EgressDownlinkSpec {
             address: Address::new(Some(HOST), NODE1, LANE).owned(),
             extractor: ExtractionSpec {
                 topic_specifier: TopicSpecifier::Fixed,
                 payload_selector: None,
             },
         }],
-        map_downlinks: vec![EgressDownlinkSpec {
+        map_event_downlinks: vec![EgressDownlinkSpec {
             address: Address::new(None, NODE2, LANE).owned(),
             extractor: ExtractionSpec {
                 topic_specifier: TopicSpecifier::Selector("$key".to_string()),
@@ -147,13 +147,13 @@ fn extractors_from_config() {
         )]
         .into_iter()
         .collect(),
-        value_downlinks: [(
+        event_downlinks: [(
             Address::new(Some(HOST.to_string()), NODE1.to_string(), LANE.to_string()),
             MessageExtractor::new(TopicExtractor::Fixed("fixed".to_string()), None),
         )]
         .into_iter()
         .collect(),
-        map_downlinks: [(
+        map_event_downlinks: [(
             Address::new(None, NODE2.to_string(), LANE.to_string()),
             MessageExtractor::new(TopicExtractor::Selector(key_select), Some(value_select)),
         )]

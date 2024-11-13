@@ -76,10 +76,10 @@ pub struct MqttEgressConfiguration {
     pub map_lanes: Vec<EgressLaneSpec>,
     /// Descriptors for the value downlinks (to remote lanes) of the connector agent and how to extract messages
     /// from the received events to send to the egress sink.
-    pub value_downlinks: Vec<EgressDownlinkSpec>,
+    pub event_downlinks: Vec<EgressDownlinkSpec>,
     /// Descriptors for the map downlinks (to remote lanes) of the connector agent and how to extract messages
     /// from the received events to send to the egress sink.
-    pub map_downlinks: Vec<EgressDownlinkSpec>,
+    pub map_event_downlinks: Vec<EgressDownlinkSpec>,
     /// Serialization format to use when writing payloads.
     pub payload_serializer: DataFormat,
     /// Length of time the MQTT client will keep an idle connection open (the connector agent will fail if this expires).
@@ -146,12 +146,17 @@ pub struct EgressDownlinkSpec {
 #[derive(Clone, Debug, Form, PartialEq, Eq)]
 pub enum Subscription {
     /// A single named topic.
-    #[form(tag = "topic")]
     Topic(#[form(header_body)] String),
     /// A list of named topics.
-    #[form(tag = "topics")]
     Topics(#[form(header_body)] Vec<String>),
     /// A list of MQTT topic subscription filters.
-    #[form(tag = "filter")]
     Filters(#[form(header_body)] Vec<String>),
+}
+
+impl FromStr for MqttEgressConfiguration {
+    type Err = ParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        parse_recognize::<MqttEgressConfiguration>(s, true)
+    }
 }

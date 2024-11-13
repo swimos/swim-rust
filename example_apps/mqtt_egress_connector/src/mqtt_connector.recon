@@ -11,8 +11,8 @@
         }
     },
     map_lanes: {},
-    value_downlinks: {},
-    map_downlinks: {},
+    event_downlinks: {},
+    map_event_downlinks: {},
     payload_serializer: @Json,
     channel_size: 0
 }
