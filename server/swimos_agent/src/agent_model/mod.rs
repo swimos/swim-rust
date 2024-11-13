@@ -191,6 +191,7 @@ pub type MapLikeInitializer<T> =
 #[doc(hidden)]
 pub type ValueLikeInitializer<T> = Box<dyn ItemInitializer<T, BytesMut> + Send + 'static>;
 
+/// A trait for agents that can describe the names of their items (lanes and stores).
 pub trait AgentDescription {
     /// Get the item name for an item ID.
     fn item_name(&self, _id: u64) -> Option<Cow<'_, str>> {
