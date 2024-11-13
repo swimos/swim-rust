@@ -130,6 +130,16 @@ impl<Context> HandlerAction<Context> for RegisterCommander {
             StepResult::after_done()
         }
     }
+
+    fn describe(
+        &self,
+        _context: &Context,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        f.debug_tuple("RegisterCommander")
+            .field(&self.address)
+            .finish()
+    }
 }
 
 /// A [handler action](HandlerAction) to send a command to a lane that has been registered with
@@ -170,5 +180,22 @@ impl<T: StructuralWritable, Context> HandlerAction<Context> for SendCommandById<
         } else {
             StepResult::after_done()
         }
+    }
+
+    fn describe(
+        &self,
+        _context: &Context,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        let SendCommandById {
+            id,
+            body,
+            overwrite_permitted,
+        } = self;
+        f.debug_struct("SendCommandById")
+            .field("id", id)
+            .field("overwrite_permitted", overwrite_permitted)
+            .field("consumed", &body.is_none())
+            .finish()
     }
 }

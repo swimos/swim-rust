@@ -22,6 +22,7 @@ use swimos_api::{
 use tracing::debug;
 
 use crate::{
+    agent_model::AgentDescription,
     event_handler::{ActionContext, HandlerAction, Modification, StepResult},
     item::AgentItem,
     meta::AgentMetadata,
@@ -146,6 +147,7 @@ const REQ_DROPPED: &str = "HTTP request was dropped before it was fulfilled.";
 impl<Context, Get, Post, Put, Codec> HandlerAction<Context>
     for HttpLaneAccept<Context, Get, Post, Put, Codec>
 where
+    Context: AgentDescription,
     Codec: HttpLaneCodec<Post> + HttpLaneCodec<Put>,
 {
     type Completion = ();
@@ -219,6 +221,24 @@ where
         } else {
             StepResult::after_done()
         }
+    }
+
+    fn describe(
+        &self,
+        context: &Context,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        let HttpLaneAccept {
+            projection,
+            request,
+        } = self;
+        let lane = (projection)(context);
+        let name = context.item_name(lane.id());
+        f.debug_struct("HttpLaneAccept")
+            .field("id", &lane.id())
+            .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
+            .field("request", request)
+            .finish()
     }
 }
 

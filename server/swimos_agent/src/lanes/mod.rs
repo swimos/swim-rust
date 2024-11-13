@@ -161,4 +161,21 @@ where
             StepResult::after_done()
         }
     }
+
+    fn describe(
+        &self,
+        _context: &Context,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        let OpenLane {
+            name,
+            kind,
+            on_done,
+        } = self;
+        f.debug_struct("OpenLane")
+            .field("name", name)
+            .field("kind", kind)
+            .field("consumed", &on_done.is_none())
+            .finish()
+    }
 }

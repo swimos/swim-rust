@@ -12,7 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::AgentMetadata;
+use std::any::type_name;
+
+use crate::{event_handler::Described, AgentMetadata};
 
 use super::{ActionContext, EventHandlerError, HandlerAction, StepResult};
 
@@ -115,6 +117,17 @@ where
             } => StepResult::Fail(EventHandlerError::EffectError(Box::new(error))),
         }
     }
+
+    fn describe(
+        &self,
+        context: &Context,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        let TryHandler(handler) = self;
+        f.debug_tuple("TryHandler")
+            .field(&Described::new(context, handler))
+            .finish()
+    }
 }
 
 /// Type that is returned by the `and_then_ok` method on the [`TryHandlerActionExt`] trait.
@@ -195,6 +208,35 @@ where
                 }
             },
             AndThenOk::Done => StepResult::after_done(),
+        }
+    }
+
+    fn describe(
+        &self,
+        context: &C,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        match self {
+            AndThenOk::First { first, .. } => f
+                .debug_struct("AndThenOk")
+                .field("state", &"First")
+                .field("result_type", &type_name::<H2::Completion>())
+                .field("error_type", &type_name::<H1::Error>())
+                .field("first", &Described::new(context, first))
+                .finish(),
+            AndThenOk::Second(second) => f
+                .debug_struct("AndThenOk")
+                .field("state", &"Second")
+                .field("result_type", &type_name::<H2::Completion>())
+                .field("error_type", &type_name::<H1::Error>())
+                .field("second", &Described::new(context, second))
+                .finish(),
+            AndThenOk::Done => f
+                .debug_struct("AndThenOk")
+                .field("result_type", &type_name::<H2::Completion>())
+                .field("error_type", &type_name::<H1::Error>())
+                .field("state", &"Done")
+                .finish(),
         }
     }
 }

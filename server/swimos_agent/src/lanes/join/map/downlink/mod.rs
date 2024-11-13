@@ -18,6 +18,7 @@ use swimos_api::address::Address;
 use swimos_model::Text;
 
 use crate::{
+    agent_model::AgentDescription,
     downlink_lifecycle::{OnConsumeEvent, OnFailed, OnLinked, OnSynced, OnUnlinked},
     event_handler::{
         ActionContext, AndThen, AndThenContextual, ConstHandler, ContextualTrans, FollowedBy,
@@ -71,6 +72,7 @@ impl<L, K, V, LC, Context> JoinMapDownlink<L, K, V, LC, Context> {
 
 impl<L, K, V, LC, Context> OnLinked<Context> for JoinMapDownlink<L, K, V, LC, Context>
 where
+    Context: AgentDescription,
     L: Clone + Hash + Eq + Send,
     LC: OnJoinMapLinked<L, Context>,
 {
@@ -115,6 +117,7 @@ impl<L, K, V, Context> AlterLinkState<L, K, V, Context> {
 
 impl<L, K, V, Context> HandlerAction<Context> for AlterLinkState<L, K, V, Context>
 where
+    Context: AgentDescription,
     L: Hash + Eq,
 {
     type Completion = ();
@@ -140,11 +143,32 @@ where
             StepResult::after_done()
         }
     }
+
+    fn describe(
+        &self,
+        context: &Context,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        let AlterLinkState {
+            projection,
+            link_key,
+            state,
+        } = self;
+        let lane = (projection)(context);
+        let name = context.item_name(lane.id());
+        f.debug_struct("AlterLinkState")
+            .field("id", &lane.id())
+            .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
+            .field("consumed", &link_key.is_none())
+            .field("state", state)
+            .finish()
+    }
 }
 
 impl<L, K, V, LC, Context> OnConsumeEvent<MapMessage<K, V>, Context>
     for JoinMapDownlink<L, K, V, LC, Context>
 where
+    Context: AgentDescription,
     L: Clone + Hash + Eq + Send,
     LC: Send,
     K: Clone + Hash + Eq + Ord + Send,
@@ -188,6 +212,7 @@ impl<C, L, K, V> JoinMapLaneUpdate<C, L, K, V> {
 
 impl<C, L, K, V> HandlerAction<C> for JoinMapLaneUpdate<C, L, K, V>
 where
+    C: AgentDescription,
     L: Clone + Hash + Eq,
     K: Clone + Hash + Eq + Ord,
 {
@@ -217,6 +242,26 @@ where
         } else {
             StepResult::after_done()
         }
+    }
+
+    fn describe(
+        &self,
+        context: &C,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        let JoinMapLaneUpdate {
+            projection,
+            key_message,
+            add_link,
+        } = self;
+        let lane = (projection)(context);
+        let name = context.item_name(lane.id());
+        f.debug_struct("JoinMapLaneUpdate")
+            .field("id", &lane.id())
+            .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
+            .field("add_link", add_link)
+            .field("consumed", &key_message.is_none())
+            .finish()
     }
 }
 
@@ -316,6 +361,7 @@ type JoinMapOnFailed<'a, L, K, V, Context, LC> = AndThenContextual<
 
 impl<L, K, V, LC, Context> OnUnlinked<Context> for JoinMapDownlink<L, K, V, LC, Context>
 where
+    Context: AgentDescription,
     L: Clone + Hash + Eq + Send,
     K: Clone + Hash + Eq + Send,
     LC: OnJoinMapUnlinked<L, K, Context>,
@@ -342,6 +388,7 @@ where
 
 impl<L, K, V, LC, Context> OnFailed<Context> for JoinMapDownlink<L, K, V, LC, Context>
 where
+    Context: AgentDescription,
     L: Clone + Hash + Eq + Send,
     K: Clone + Hash + Eq + Send,
     LC: OnJoinMapFailed<L, K, Context>,
@@ -409,6 +456,7 @@ impl<'a, L, K, V, Context, LC> RunOnFailedTrans<'a, L, K, V, Context, LC> {
 impl<'a, L, K, V, Context, LC> ContextualTrans<Context, L>
     for RunOnUnlinkedTrans<'a, L, K, V, Context, LC>
 where
+    Context: AgentDescription,
     LC: OnJoinMapUnlinked<L, K, Context>,
     L: Clone + Hash + Eq,
     K: Clone + Hash + Eq,
@@ -441,6 +489,7 @@ where
 impl<'a, L, K, V, Context, LC> ContextualTrans<Context, L>
     for RunOnFailedTrans<'a, L, K, V, Context, LC>
 where
+    Context: AgentDescription,
     LC: OnJoinMapFailed<L, K, Context>,
     L: Clone + Hash + Eq,
     K: Clone + Hash + Eq,
@@ -504,6 +553,7 @@ pub struct AfterClosed<L, K, V, Context> {
 
 impl<L, K, V, Context> HandlerAction<Context> for AfterClosed<L, K, V, Context>
 where
+    Context: AgentDescription,
     L: Clone + Hash + Eq,
     K: Clone + Hash + Eq,
 {
@@ -547,5 +597,24 @@ where
         } else {
             StepResult::after_done()
         }
+    }
+
+    fn describe(
+        &self,
+        context: &Context,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        let AfterClosed {
+            projection,
+            response,
+            ..
+        } = self;
+        let lane = (projection)(context);
+        let name = context.item_name(lane.id());
+        f.debug_struct("AfterClosed")
+            .field("id", &lane.id())
+            .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
+            .field("consumed", &response.is_none())
+            .finish()
     }
 }

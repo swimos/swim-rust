@@ -34,19 +34,14 @@ use swimos_api::{
 use swimos_form::{read::RecognizerReadable, write::StructuralWritable};
 use swimos_model::Text;
 use swimos_recon::parser::{AsyncParseError, RecognizerDecoder};
-use swimos_utilities::{
-    byte_channel::{ByteReader, ByteWriter},
-    never::Never,
-    routing::RouteUri,
-};
+use swimos_utilities::{never::Never, routing::RouteUri};
 use thiserror::Error;
 use tokio::time::Instant;
 use tokio_util::codec::{Decoder, Encoder};
 
 use crate::{
     agent_model::downlink::{
-        BoxDownlinkChannel, BoxDownlinkChannelFactory, DownlinkChannelFactory, MapDownlinkHandle,
-        ValueDownlinkHandle,
+        BoxDownlinkChannelFactory, DownlinkChannelFactory, MapDownlinkHandle, ValueDownlinkHandle,
     },
     lanes::JoinLaneKind,
     meta::AgentMetadata,
@@ -306,30 +301,6 @@ where
     Box::new(f(result.map(|_| ())))
 }
 
-struct ConstructDownlink<F> {
-    inner: Option<(ByteWriter, ByteReader, F)>,
-}
-
-impl<Context, F> HandlerAction<Context> for ConstructDownlink<F>
-where
-    F: FnOnce(&Context, ByteWriter, ByteReader) -> BoxDownlinkChannel<Context> + Send + 'static,
-{
-    type Completion = BoxDownlinkChannel<Context>;
-
-    fn step(
-        &mut self,
-        _action_context: &mut ActionContext<Context>,
-        _meta: AgentMetadata,
-        context: &Context,
-    ) -> StepResult<Self::Completion> {
-        if let Some((writer, reader, f)) = self.inner.take() {
-            StepResult::done(f(context, writer, reader))
-        } else {
-            StepResult::after_done()
-        }
-    }
-}
-
 /// Trait to describe an action to be taken, within the context of an agent, when an event occurs. The
 /// execution of an event handler can be suspended (so that it can trigger the execution of other handlers).
 /// This could be expressed using generators from the standard library after this feature is stabilized.
@@ -401,7 +372,15 @@ where
         meta: AgentMetadata,
         context: &Context,
     ) -> StepResult<Self::Completion> {
-        (*self).step(action_context, meta, context)
+        (**self).step(action_context, meta, context)
+    }
+
+    fn describe(
+        &self,
+        context: &Context,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        (**self).describe(context, f)
     }
 }
 

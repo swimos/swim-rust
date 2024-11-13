@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{collections::HashMap, sync::Arc};
+use std::{borrow::Cow, collections::HashMap, sync::Arc};
 
 use parking_lot::Mutex;
 use swimos_api::{
@@ -21,8 +21,11 @@ use swimos_api::{
 };
 use swimos_utilities::routing::RouteUri;
 
-use crate::agent_lifecycle::item_event::{HLeaf, HttpBranch};
 use crate::lanes::http::Request;
+use crate::{
+    agent_lifecycle::item_event::{HLeaf, HttpBranch},
+    agent_model::AgentDescription,
+};
 use crate::{
     agent_lifecycle::{
         item_event::{tests::run_handler, ItemEventShared},
@@ -47,6 +50,17 @@ struct TestAgent {
     first: SimpleHttpLane<i32, Recon>,
     second: SimpleHttpLane<String, Recon>,
     third: SimpleHttpLane<bool, Recon>,
+}
+
+impl AgentDescription for TestAgent {
+    fn item_name(&self, id: u64) -> Option<Cow<'_, str>> {
+        match id {
+            LANE_ID1 => Some(Cow::Borrowed("first")),
+            LANE_ID2 => Some(Cow::Borrowed("second")),
+            LANE_ID3 => Some(Cow::Borrowed("third")),
+            _ => None,
+        }
+    }
 }
 
 const LANE_ID1: u64 = 0;

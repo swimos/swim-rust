@@ -196,7 +196,7 @@ impl<Context, T> SupplyLaneSync<Context, T> {
     }
 }
 
-impl<Context, T> HandlerAction<Context> for SupplyLaneSync<Context, T> {
+impl<Context: AgentDescription, T> HandlerAction<Context> for SupplyLaneSync<Context, T> {
     type Completion = ();
 
     fn step(
@@ -216,5 +216,20 @@ impl<Context, T> HandlerAction<Context> for SupplyLaneSync<Context, T> {
         } else {
             StepResult::after_done()
         }
+    }
+
+    fn describe(
+        &self,
+        context: &Context,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        let SupplyLaneSync { projection, id } = self;
+        let lane = (projection)(context);
+        let name = context.item_name(lane.id());
+        f.debug_struct("SupplyLaneSync")
+            .field("id", &lane.id())
+            .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
+            .field("sync_id", &id)
+            .finish()
     }
 }
