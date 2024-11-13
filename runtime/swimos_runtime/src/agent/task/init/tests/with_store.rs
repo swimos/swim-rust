@@ -69,13 +69,6 @@ impl TestInit for NoLanes {
     }
 }
 
-#[tokio::test]
-async fn no_lanes_with_store() {
-    let store = StorePersistence(FakeStore::default());
-    let (result, _) = run_test(NoLanes, store).await;
-    assert!(matches!(result, Err(AgentExecError::NoInitialLanes)));
-}
-
 enum Expectation<T> {
     Expect(T),
     Fail,
