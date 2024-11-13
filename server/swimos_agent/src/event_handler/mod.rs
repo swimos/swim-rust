@@ -15,7 +15,7 @@
 use std::{
     any::{type_name, Any, TypeId},
     collections::HashMap,
-    fmt::Debug,
+    fmt::{Debug, Formatter},
     marker::PhantomData,
 };
 
@@ -331,11 +331,15 @@ pub trait HandlerAction<Context> {
         context: &Context,
     ) -> StepResult<Self::Completion>;
 
-    fn describe(
-        &self,
-        _context: &Context,
-        f: &mut std::fmt::Formatter<'_>,
-    ) -> Result<(), std::fmt::Error> {
+    /// Write a debug formatted description of the handler, potentially including information from
+    /// the context (such as the names of lanes etc.).
+    ///
+    /// # Arguments
+    ///
+    /// * `context` - The execution context of the handler (providing access to the lanes of the agent).
+    /// * `f` - Formatter to be written to.
+    #[allow(unused_variables)]
+    fn describe(&self, context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         f.debug_tuple("OpaqueHandler").finish()
     }
 }
@@ -375,11 +379,7 @@ where
         (**self).step(action_context, meta, context)
     }
 
-    fn describe(
-        &self,
-        context: &Context,
-        f: &mut std::fmt::Formatter<'_>,
-    ) -> Result<(), std::fmt::Error> {
+    fn describe(&self, context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         (**self).describe(context, f)
     }
 }
@@ -399,11 +399,7 @@ where
         (**self).step(action_context, meta, context)
     }
 
-    fn describe(
-        &self,
-        context: &Context,
-        f: &mut std::fmt::Formatter<'_>,
-    ) -> Result<(), std::fmt::Error> {
+    fn describe(&self, context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         (**self).describe(context, f)
     }
 }
@@ -611,11 +607,7 @@ where
         }
     }
 
-    fn describe(
-        &self,
-        _context: &Context,
-        f: &mut std::fmt::Formatter<'_>,
-    ) -> Result<(), std::fmt::Error> {
+    fn describe(&self, _context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         f.debug_struct("SideEffect")
             .field("result_type", &type_name::<R>())
             .finish()
@@ -646,11 +638,7 @@ where
         }
     }
 
-    fn describe(
-        &self,
-        _context: &Context,
-        f: &mut std::fmt::Formatter<'_>,
-    ) -> Result<(), std::fmt::Error> {
+    fn describe(&self, _context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         f.debug_struct("SideEffects")
             .field("item_type", &type_name::<I::Item>())
             .finish()
@@ -816,11 +804,7 @@ where
         }
     }
 
-    fn describe(
-        &self,
-        context: &Context,
-        f: &mut std::fmt::Formatter<'_>,
-    ) -> Result<(), std::fmt::Error> {
+    fn describe(&self, context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         let mut dbg = f.debug_struct("Map");
         if let Map(Some((h, _))) = self {
             dbg.field("input", &Described::new(context, h));
@@ -831,6 +815,9 @@ where
     }
 }
 
+/// Utility type with a [`std::fmt::Debug`] implementation that calls the [`HandlerAction::describe`] method
+/// on an event handler, providing a reference to its context. This is to allow implementations of
+/// describe functions on nested handlers to format their inner handlers.
 #[derive(Clone, Copy)]
 pub struct Described<'a, Context, H> {
     context: &'a Context,
@@ -847,7 +834,7 @@ impl<'a, Context, H> std::fmt::Debug for Described<'a, Context, H>
 where
     H: HandlerAction<Context>,
 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let Described { context, handler } = self;
         handler.describe(context, f)
     }
@@ -902,11 +889,7 @@ where
         }
     }
 
-    fn describe(
-        &self,
-        context: &Context,
-        f: &mut std::fmt::Formatter<'_>,
-    ) -> Result<(), std::fmt::Error> {
+    fn describe(&self, context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         match self {
             AndThenContextual::First { first, .. } => f
                 .debug_struct("AndThenContextual")
@@ -974,11 +957,7 @@ where
         }
     }
 
-    fn describe(
-        &self,
-        context: &Context,
-        f: &mut std::fmt::Formatter<'_>,
-    ) -> Result<(), std::fmt::Error> {
+    fn describe(&self, context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         match self {
             AndThen::First { first, .. } => f
                 .debug_struct("AndThen")
@@ -1050,11 +1029,7 @@ where
         }
     }
 
-    fn describe(
-        &self,
-        context: &Context,
-        f: &mut std::fmt::Formatter<'_>,
-    ) -> Result<(), std::fmt::Error> {
+    fn describe(&self, context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         match self {
             AndThenTry::First { first, .. } => f
                 .debug_struct("AndThenTry")
@@ -1122,11 +1097,7 @@ where
         }
     }
 
-    fn describe(
-        &self,
-        context: &Context,
-        f: &mut std::fmt::Formatter<'_>,
-    ) -> Result<(), std::fmt::Error> {
+    fn describe(&self, context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         match self {
             FollowedBy::First { first, next } => f
                 .debug_struct("FollowedBy")
@@ -1180,11 +1151,7 @@ impl<T, Context> HandlerAction<Context> for ConstHandler<T> {
         }
     }
 
-    fn describe(
-        &self,
-        _context: &Context,
-        f: &mut std::fmt::Formatter<'_>,
-    ) -> Result<(), std::fmt::Error> {
+    fn describe(&self, _context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         let ConstHandler(value) = self;
         f.debug_struct("ConstHandler")
             .field("value_type", &type_name::<T>())
@@ -1205,11 +1172,7 @@ impl<Context> HandlerAction<Context> for CNil {
         match *self {}
     }
 
-    fn describe(
-        &self,
-        _context: &Context,
-        _f: &mut std::fmt::Formatter<'_>,
-    ) -> Result<(), std::fmt::Error> {
+    fn describe(&self, _context: &Context, _f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         match *self {}
     }
 }
@@ -1233,11 +1196,7 @@ where
         }
     }
 
-    fn describe(
-        &self,
-        context: &Context,
-        f: &mut std::fmt::Formatter<'_>,
-    ) -> Result<(), std::fmt::Error> {
+    fn describe(&self, context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         match self {
             Coproduct::Inl(h) => f
                 .debug_tuple("Coproduct")
@@ -1277,11 +1236,7 @@ impl<Context> HandlerAction<Context> for GetAgentUri {
         }
     }
 
-    fn describe(
-        &self,
-        _context: &Context,
-        f: &mut std::fmt::Formatter<'_>,
-    ) -> Result<(), std::fmt::Error> {
+    fn describe(&self, _context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         f.debug_tuple("GetAgentUri").finish()
     }
 }
@@ -1316,11 +1271,7 @@ impl<Context, S: AsRef<str>> HandlerAction<Context> for GetParameter<S> {
         }
     }
 
-    fn describe(
-        &self,
-        _context: &Context,
-        f: &mut std::fmt::Formatter<'_>,
-    ) -> Result<(), std::fmt::Error> {
+    fn describe(&self, _context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         let body = if let GetParameter { key: Some(name) } = self {
             name.as_ref()
         } else {
@@ -1373,11 +1324,7 @@ impl<Context, T: RecognizerReadable> HandlerAction<Context> for Decode<T> {
         }
     }
 
-    fn describe(
-        &self,
-        _context: &Context,
-        f: &mut std::fmt::Formatter<'_>,
-    ) -> Result<(), std::fmt::Error> {
+    fn describe(&self, _context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         let Decode {
             buffer, complete, ..
         } = self;
@@ -1412,11 +1359,7 @@ where
         }
     }
 
-    fn describe(
-        &self,
-        context: &Context,
-        f: &mut std::fmt::Formatter<'_>,
-    ) -> Result<(), std::fmt::Error> {
+    fn describe(&self, context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         match self {
             Either::Left(h) => f
                 .debug_tuple("Either")
@@ -1606,11 +1549,7 @@ where
         }
     }
 
-    fn describe(
-        &self,
-        context: &Context,
-        f: &mut std::fmt::Formatter<'_>,
-    ) -> Result<(), std::fmt::Error> {
+    fn describe(&self, context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         match self {
             Sequentially::Init(_) => f
                 .debug_struct("Sequentially")
@@ -1649,11 +1588,7 @@ impl<Context, H: HandlerAction<Context>> HandlerAction<Context> for Discard<H> {
         inner.step(action_context, meta, context).map(|_| ())
     }
 
-    fn describe(
-        &self,
-        context: &Context,
-        f: &mut std::fmt::Formatter<'_>,
-    ) -> Result<(), std::fmt::Error> {
+    fn describe(&self, context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         let Discard(h) = self;
         f.debug_tuple("Discard")
             .field(&Described::new(context, h))
@@ -1702,11 +1637,7 @@ where
         }
     }
 
-    fn describe(
-        &self,
-        context: &Context,
-        f: &mut std::fmt::Formatter<'_>,
-    ) -> Result<(), std::fmt::Error> {
+    fn describe(&self, context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         match self {
             Some(inner) => f
                 .debug_struct("Option")
@@ -1785,11 +1716,7 @@ impl<Context> HandlerAction<Context> for Stop {
         StepResult::Fail(EventHandlerError::StopInstructed)
     }
 
-    fn describe(
-        &self,
-        _context: &Context,
-        f: &mut std::fmt::Formatter<'_>,
-    ) -> Result<(), std::fmt::Error> {
+    fn describe(&self, _context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         f.debug_tuple("Stop").finish()
     }
 }
@@ -1863,11 +1790,7 @@ where
         }
     }
 
-    fn describe(
-        &self,
-        context: &Context,
-        f: &mut std::fmt::Formatter<'_>,
-    ) -> Result<(), std::fmt::Error> {
+    fn describe(&self, context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         let Join { state } = self;
         match state {
             JoinState::Init(h1, h2) => f
@@ -1990,11 +1913,7 @@ where
         }
     }
 
-    fn describe(
-        &self,
-        context: &Context,
-        f: &mut std::fmt::Formatter<'_>,
-    ) -> Result<(), std::fmt::Error> {
+    fn describe(&self, context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         let Join3 { state } = self;
         match state {
             Join3State::Init(h1, h2, h3) => f
@@ -2063,11 +1982,7 @@ where
         }
     }
 
-    fn describe(
-        &self,
-        _context: &Context,
-        f: &mut std::fmt::Formatter<'_>,
-    ) -> Result<(), std::fmt::Error> {
+    fn describe(&self, _context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         let Fail { error, .. } = self;
         f.debug_struct("Fail")
             .field("dummy_type", &type_name::<T>())
@@ -2107,11 +2022,7 @@ where
         }
     }
 
-    fn describe(
-        &self,
-        _context: &Context,
-        f: &mut std::fmt::Formatter<'_>,
-    ) -> Result<(), std::fmt::Error> {
+    fn describe(&self, _context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         f.debug_tuple("WithParameters").finish()
     }
 }
@@ -2150,11 +2061,7 @@ impl<Context> HandlerAction<Context> for ScheduleTimerEvent {
         }
     }
 
-    fn describe(
-        &self,
-        _context: &Context,
-        f: &mut std::fmt::Formatter<'_>,
-    ) -> Result<(), std::fmt::Error> {
+    fn describe(&self, _context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         write!(f, "{:?}", self)
     }
 }
@@ -2191,11 +2098,7 @@ where
         self.handler.step(action_context, meta, context)
     }
 
-    fn describe(
-        &self,
-        context: &Context,
-        f: &mut std::fmt::Formatter<'_>,
-    ) -> Result<(), std::fmt::Error> {
+    fn describe(&self, context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         let Annotated {
             annotation,
             handler,
