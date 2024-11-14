@@ -15,14 +15,15 @@
 use std::{collections::HashSet, hash::Hash};
 use swimos_agent_protocol::MapMessage;
 use swimos_api::address::Address;
+use swimos_form::Form;
 use swimos_model::Text;
 
 use crate::{
     agent_model::AgentDescription,
     downlink_lifecycle::{OnConsumeEvent, OnFailed, OnLinked, OnSynced, OnUnlinked},
     event_handler::{
-        ActionContext, AndThen, AndThenContextual, ConstHandler, ContextualTrans, FollowedBy,
-        HandlerAction, HandlerActionExt, HandlerTrans, Modification, StepResult,
+        ActionContext, AndThen, AndThenContextual, ConstHandler, ContextualTrans, Described,
+        FollowedBy, HandlerAction, HandlerActionExt, HandlerTrans, Modification, StepResult,
     },
     item::AgentItem,
     lanes::{join::DownlinkStatus, LinkClosedResponse},
@@ -34,7 +35,7 @@ use super::{
         on_failed::OnJoinMapFailed, on_linked::OnJoinMapLinked, on_synced::OnJoinMapSynced,
         on_unlinked::OnJoinMapUnlinked,
     },
-    JoinMapLane,
+    JoinMapAddDownlink, JoinMapLane,
 };
 
 #[cfg(test)]
@@ -338,13 +339,13 @@ where
 
 type OnUnlinkedWithCleanup<'a, L, K, V, Context, LC> = AndThen<
     <LC as OnJoinMapUnlinked<L, K, Context>>::OnJoinMapUnlinkedHandler<'a>,
-    AfterClosed<L, K, V, Context>,
-    AfterClosedTrans<L, K, V, Context>,
+    AfterClosed<'a, L, K, V, Context>,
+    AfterClosedTrans<'a, L, K, V, Context>,
 >;
 type OnFailedWithCleanup<'a, L, K, V, Context, LC> = AndThen<
     <LC as OnJoinMapFailed<L, K, Context>>::OnJoinMapFailedHandler<'a>,
-    AfterClosed<L, K, V, Context>,
-    AfterClosedTrans<L, K, V, Context>,
+    AfterClosed<'a, L, K, V, Context>,
+    AfterClosedTrans<'a, L, K, V, Context>,
 >;
 
 type JoinMapOnUnlinked<'a, L, K, V, Context, LC> = AndThenContextual<
@@ -361,9 +362,12 @@ type JoinMapOnFailed<'a, L, K, V, Context, LC> = AndThenContextual<
 
 impl<L, K, V, LC, Context> OnUnlinked<Context> for JoinMapDownlink<L, K, V, LC, Context>
 where
-    Context: AgentDescription,
-    L: Clone + Hash + Eq + Send,
-    K: Clone + Hash + Eq + Send,
+    Context: AgentDescription + 'static,
+    L: Clone + Hash + Eq + Send + 'static,
+    K: Form + Clone + Hash + Ord + Eq + Send + 'static,
+    K::Rec: Send,
+    V: Form + Send + 'static,
+    V::BodyRec: Send,
     LC: OnJoinMapUnlinked<L, K, Context>,
 {
     type OnUnlinkedHandler<'a> = JoinMapOnUnlinked<'a, L, K, V, Context, LC>
@@ -388,9 +392,12 @@ where
 
 impl<L, K, V, LC, Context> OnFailed<Context> for JoinMapDownlink<L, K, V, LC, Context>
 where
-    Context: AgentDescription,
-    L: Clone + Hash + Eq + Send,
-    K: Clone + Hash + Eq + Send,
+    Context: AgentDescription + 'static,
+    L: Clone + Hash + Eq + Send + 'static,
+    K: Form + Clone + Hash + Ord + Eq + Send + 'static,
+    K::Rec: Send,
+    V: Form + Send + 'static,
+    V::BodyRec: Send,
     LC: OnJoinMapFailed<L, K, Context>,
 {
     type OnFailedHandler<'a> = JoinMapOnFailed<'a, L, K, V, Context, LC>
@@ -456,10 +463,13 @@ impl<'a, L, K, V, Context, LC> RunOnFailedTrans<'a, L, K, V, Context, LC> {
 impl<'a, L, K, V, Context, LC> ContextualTrans<Context, L>
     for RunOnUnlinkedTrans<'a, L, K, V, Context, LC>
 where
-    Context: AgentDescription,
+    Context: AgentDescription + 'static,
     LC: OnJoinMapUnlinked<L, K, Context>,
-    L: Clone + Hash + Eq,
-    K: Clone + Hash + Eq,
+    L: Clone + Hash + Eq + Send + 'static,
+    K: Form + Clone + Hash + Ord + Eq + Send + 'static,
+    K::Rec: Send,
+    V: Form + Send + 'static,
+    V::BodyRec: Send,
 {
     type Out = OnUnlinkedWithCleanup<'a, L, K, V, Context, LC>;
 
@@ -480,6 +490,7 @@ where
             .on_unlinked(link_key.clone(), remote, keys.clone())
             .and_then(AfterClosedTrans {
                 projection,
+                address: remote_lane,
                 link_key,
                 keys,
             })
@@ -489,10 +500,13 @@ where
 impl<'a, L, K, V, Context, LC> ContextualTrans<Context, L>
     for RunOnFailedTrans<'a, L, K, V, Context, LC>
 where
-    Context: AgentDescription,
+    Context: AgentDescription + 'static,
     LC: OnJoinMapFailed<L, K, Context>,
-    L: Clone + Hash + Eq,
-    K: Clone + Hash + Eq,
+    L: Clone + Hash + Eq + Send + 'static,
+    K: Form + Clone + Hash + Ord + Eq + Send + 'static,
+    K::Rec: Send,
+    V: Form + Send + 'static,
+    V::BodyRec: Send,
 {
     type Out = OnFailedWithCleanup<'a, L, K, V, Context, LC>;
 
@@ -513,89 +527,121 @@ where
             .on_failed(link_key.clone(), remote, keys.clone())
             .and_then(AfterClosedTrans {
                 projection,
+                address: remote_lane,
                 link_key,
                 keys,
             })
     }
 }
 
-pub struct AfterClosedTrans<L, K, V, Context> {
+pub struct AfterClosedTrans<'a, L, K, V, Context> {
     projection: fn(&Context) -> &JoinMapLane<L, K, V>,
+    address: &'a Address<Text>,
     link_key: L,
     keys: HashSet<K>,
 }
 
-impl<L, K, V, Context> HandlerTrans<LinkClosedResponse> for AfterClosedTrans<L, K, V, Context> {
-    type Out = AfterClosed<L, K, V, Context>;
+impl<'a, L, K, V, Context> HandlerTrans<LinkClosedResponse>
+    for AfterClosedTrans<'a, L, K, V, Context>
+{
+    type Out = AfterClosed<'a, L, K, V, Context>;
 
-    fn transform(self, input: LinkClosedResponse) -> Self::Out {
+    fn transform(self, response: LinkClosedResponse) -> Self::Out {
         let AfterClosedTrans {
             projection,
+            address,
             link_key,
             keys,
         } = self;
-        AfterClosed {
+        AfterClosed::Cleanup {
             projection,
+            address,
             link_key,
-            response: Some(input),
+            response,
             keys,
         }
     }
 }
 
 /// An event handler that cleans up after a downlink unlinks or fails.
-pub struct AfterClosed<L, K, V, Context> {
-    link_key: L,
-    projection: fn(&Context) -> &JoinMapLane<L, K, V>,
-    response: Option<LinkClosedResponse>,
-    keys: HashSet<K>,
+#[derive(Default)]
+pub enum AfterClosed<'a, L, K, V, Context> {
+    Cleanup {
+        link_key: L,
+        projection: fn(&Context) -> &JoinMapLane<L, K, V>,
+        address: &'a Address<Text>,
+        response: LinkClosedResponse,
+        keys: HashSet<K>,
+    },
+    Restarting(JoinMapAddDownlink<Context, L, K, V>),
+    #[default]
+    Done,
 }
 
-impl<L, K, V, Context> HandlerAction<Context> for AfterClosed<L, K, V, Context>
+impl<'a, L, K, V, Context> HandlerAction<Context> for AfterClosed<'a, L, K, V, Context>
 where
-    Context: AgentDescription,
-    L: Clone + Hash + Eq,
-    K: Clone + Hash + Eq,
+    Context: AgentDescription + 'static,
+    L: Clone + Hash + Eq + Send + 'static,
+    K: Form + Clone + Hash + Ord + Eq + Send + 'static,
+    K::Rec: Send,
+    V: Form + Send + 'static,
+    V::BodyRec: Send,
 {
     type Completion = ();
 
     fn step(
         &mut self,
-        _action_context: &mut ActionContext<Context>,
-        _meta: AgentMetadata,
+        action_context: &mut ActionContext<Context>,
+        meta: AgentMetadata,
         context: &Context,
     ) -> StepResult<Self::Completion> {
-        let AfterClosed {
-            link_key,
-            projection,
-            response,
-            keys,
-        } = self;
-        if let Some(response) = response.take() {
-            let JoinMapLane {
-                inner,
-                link_tracker,
-            } = projection(context);
-            link_tracker.borrow_mut().remove_link(link_key);
-            match response {
-                LinkClosedResponse::Retry => todo!(),
-                LinkClosedResponse::Abandon => StepResult::done(()),
-                LinkClosedResponse::Delete => {
-                    if keys.is_empty() {
-                        StepResult::done(())
-                    } else {
-                        for key in keys.iter() {
-                            inner.remove(key);
+        loop {
+            match std::mem::take(self) {
+                AfterClosed::Cleanup {
+                    link_key,
+                    projection,
+                    address,
+                    response,
+                    keys,
+                } => {
+                    let JoinMapLane {
+                        inner,
+                        link_tracker,
+                    } = projection(context);
+                    link_tracker.borrow_mut().remove_link(&link_key);
+                    match response {
+                        LinkClosedResponse::Abandon => break StepResult::done(()),
+                        LinkClosedResponse::Delete => {
+                            break if keys.is_empty() {
+                                StepResult::done(())
+                            } else {
+                                for key in keys.iter() {
+                                    inner.remove(key);
+                                }
+                                StepResult::Complete {
+                                    modified_item: Some(Modification::of(inner.id())),
+                                    result: (),
+                                }
+                            };
                         }
-                        StepResult::Complete {
-                            modified_item: Some(Modification::of(inner.id())),
-                            result: (),
+                        LinkClosedResponse::Retry => {
+                            *self = AfterClosed::Restarting(JoinMapAddDownlink::new(
+                                projection,
+                                link_key,
+                                address.clone(),
+                            ));
                         }
                     }
                 }
+                AfterClosed::Restarting(mut handler) => {
+                    let result = handler.step(action_context, meta, context);
+                    if result.is_cont() {
+                        *self = AfterClosed::Restarting(handler);
+                    }
+                    break result;
+                }
+                AfterClosed::Done => break StepResult::after_done(),
             }
-        } else {
-            StepResult::after_done()
         }
     }
 
@@ -604,17 +650,29 @@ where
         context: &Context,
         f: &mut std::fmt::Formatter<'_>,
     ) -> Result<(), std::fmt::Error> {
-        let AfterClosed {
-            projection,
-            response,
-            ..
-        } = self;
-        let lane = (projection)(context);
-        let name = context.item_name(lane.id());
-        f.debug_struct("AfterClosed")
-            .field("id", &lane.id())
-            .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
-            .field("consumed", &response.is_none())
-            .finish()
+        match self {
+            AfterClosed::Cleanup {
+                projection,
+                address,
+                response,
+                ..
+            } => {
+                let lane = (projection)(context);
+                let name = context.item_name(lane.id());
+                f.debug_struct("AfterClosed")
+                    .field("id", &lane.id())
+                    .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
+                    .field("state", &"Cleanup")
+                    .field("address", address)
+                    .field("response", response)
+                    .finish()
+            }
+            AfterClosed::Restarting(handler) => f
+                .debug_struct("AfterClosed")
+                .field("state", &"Restarting")
+                .field("handler", &Described::new(context, handler))
+                .finish(),
+            AfterClosed::Done => f.debug_tuple("AfterClosed").field(&"<<CONSUMED>>").finish(),
+        }
     }
 }
