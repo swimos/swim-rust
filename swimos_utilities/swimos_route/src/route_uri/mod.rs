@@ -20,8 +20,6 @@ use std::{
 
 use nom::Finish;
 
-use self::parser::RouteUriParts;
-
 mod parser;
 
 #[cfg(test)]
@@ -32,7 +30,9 @@ mod tests;
 pub struct RouteUri {
     representation: String,
     scheme_len: Option<usize>,
-    path_len: usize,
+    path: (usize, usize),
+    query: Option<(usize, usize)>,
+    fragment: Option<usize>,
 }
 
 impl Default for RouteUri {
@@ -40,7 +40,9 @@ impl Default for RouteUri {
         Self {
             representation: ".".to_string(),
             scheme_len: None,
-            path_len: 1,
+            path: (0, 1),
+            query: None,
+            fragment: None,
         }
     }
 }
@@ -52,11 +54,19 @@ impl Display for RouteUri {
 }
 
 impl RouteUri {
-    fn new(original: String, scheme_len: Option<usize>, path_len: usize) -> Self {
+    fn new(
+        original: String,
+        scheme_len: Option<usize>,
+        path: (usize, usize),
+        query: Option<(usize, usize)>,
+        fragment: Option<usize>,
+    ) -> Self {
         RouteUri {
             representation: original,
             scheme_len,
-            path_len,
+            path,
+            query,
+            fragment,
         }
     }
 
@@ -74,24 +84,31 @@ impl RouteUri {
     pub fn path(&self) -> &str {
         let RouteUri {
             representation,
-            scheme_len,
-            path_len,
+            path,
+            ..
         } = self;
-        let offset = if let Some(n) = scheme_len { *n + 1 } else { 0 };
-        let end = offset + *path_len;
-        &representation[offset..end]
+        let (offset, len) = *path;
+        &representation[offset..(offset + len)]
     }
 
     /// The query of the URI.
-    /// TODO Implement this.
     pub fn query(&self) -> Option<&str> {
-        None
+        let RouteUri {
+            representation,
+            query,
+            ..
+        } = self;
+        (*query).map(|(offset, len)| &representation[offset..(offset + len)])
     }
 
     /// The fragment of the URI.
-    /// TODO Implement this.
     pub fn fragment(&self) -> Option<&str> {
-        None
+        let RouteUri {
+            representation,
+            fragment,
+            ..
+        } = self;
+        (*fragment).map(|offset| &representation[offset..])
     }
 
     pub fn as_str(&self) -> &str {
@@ -122,13 +139,6 @@ impl Display for InvalidRouteUri {
 
 impl std::error::Error for InvalidRouteUri {}
 
-fn to_offsets(parts: RouteUriParts<'_>) -> (Option<usize>, usize) {
-    let RouteUriParts { scheme, path } = parts;
-    let scheme_len = scheme.map(|span| span.len());
-    let path_len = path.len();
-    (scheme_len, path_len)
-}
-
 impl FromStr for RouteUri {
     type Err = InvalidRouteUri;
 
@@ -137,8 +147,13 @@ impl FromStr for RouteUri {
         parser::route_uri(span)
             .finish()
             .map(|(_, parts)| {
-                let (scheme_len, path_len) = to_offsets(parts);
-                RouteUri::new(s.to_owned(), scheme_len, path_len)
+                RouteUri::new(
+                    s.to_owned(),
+                    parts.scheme_len(),
+                    parts.path(),
+                    parts.query(),
+                    parts.fragment_offset(),
+                )
             })
             .map_err(|_| InvalidRouteUri(s.to_owned()))
     }
@@ -157,11 +172,15 @@ impl TryFrom<String> for RouteUri {
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
         let span = parser::Span::new(value.as_str());
-        let result = parser::route_uri(span)
-            .finish()
-            .map(|(_, parts)| to_offsets(parts));
+        let result = parser::route_uri(span).finish().map(|(_, parts)| parts);
         match result {
-            Ok((scheme_len, path_len)) => Ok(RouteUri::new(value, scheme_len, path_len)),
+            Ok(parts) => {
+                let scheme = parts.scheme_len();
+                let path = parts.path();
+                let query = parts.query();
+                let fragment = parts.fragment_offset();
+                Ok(RouteUri::new(value, scheme, path, query, fragment))
+            }
             _ => Err(InvalidRouteUri(value)),
         }
     }

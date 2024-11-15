@@ -50,6 +50,11 @@ fn is_path_char(c: char) -> bool {
         || c == '@'
         || c == '&'
         || c == '='
+        || c == ';'
+}
+
+fn is_query_or_fragment_char(c: char) -> bool {
+    is_path_char(c) || c == '/' || c == '?'
 }
 
 fn hex(input: Span<'_>) -> IResult<Span<'_>, char> {
@@ -64,8 +69,26 @@ fn path_char(input: Span<'_>) -> IResult<Span<'_>, Span<'_>> {
     alt((recognize(satisfy(is_path_char)), escape))(input)
 }
 
+fn query_or_fragment_char(input: Span<'_>) -> IResult<Span<'_>, Span<'_>> {
+    alt((recognize(satisfy(is_query_or_fragment_char)), escape))(input)
+}
+
 fn path_segment(input: Span<'_>) -> IResult<Span<'_>, usize> {
     many0_count(path_char)(input)
+}
+
+fn query(input: Span<'_>) -> IResult<Span<'_>, Option<Span<'_>>> {
+    opt(preceded(
+        char('?'),
+        recognize(many0_count(query_or_fragment_char)),
+    ))(input)
+}
+
+fn fragment(input: Span<'_>) -> IResult<Span<'_>, Option<Span<'_>>> {
+    opt(preceded(
+        char('#'),
+        recognize(many0_count(query_or_fragment_char)),
+    ))(input)
 }
 
 fn first_path_segment(input: Span<'_>) -> IResult<Span<'_>, usize> {
@@ -86,11 +109,36 @@ fn path(input: Span<'_>) -> IResult<Span<'_>, Span<'_>> {
 pub struct RouteUriParts<'a> {
     pub scheme: Option<Span<'a>>,
     pub path: Span<'a>,
+    pub query: Option<Span<'a>>,
+    pub fragment: Option<Span<'a>>,
+}
+
+impl<'a> RouteUriParts<'a> {
+    pub fn scheme_len(&self) -> Option<usize> {
+        self.scheme.map(|span| span.len())
+    }
+
+    pub fn path(&self) -> (usize, usize) {
+        (self.path.location_offset(), self.path.len())
+    }
+
+    pub fn query(&self) -> Option<(usize, usize)> {
+        self.query.map(|span| (span.location_offset(), span.len()))
+    }
+
+    pub fn fragment_offset(&self) -> Option<usize> {
+        self.fragment.map(|span| span.location_offset())
+    }
 }
 
 pub fn route_uri(input: Span<'_>) -> IResult<Span<'_>, RouteUriParts<'_>> {
     map(
-        pair(opt(terminated(scheme, char(':'))), path),
-        |(scheme, path)| RouteUriParts { scheme, path },
+        tuple((opt(terminated(scheme, char(':'))), path, query, fragment)),
+        |(scheme, path, query, fragment)| RouteUriParts {
+            scheme,
+            path,
+            query,
+            fragment,
+        },
     )(input)
 }
