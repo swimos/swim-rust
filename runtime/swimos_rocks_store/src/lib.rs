@@ -19,7 +19,6 @@
 
 mod agent;
 mod engine;
-mod iterator;
 mod keyspaces;
 #[cfg(test)]
 mod nostore;
