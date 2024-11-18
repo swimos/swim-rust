@@ -1164,6 +1164,8 @@ enum DropOrTakeState<C, K, V> {
     Removing(MapLaneRemoveMultiple<C, K, V>),
 }
 
+/// An [event handler](crate::event_handler::EventHandler)`] that will either retain or drop the first `n` elements
+/// from a map (ordering the keys by the ordering of their Recon model representations).
 pub struct MapLaneDropOrTake<C, K, V> {
     projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>,
     kind: DropOrTake,
@@ -1313,6 +1315,8 @@ enum SelectDropOrTakeState<C, K, V, F> {
     Done,
 }
 
+/// An [event handler](crate::event_handler::EventHandler) that attempts to drop or retain the first `n` elements of
+/// a map lane, if that lane exists.
 pub struct MapLaneSelectDropOrTake<C, K, V, F> {
     kind: DropOrTake,
     number: u64,
