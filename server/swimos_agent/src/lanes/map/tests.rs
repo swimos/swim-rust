@@ -26,6 +26,7 @@ use tokio_util::codec::Decoder;
 use uuid::Uuid;
 
 use crate::event_handler::ModificationFlags;
+use crate::lanes::map::MapLaneSelectDropOrTake;
 use crate::{
     agent_model::WriteResult,
     event_handler::{EventHandlerError, HandlerAction, Modification, StepResult},
@@ -1140,7 +1141,7 @@ fn drop_take_choose_keys() {
 }
 
 #[test]
-fn map_lane_drop() {
+fn map_lane_drop_event_handler() {
     let uri = make_uri();
     let route_params = HashMap::new();
     let meta = make_meta(&uri, &route_params);
@@ -1201,13 +1202,135 @@ fn map_lane_drop() {
 }
 
 #[test]
-fn map_lane_take() {
+fn map_lane_take_event_handler() {
     let uri = make_uri();
     let route_params = HashMap::new();
     let meta = make_meta(&uri, &route_params);
     let agent = TestAgent::with_init();
 
     let mut handler = MapLaneDropOrTake::new(TestAgent::LANE, DropOrTake::Take, 1);
+
+    let mut removals = vec![];
+    loop {
+        match handler.step(
+            &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+            meta,
+            &agent,
+        ) {
+            StepResult::Continue { modified_item } => {
+                let Modification { item_id, flags } = modified_item.expect("No change made.");
+                assert_eq!(item_id, LANE_ID);
+                assert_eq!(flags, ModificationFlags::all());
+                agent.lane.read_with_prev(|event, _| {
+                    if let Some(MapLaneEvent::Remove(k, _)) = event {
+                        removals.push(k);
+                    } else {
+                        panic!("Expected only removals.");
+                    }
+                })
+            }
+            StepResult::Fail(err) => panic!("Failed: {}", err),
+            StepResult::Complete { modified_item, .. } => {
+                if let Some(Modification { item_id, flags }) = modified_item {
+                    assert_eq!(item_id, LANE_ID);
+                    assert_eq!(flags, ModificationFlags::all());
+                    agent.lane.read_with_prev(|event, _| {
+                        if let Some(MapLaneEvent::Remove(k, _)) = event {
+                            removals.push(k);
+                        } else {
+                            panic!("Expected only removals.");
+                        }
+                    })
+                }
+                break;
+            }
+        }
+    }
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    assert!(matches!(
+        result,
+        StepResult::Fail(EventHandlerError::SteppedAfterComplete)
+    ));
+
+    assert_eq!(removals.len(), 2);
+    assert!(removals.contains(&K1));
+    assert!(removals.contains(&K2));
+}
+
+#[test]
+fn map_lane_select_drop_event_handler() {
+    let uri = make_uri();
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+    let agent = TestAgent::with_init();
+
+    let mut handler = MapLaneSelectDropOrTake::new(TestSelectorFn(true), DropOrTake::Drop, 2);
+
+    let mut removals = vec![];
+    loop {
+        match handler.step(
+            &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+            meta,
+            &agent,
+        ) {
+            StepResult::Continue { modified_item } => {
+                let Modification { item_id, flags } = modified_item.expect("No change made.");
+                assert_eq!(item_id, LANE_ID);
+                assert_eq!(flags, ModificationFlags::all());
+                agent.lane.read_with_prev(|event, _| {
+                    if let Some(MapLaneEvent::Remove(k, _)) = event {
+                        removals.push(k);
+                    } else {
+                        panic!("Expected only removals.");
+                    }
+                })
+            }
+            StepResult::Fail(err) => panic!("Failed: {}", err),
+            StepResult::Complete { modified_item, .. } => {
+                if let Some(Modification { item_id, flags }) = modified_item {
+                    assert_eq!(item_id, LANE_ID);
+                    assert_eq!(flags, ModificationFlags::all());
+                    agent.lane.read_with_prev(|event, _| {
+                        if let Some(MapLaneEvent::Remove(k, _)) = event {
+                            removals.push(k);
+                        } else {
+                            panic!("Expected only removals.");
+                        }
+                    })
+                }
+                break;
+            }
+        }
+    }
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    assert!(matches!(
+        result,
+        StepResult::Fail(EventHandlerError::SteppedAfterComplete)
+    ));
+
+    assert_eq!(removals.len(), 2);
+    assert!(removals.contains(&K1));
+    assert!(removals.contains(&K3));
+}
+
+#[test]
+fn map_lane_select_take_event_handler() {
+    let uri = make_uri();
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+    let agent = TestAgent::with_init();
+
+    let mut handler = MapLaneSelectDropOrTake::new(TestSelectorFn(true), DropOrTake::Take, 1);
 
     let mut removals = vec![];
     loop {
