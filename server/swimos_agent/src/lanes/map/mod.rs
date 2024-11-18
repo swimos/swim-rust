@@ -936,13 +936,14 @@ pub enum DecodeAndSelectApply<C, K, V, F> {
     Updating(MapLaneSelectUpdate<C, K, V, F>),
     Removing(MapLaneSelectRemove<C, K, V, F>),
     Clearing(MapLaneSelectClear<C, K, V, F>),
+    DroppingOrTaking(MapLaneSelectDropOrTake<C, K, V, F>),
     #[default]
     Done,
 }
 
 impl<C, K, V, F> HandlerAction<C> for DecodeAndSelectApply<C, K, V, F>
 where
-    K: RecognizerReadable + Clone + Eq + Hash,
+    K: Form + Clone + Eq + Hash,
     V: RecognizerReadable,
     F: SelectorFn<C, Target = MapLane<K, V>>,
 {
@@ -982,33 +983,46 @@ where
                                     selector,
                                 ));
                             }
-                            _ => {
-                                todo!("Drop and take not yet implemented.")
+                            MapMessage::Drop(n) => {
+                                *self = DecodeAndSelectApply::DroppingOrTaking(
+                                    MapLaneSelectDropOrTake::new(selector, DropOrTake::Drop, n),
+                                );
+                            }
+                            MapMessage::Take(n) => {
+                                *self = DecodeAndSelectApply::DroppingOrTaking(
+                                    MapLaneSelectDropOrTake::new(selector, DropOrTake::Take, n),
+                                );
                             }
                         }
-
                         StepResult::Continue { modified_item }
                     }
                 }
             }
             DecodeAndSelectApply::Updating(mut selector) => {
                 let result = selector.step(action_context, meta, context);
-                if !result.is_cont() {
-                    *self = DecodeAndSelectApply::Done;
+                if result.is_cont() {
+                    *self = DecodeAndSelectApply::Updating(selector);
                 }
                 result
             }
             DecodeAndSelectApply::Removing(mut selector) => {
                 let result = selector.step(action_context, meta, context);
-                if !result.is_cont() {
-                    *self = DecodeAndSelectApply::Done;
+                if result.is_cont() {
+                    *self = DecodeAndSelectApply::Removing(selector);
                 }
                 result
             }
             DecodeAndSelectApply::Clearing(mut selector) => {
                 let result = selector.step(action_context, meta, context);
-                if !result.is_cont() {
-                    *self = DecodeAndSelectApply::Done;
+                if result.is_cont() {
+                    *self = DecodeAndSelectApply::Clearing(selector);
+                }
+                result
+            }
+            DecodeAndSelectApply::DroppingOrTaking(mut selector) => {
+                let result = selector.step(action_context, meta, context);
+                if result.is_cont() {
+                    *self = DecodeAndSelectApply::DroppingOrTaking(selector);
                 }
                 result
             }
@@ -1234,6 +1248,137 @@ where
                 result
             }
             DropOrTakeState::Removing(h) => h.step(action_context, meta, context),
+        }
+    }
+}
+
+struct MapLaneSelectRemoveMultiple<C, K, V, F> {
+    _type: PhantomData<fn(&C, &V)>,
+    projection: F,
+    keys: Option<VecDeque<K>>,
+}
+
+impl<C, K, V, F> MapLaneSelectRemoveMultiple<C, K, V, F> {
+    fn new(projection: F, keys: VecDeque<K>) -> Self {
+        MapLaneSelectRemoveMultiple {
+            _type: PhantomData,
+            projection,
+            keys: Some(keys),
+        }
+    }
+}
+
+impl<C, K, V, F> HandlerAction<C> for MapLaneSelectRemoveMultiple<C, K, V, F>
+where
+    K: Clone + Eq + Hash,
+    F: SelectorFn<C, Target = MapLane<K, V>>,
+{
+    type Completion = ();
+
+    fn step(
+        &mut self,
+        _action_context: &mut ActionContext<C>,
+        _meta: AgentMetadata,
+        context: &C,
+    ) -> StepResult<Self::Completion> {
+        let MapLaneSelectRemoveMultiple {
+            projection, keys, ..
+        } = self;
+        if let Some(key_queue) = keys {
+            if let Some(next) = key_queue.pop_front() {
+                let selector = projection.selector(context);
+                if let Some(lane) = selector.select() {
+                    lane.remove(&next);
+                    StepResult::Continue {
+                        modified_item: Some(Modification::of(lane.id)),
+                    }
+                } else {
+                    StepResult::Fail(EventHandlerError::LaneNotFound(selector.name().to_owned()))
+                }
+            } else {
+                *keys = None;
+                StepResult::done(())
+            }
+        } else {
+            StepResult::after_done()
+        }
+    }
+}
+
+#[derive(Default)]
+enum SelectDropOrTakeState<C, K, V, F> {
+    Init(F),
+    Removing(MapLaneSelectRemoveMultiple<C, K, V, F>),
+    #[default]
+    Done,
+}
+
+pub struct MapLaneSelectDropOrTake<C, K, V, F> {
+    kind: DropOrTake,
+    number: u64,
+    state: SelectDropOrTakeState<C, K, V, F>,
+}
+
+impl<C, K, V, F> MapLaneSelectDropOrTake<C, K, V, F> {
+    fn new(projection: F, kind: DropOrTake, number: u64) -> Self {
+        MapLaneSelectDropOrTake {
+            kind,
+            number,
+            state: SelectDropOrTakeState::Init(projection),
+        }
+    }
+}
+
+impl<C, K, V, F> HandlerAction<C> for MapLaneSelectDropOrTake<C, K, V, F>
+where
+    K: StructuralWritable + Clone + Eq + Hash,
+    F: SelectorFn<C, Target = MapLane<K, V>>,
+{
+    type Completion = ();
+
+    fn step(
+        &mut self,
+        action_context: &mut ActionContext<C>,
+        meta: AgentMetadata,
+        context: &C,
+    ) -> StepResult<Self::Completion> {
+        let MapLaneSelectDropOrTake {
+            kind,
+            number,
+            state,
+        } = self;
+        match std::mem::take(state) {
+            SelectDropOrTakeState::Init(projection) => {
+                let n = match usize::try_from(*number) {
+                    Ok(n) => n,
+                    Err(err) => {
+                        return StepResult::Fail(EventHandlerError::EffectError(Box::new(err)))
+                    }
+                };
+                let selector = projection.selector(context);
+                let to_remove = if let Some(lane) = selector.select() {
+                    lane.get_map(|map| drop_or_take(map, *kind, n))
+                } else {
+                    return StepResult::Fail(EventHandlerError::LaneNotFound(
+                        selector.name().to_owned(),
+                    ));
+                };
+                drop(selector);
+                let mut handler = MapLaneSelectRemoveMultiple::new(projection, to_remove);
+                let result = handler.step(action_context, meta, context);
+                if result.is_cont() {
+                    *state = SelectDropOrTakeState::Removing(handler);
+                }
+                result
+            }
+            SelectDropOrTakeState::Removing(mut h) => {
+                let result = h.step(action_context, meta, context);
+                if result.is_cont() {
+                    *state = SelectDropOrTakeState::Removing(h);
+                }
+                result
+            }
+            SelectDropOrTakeState::Done => StepResult::after_done(),
         }
     }
 }

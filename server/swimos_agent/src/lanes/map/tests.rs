@@ -848,7 +848,7 @@ struct TestSelectorFn(bool);
 impl SelectorFn<TestAgent> for TestSelectorFn {
     type Target = MapLane<i32, String>;
 
-    fn selector(self, context: &TestAgent) -> impl Selector<Target = Self::Target> + '_ {
+    fn selector<'a>(&'a self, context: &'a TestAgent) -> impl Selector<Target = Self::Target> + 'a {
         TestSelector(context, self.0)
     }
 }

@@ -106,7 +106,7 @@ pub trait SelectorFn<C> {
     ///
     /// #Arguments
     /// * `context` - The context form the the [`Selector`] will attempt to select its component.
-    fn selector(self, context: &C) -> impl Selector<Target = Self::Target> + '_;
+    fn selector<'a>(&'a self, context: &'a C) -> impl Selector<Target = Self::Target> + 'a;
 }
 
 /// An [event handler](crate::event_handler::EventHandler) that attempts to open a new lane for the
