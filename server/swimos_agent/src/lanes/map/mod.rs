@@ -13,14 +13,18 @@
 // limitations under the License.
 
 use bytes::BytesMut;
-use frunk::{Coprod, Coproduct};
+use frunk::Coprod;
 use static_assertions::assert_impl_all;
 use std::{
-    borrow::Borrow, cell::RefCell, collections::HashMap, fmt::Debug, hash::Hash,
+    borrow::Borrow,
+    cell::RefCell,
+    collections::{HashMap, VecDeque},
+    fmt::Debug,
+    hash::Hash,
     marker::PhantomData,
 };
 use swimos_agent_protocol::{encoding::lane::MapLaneResponseEncoder, MapMessage};
-use swimos_form::{read::RecognizerReadable, write::StructuralWritable};
+use swimos_form::{read::RecognizerReadable, write::StructuralWritable, Form};
 use swimos_recon::parser::RecognizerDecoder;
 use tokio_util::codec::{Decoder, Encoder};
 use uuid::Uuid;
@@ -492,6 +496,7 @@ type MapLaneHandler<C, K, V> = Coprod!(
     MapLaneUpdate<C, K, V>,
     MapLaneRemove<C, K, V>,
     MapLaneClear<C, K, V>,
+    MapLaneDropOrTake<C, K, V>,
 );
 
 impl<C, K, V> HandlerTrans<MapMessage<K, V>> for ProjTransform<C, MapLane<K, V>> {
@@ -501,16 +506,17 @@ impl<C, K, V> HandlerTrans<MapMessage<K, V>> for ProjTransform<C, MapLane<K, V>>
         let ProjTransform { projection } = self;
         match input {
             MapMessage::Update { key, value } => {
-                Coproduct::Inl(MapLaneUpdate::new(projection, key, value))
+                MapLaneHandler::inject(MapLaneUpdate::new(projection, key, value))
             }
             MapMessage::Remove { key } => {
-                Coproduct::Inr(Coproduct::Inl(MapLaneRemove::new(projection, key)))
+                MapLaneHandler::inject(MapLaneRemove::new(projection, key))
             }
-            MapMessage::Clear => Coproduct::Inr(Coproduct::Inr(Coproduct::Inl(MapLaneClear::new(
-                projection,
-            )))),
-            _ => {
-                todo!("Drop and take not yet implemented.")
+            MapMessage::Clear => MapLaneHandler::inject(MapLaneClear::new(projection)),
+            MapMessage::Drop(n) => {
+                MapLaneHandler::inject(MapLaneDropOrTake::new(projection, DropOrTake::Drop, n))
+            }
+            MapMessage::Take(n) => {
+                MapLaneHandler::inject(MapLaneDropOrTake::new(projection, DropOrTake::Take, n))
             }
         }
     }
@@ -587,7 +593,7 @@ pub fn decode_and_apply<C, K, V>(
     projection: fn(&C) -> &MapLane<K, V>,
 ) -> DecodeAndApply<C, K, V>
 where
-    K: Clone + Eq + Hash + RecognizerReadable,
+    K: Form + Clone + Eq + Hash,
     V: RecognizerReadable,
 {
     let decode: DecodeMapMessage<K, V> = DecodeMapMessage::new(message);
@@ -1073,6 +1079,163 @@ where
             }
         } else {
             StepResult::Fail(EventHandlerError::SteppedAfterComplete)
+        }
+    }
+}
+
+struct MapLaneRemoveMultiple<C, K, V> {
+    projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>,
+    keys: Option<VecDeque<K>>,
+    current: Option<MapLaneRemove<C, K, V>>,
+}
+
+impl<C, K, V> MapLaneRemoveMultiple<C, K, V> {
+    fn new(projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>, keys: VecDeque<K>) -> Self {
+        MapLaneRemoveMultiple {
+            projection,
+            keys: Some(keys),
+            current: None,
+        }
+    }
+}
+
+impl<C, K, V> HandlerAction<C> for MapLaneRemoveMultiple<C, K, V>
+where
+    K: Clone + Eq + Hash,
+{
+    type Completion = ();
+
+    fn step(
+        &mut self,
+        action_context: &mut ActionContext<C>,
+        meta: AgentMetadata,
+        context: &C,
+    ) -> StepResult<Self::Completion> {
+        let MapLaneRemoveMultiple {
+            projection,
+            keys,
+            current,
+        } = self;
+        if let Some(key_queue) = keys {
+            let h = if let Some(h) = current {
+                h
+            } else if let Some(next) = key_queue.pop_front() {
+                current.insert(MapLaneRemove::new(*projection, next))
+            } else {
+                *keys = None;
+                return StepResult::done(());
+            };
+            match h.step(action_context, meta, context) {
+                StepResult::Continue { modified_item } => StepResult::Continue { modified_item },
+                StepResult::Fail(err) => StepResult::Fail(err),
+                StepResult::Complete { modified_item, .. } => {
+                    *current = None;
+                    StepResult::Continue { modified_item }
+                }
+            }
+        } else {
+            StepResult::after_done()
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum DropOrTake {
+    Drop,
+    Take,
+}
+
+enum DropOrTakeState<C, K, V> {
+    Init,
+    Removing(MapLaneRemoveMultiple<C, K, V>),
+}
+
+pub struct MapLaneDropOrTake<C, K, V> {
+    projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>,
+    kind: DropOrTake,
+    number: u64,
+    state: DropOrTakeState<C, K, V>,
+}
+
+impl<C, K, V> MapLaneDropOrTake<C, K, V> {
+    fn new(
+        projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>,
+        kind: DropOrTake,
+        number: u64,
+    ) -> Self {
+        MapLaneDropOrTake {
+            projection,
+            kind,
+            number,
+            state: DropOrTakeState::Init,
+        }
+    }
+}
+
+fn drop_or_take<K, V>(map_lane: &MapLane<K, V>, kind: DropOrTake, number: usize) -> VecDeque<K>
+where
+    K: StructuralWritable + Clone + Eq + Hash,
+{
+    map_lane.get_map(|map| {
+        let mut keys_with_recon = map.keys().map(|k| (k.structure(), k)).collect::<Vec<_>>();
+        keys_with_recon.sort_by(|(k1, _), (k2, _)| k1.cmp(k2));
+        let mut to_remove: VecDeque<K> = VecDeque::new();
+        match kind {
+            DropOrTake::Drop => {
+                to_remove.extend(
+                    keys_with_recon
+                        .into_iter()
+                        .take(number)
+                        .map(|(_, k1)| k1.clone()),
+                );
+            }
+            DropOrTake::Take => {
+                to_remove.extend(
+                    keys_with_recon
+                        .into_iter()
+                        .skip(number)
+                        .map(|(_, k1)| k1.clone()),
+                );
+            }
+        }
+        to_remove
+    })
+}
+
+impl<C, K, V> HandlerAction<C> for MapLaneDropOrTake<C, K, V>
+where
+    K: StructuralWritable + Clone + Eq + Hash,
+{
+    type Completion = ();
+
+    fn step(
+        &mut self,
+        action_context: &mut ActionContext<C>,
+        meta: AgentMetadata,
+        context: &C,
+    ) -> StepResult<Self::Completion> {
+        let MapLaneDropOrTake {
+            projection,
+            kind,
+            number,
+            state,
+        } = self;
+        match state {
+            DropOrTakeState::Init => {
+                let n = match usize::try_from(*number) {
+                    Ok(n) => n,
+                    Err(err) => {
+                        return StepResult::Fail(EventHandlerError::EffectError(Box::new(err)))
+                    }
+                };
+                let lane = projection(context);
+                let to_remove = drop_or_take(lane, *kind, n);
+                let mut handler = MapLaneRemoveMultiple::new(*projection, to_remove);
+                let result = handler.step(action_context, meta, context);
+                *state = DropOrTakeState::Removing(handler);
+                result
+            }
+            DropOrTakeState::Removing(h) => h.step(action_context, meta, context),
         }
     }
 }
