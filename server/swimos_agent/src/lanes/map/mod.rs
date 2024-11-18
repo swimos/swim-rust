@@ -1172,34 +1172,32 @@ impl<C, K, V> MapLaneDropOrTake<C, K, V> {
     }
 }
 
-fn drop_or_take<K, V>(map_lane: &MapLane<K, V>, kind: DropOrTake, number: usize) -> VecDeque<K>
+fn drop_or_take<K, V>(map: &HashMap<K, V>, kind: DropOrTake, number: usize) -> VecDeque<K>
 where
     K: StructuralWritable + Clone + Eq + Hash,
 {
-    map_lane.get_map(|map| {
-        let mut keys_with_recon = map.keys().map(|k| (k.structure(), k)).collect::<Vec<_>>();
-        keys_with_recon.sort_by(|(k1, _), (k2, _)| k1.cmp(k2));
-        let mut to_remove: VecDeque<K> = VecDeque::new();
-        match kind {
-            DropOrTake::Drop => {
-                to_remove.extend(
-                    keys_with_recon
-                        .into_iter()
-                        .take(number)
-                        .map(|(_, k1)| k1.clone()),
-                );
-            }
-            DropOrTake::Take => {
-                to_remove.extend(
-                    keys_with_recon
-                        .into_iter()
-                        .skip(number)
-                        .map(|(_, k1)| k1.clone()),
-                );
-            }
+    let mut keys_with_recon = map.keys().map(|k| (k.structure(), k)).collect::<Vec<_>>();
+    keys_with_recon.sort_by(|(k1, _), (k2, _)| k1.cmp(k2));
+    let mut to_remove: VecDeque<K> = VecDeque::new();
+    match kind {
+        DropOrTake::Drop => {
+            to_remove.extend(
+                keys_with_recon
+                    .into_iter()
+                    .take(number)
+                    .map(|(_, k1)| k1.clone()),
+            );
         }
-        to_remove
-    })
+        DropOrTake::Take => {
+            to_remove.extend(
+                keys_with_recon
+                    .into_iter()
+                    .skip(number)
+                    .map(|(_, k1)| k1.clone()),
+            );
+        }
+    }
+    to_remove
 }
 
 impl<C, K, V> HandlerAction<C> for MapLaneDropOrTake<C, K, V>
@@ -1229,7 +1227,7 @@ where
                     }
                 };
                 let lane = projection(context);
-                let to_remove = drop_or_take(lane, *kind, n);
+                let to_remove = lane.get_map(|map| drop_or_take(map, *kind, n));
                 let mut handler = MapLaneRemoveMultiple::new(*projection, to_remove);
                 let result = handler.step(action_context, meta, context);
                 *state = DropOrTakeState::Removing(handler);

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::fmt::Debug;
 
 use bytes::BytesMut;
@@ -25,6 +25,7 @@ use swimos_utilities::routing::RouteUri;
 use tokio_util::codec::Decoder;
 use uuid::Uuid;
 
+use crate::event_handler::ModificationFlags;
 use crate::{
     agent_model::WriteResult,
     event_handler::{EventHandlerError, HandlerAction, Modification, StepResult},
@@ -41,7 +42,7 @@ use crate::{
     test_context::dummy_context,
 };
 
-use super::MapLaneWithEntry;
+use super::{drop_or_take, DropOrTake, MapLaneDropOrTake, MapLaneWithEntry};
 
 const ID: u64 = 74;
 
@@ -1096,4 +1097,166 @@ fn map_lane_select_sync_event_handler_missing() {
     } else {
         panic!("Lane not found error expected.");
     }
+}
+
+#[test]
+fn drop_take_choose_keys() {
+    let map = [(1, 2), (2, 4), (3, 6), (4, 8)]
+        .into_iter()
+        .collect::<HashMap<_, _>>();
+
+    assert_eq!(
+        drop_or_take(&map, super::DropOrTake::Drop, 2),
+        VecDeque::from(vec![1, 2])
+    );
+    assert_eq!(
+        drop_or_take(&map, super::DropOrTake::Take, 3),
+        VecDeque::from(vec![4])
+    );
+    assert_eq!(
+        drop_or_take(&map, super::DropOrTake::Drop, 4),
+        VecDeque::from(vec![1, 2, 3, 4])
+    );
+    assert_eq!(
+        drop_or_take(&map, super::DropOrTake::Take, 4),
+        VecDeque::from(vec![])
+    );
+    assert_eq!(
+        drop_or_take(&map, super::DropOrTake::Drop, 10),
+        VecDeque::from(vec![1, 2, 3, 4])
+    );
+    assert_eq!(
+        drop_or_take(&map, super::DropOrTake::Take, 10),
+        VecDeque::from(vec![])
+    );
+    assert_eq!(
+        drop_or_take(&map, super::DropOrTake::Drop, 0),
+        VecDeque::from(vec![])
+    );
+    assert_eq!(
+        drop_or_take(&map, super::DropOrTake::Take, 0),
+        VecDeque::from(vec![1, 2, 3, 4])
+    );
+}
+
+#[test]
+fn map_lane_drop() {
+    let uri = make_uri();
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+    let agent = TestAgent::with_init();
+
+    let mut handler = MapLaneDropOrTake::new(TestAgent::LANE, DropOrTake::Drop, 2);
+
+    let mut removals = vec![];
+    loop {
+        match handler.step(
+            &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+            meta,
+            &agent,
+        ) {
+            StepResult::Continue { modified_item } => {
+                let Modification { item_id, flags } = modified_item.expect("No change made.");
+                assert_eq!(item_id, LANE_ID);
+                assert_eq!(flags, ModificationFlags::all());
+                agent.lane.read_with_prev(|event, _| {
+                    if let Some(MapLaneEvent::Remove(k, _)) = event {
+                        removals.push(k);
+                    } else {
+                        panic!("Expected only removals.");
+                    }
+                })
+            }
+            StepResult::Fail(err) => panic!("Failed: {}", err),
+            StepResult::Complete { modified_item, .. } => {
+                if let Some(Modification { item_id, flags }) = modified_item {
+                    assert_eq!(item_id, LANE_ID);
+                    assert_eq!(flags, ModificationFlags::all());
+                    agent.lane.read_with_prev(|event, _| {
+                        if let Some(MapLaneEvent::Remove(k, _)) = event {
+                            removals.push(k);
+                        } else {
+                            panic!("Expected only removals.");
+                        }
+                    })
+                }
+                break;
+            }
+        }
+    }
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    assert!(matches!(
+        result,
+        StepResult::Fail(EventHandlerError::SteppedAfterComplete)
+    ));
+
+    assert_eq!(removals.len(), 2);
+    assert!(removals.contains(&K1));
+    assert!(removals.contains(&K3));
+}
+
+#[test]
+fn map_lane_take() {
+    let uri = make_uri();
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+    let agent = TestAgent::with_init();
+
+    let mut handler = MapLaneDropOrTake::new(TestAgent::LANE, DropOrTake::Take, 1);
+
+    let mut removals = vec![];
+    loop {
+        match handler.step(
+            &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+            meta,
+            &agent,
+        ) {
+            StepResult::Continue { modified_item } => {
+                let Modification { item_id, flags } = modified_item.expect("No change made.");
+                assert_eq!(item_id, LANE_ID);
+                assert_eq!(flags, ModificationFlags::all());
+                agent.lane.read_with_prev(|event, _| {
+                    if let Some(MapLaneEvent::Remove(k, _)) = event {
+                        removals.push(k);
+                    } else {
+                        panic!("Expected only removals.");
+                    }
+                })
+            }
+            StepResult::Fail(err) => panic!("Failed: {}", err),
+            StepResult::Complete { modified_item, .. } => {
+                if let Some(Modification { item_id, flags }) = modified_item {
+                    assert_eq!(item_id, LANE_ID);
+                    assert_eq!(flags, ModificationFlags::all());
+                    agent.lane.read_with_prev(|event, _| {
+                        if let Some(MapLaneEvent::Remove(k, _)) = event {
+                            removals.push(k);
+                        } else {
+                            panic!("Expected only removals.");
+                        }
+                    })
+                }
+                break;
+            }
+        }
+    }
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    assert!(matches!(
+        result,
+        StepResult::Fail(EventHandlerError::SteppedAfterComplete)
+    ));
+
+    assert_eq!(removals.len(), 2);
+    assert!(removals.contains(&K1));
+    assert!(removals.contains(&K2));
 }
