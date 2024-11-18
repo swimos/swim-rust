@@ -16,6 +16,7 @@ use futures::future::Either;
 
 use crate::{
     agent_lifecycle::HandlerContext,
+    agent_model::AgentDescription,
     lanes::{
         demand_map::{
             demand_map_handler, demand_map_handler_shared,
@@ -156,6 +157,7 @@ impl<Context, K, V, LC, L: HTree, R: HTree> HTree for DemandMapBranch<Context, K
 
 impl<Context, K, V, LC, L, R> ItemEvent<Context> for DemandMapBranch<Context, K, V, LC, L, R>
 where
+    Context: AgentDescription,
     K: Clone + Eq + Hash,
     LC: DemandMapLaneLifecycle<K, V, Context>,
     L: HTree + ItemEvent<Context>,
@@ -193,6 +195,7 @@ where
 impl<Context, Shared, K, V, LC, L, R> ItemEventShared<Context, Shared>
     for DemandMapBranch<Context, K, V, LC, L, R>
 where
+    Context: AgentDescription,
     K: Clone + Eq + Hash,
     LC: DemandMapLaneLifecycleShared<K, V, Context, Shared>,
     L: HTree + ItemEventShared<Context, Shared>,

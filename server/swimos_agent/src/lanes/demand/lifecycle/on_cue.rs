@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::marker::PhantomData;
+use std::{any::type_name, marker::PhantomData};
 
 use swimos_utilities::handlers::{FnHandler, NoHandler};
 
@@ -67,6 +67,16 @@ impl<Context, T> HandlerAction<Context> for CueUndefined<T> {
         _context: &Context,
     ) -> StepResult<Self::Completion> {
         StepResult::Fail(EventHandlerError::DemandCueUndefined)
+    }
+
+    fn describe(
+        &self,
+        _context: &Context,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        f.debug_struct("CueUndefined")
+            .field("type", &type_name::<T>())
+            .finish()
     }
 }
 

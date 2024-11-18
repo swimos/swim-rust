@@ -12,7 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::{HashMap, HashSet};
+use std::{
+    borrow::Cow,
+    collections::{HashMap, HashSet},
+};
 
 use bytes::BytesMut;
 use swimos_agent_protocol::{encoding::lane::MapLaneResponseDecoder, LaneResponse, MapOperation};
@@ -21,7 +24,7 @@ use swimos_utilities::routing::RouteUri;
 use tokio_util::codec::Decoder;
 
 use crate::{
-    agent_model::WriteResult,
+    agent_model::{AgentDescription, WriteResult},
     event_handler::{
         ConstHandler, EventHandler, HandlerActionExt, Modification, ModificationFlags, StepResult,
     },
@@ -44,6 +47,16 @@ const SYNC_ID2: Uuid = Uuid::from_u128(1177374);
 
 struct FakeAgent {
     lane: DemandMapLane<i32, i32>,
+}
+
+impl AgentDescription for FakeAgent {
+    fn item_name(&self, id: u64) -> Option<Cow<'_, str>> {
+        if id == LANE_ID {
+            Some(Cow::Borrowed("lane"))
+        } else {
+            None
+        }
+    }
 }
 
 impl FakeAgent {

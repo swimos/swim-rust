@@ -16,10 +16,11 @@ use bytes::BytesMut;
 use frunk::Coprod;
 use static_assertions::assert_impl_all;
 use std::{
+    any::type_name,
     borrow::Borrow,
     cell::RefCell,
     collections::{HashMap, VecDeque},
-    fmt::Debug,
+    fmt::{Debug, Formatter},
     hash::Hash,
     marker::PhantomData,
 };
@@ -36,10 +37,10 @@ pub mod lifecycle;
 mod tests;
 
 use crate::{
-    agent_model::WriteResult,
+    agent_model::{AgentDescription, WriteResult},
     event_handler::{
-        ActionContext, AndThen, EventHandlerError, HandlerAction, HandlerActionExt, HandlerTrans,
-        Modification, StepResult,
+        ActionContext, AndThen, Described, EventHandlerError, HandlerAction, HandlerActionExt,
+        HandlerTrans, Modification, StepResult,
     },
     item::{AgentItem, InspectableMapLikeItem, MapItem, MapLikeItem, MutableMapLikeItem},
     map_storage::{MapStoreInner, TransformEntryResult},
@@ -207,6 +208,7 @@ impl<C, K, V> MapLaneUpdate<C, K, V> {
 
 impl<C, K, V> HandlerAction<C> for MapLaneUpdate<C, K, V>
 where
+    C: AgentDescription,
     K: Clone + Eq + Hash,
 {
     type Completion = ();
@@ -232,6 +234,20 @@ where
             StepResult::after_done()
         }
     }
+
+    fn describe(&self, context: &C, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        let MapLaneUpdate {
+            projection,
+            key_value,
+        } = self;
+        let lane = (projection)(context);
+        let name = context.item_name(lane.id());
+        f.debug_struct("MapLaneUpdate")
+            .field("id", &lane.id())
+            .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
+            .field("consumed", &key_value.is_none())
+            .finish()
+    }
 }
 
 ///  An [event handler](crate::event_handler::EventHandler)`] that will remove an entry from the map.
@@ -251,6 +267,7 @@ impl<C, K, V> MapLaneRemove<C, K, V> {
 
 impl<C, K, V> HandlerAction<C> for MapLaneRemove<C, K, V>
 where
+    C: AgentDescription,
     K: Clone + Eq + Hash,
 {
     type Completion = ();
@@ -273,6 +290,17 @@ where
             StepResult::after_done()
         }
     }
+
+    fn describe(&self, context: &C, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        let MapLaneRemove { projection, key } = self;
+        let lane = (projection)(context);
+        let name = context.item_name(lane.id());
+        f.debug_struct("MapLaneRemove")
+            .field("id", &lane.id())
+            .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
+            .field("consumed", &key.is_none())
+            .finish()
+    }
 }
 
 ///  An [event handler](crate::event_handler::EventHandler)`] that will clear the map.
@@ -292,6 +320,7 @@ impl<C, K, V> MapLaneClear<C, K, V> {
 
 impl<C, K, V> HandlerAction<C> for MapLaneClear<C, K, V>
 where
+    C: AgentDescription,
     K: Clone + Eq + Hash,
 {
     type Completion = ();
@@ -315,6 +344,17 @@ where
             StepResult::after_done()
         }
     }
+
+    fn describe(&self, context: &C, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        let MapLaneClear { projection, done } = self;
+        let lane = (projection)(context);
+        let name = context.item_name(lane.id());
+        f.debug_struct("MapLaneClear")
+            .field("id", &lane.id())
+            .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
+            .field("consumed", done)
+            .finish()
+    }
 }
 
 ///  An [event handler](crate::event_handler::EventHandler)`] that will get an entry from the map.
@@ -336,6 +376,7 @@ impl<C, K, V> MapLaneGet<C, K, V> {
 
 impl<C, K, V> HandlerAction<C> for MapLaneGet<C, K, V>
 where
+    C: AgentDescription,
     K: Clone + Eq + Hash,
     V: Clone,
 {
@@ -360,6 +401,16 @@ where
             StepResult::after_done()
         }
     }
+
+    fn describe(&self, context: &C, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        let lane = (self.projection)(context);
+        let name = context.item_name(lane.id());
+        f.debug_struct("MapLaneGet")
+            .field("id", &lane.id())
+            .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
+            .field("consumed", &self.done)
+            .finish()
+    }
 }
 
 ///  An [event handler](crate::event_handler::EventHandler)`] that will read the entire state of a map lane.
@@ -379,6 +430,7 @@ impl<C, K, V> MapLaneGetMap<C, K, V> {
 
 impl<C, K, V> HandlerAction<C> for MapLaneGetMap<C, K, V>
 where
+    C: AgentDescription,
     K: Clone + Eq + Hash,
     V: Clone,
 {
@@ -399,10 +451,21 @@ where
             StepResult::after_done()
         }
     }
+
+    fn describe(&self, context: &C, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        let lane = (self.projection)(context);
+        let name = context.item_name(lane.id());
+        f.debug_struct("MapLaneGetMap")
+            .field("id", &lane.id())
+            .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
+            .field("consumed", &self.done)
+            .finish()
+    }
 }
 
 impl<C, K, V, F, B, U> HandlerAction<C> for MapLaneWithEntry<C, K, V, F, B>
 where
+    C: AgentDescription,
     K: Eq + Hash,
     B: ?Sized,
     V: Borrow<B>,
@@ -427,6 +490,17 @@ where
         } else {
             StepResult::after_done()
         }
+    }
+
+    fn describe(&self, context: &C, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        let lane = (self.projection)(context);
+        let name = context.item_name(lane.id());
+        f.debug_struct("MapLaneWithEntry")
+            .field("id", &lane.id())
+            .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
+            .field("result_type", &type_name::<U>())
+            .field("consumed", &self.key_and_f.is_none())
+            .finish()
     }
 }
 
@@ -468,6 +542,7 @@ impl<C, K, V> MapLaneSync<C, K, V> {
 
 impl<C, K, V> HandlerAction<C> for MapLaneSync<C, K, V>
 where
+    C: AgentDescription,
     K: Clone + Eq + Hash,
 {
     type Completion = ();
@@ -489,6 +564,17 @@ where
         } else {
             StepResult::after_done()
         }
+    }
+
+    fn describe(&self, context: &C, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        let MapLaneSync { projection, id } = self;
+        let lane = (projection)(context);
+        let name = context.item_name(lane.id());
+        f.debug_struct("MapLaneSync")
+            .field("id", &lane.id())
+            .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
+            .field("sync_id", &id)
+            .finish()
     }
 }
 
@@ -548,6 +634,7 @@ fn try_decode<T: RecognizerReadable>(mut buffer: BytesMut) -> Result<T, EventHan
 
 impl<K, V, Context> HandlerAction<Context> for DecodeMapMessage<K, V>
 where
+    Context: AgentDescription,
     K: RecognizerReadable,
     V: RecognizerReadable,
 {
@@ -582,6 +669,32 @@ where
             StepResult::after_done()
         }
     }
+
+    fn describe(&self, _context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        let DecodeMapMessage { message, .. } = self;
+        let content = message.as_ref().map(|msg| match msg {
+            MapMessage::Update { key, value } => {
+                let key_str = std::str::from_utf8(key.as_ref()).unwrap_or("<<BAD UTF8>>");
+                let value_str = std::str::from_utf8(value.as_ref()).unwrap_or("<<BAD UTF8>>");
+                MapMessage::Update {
+                    key: key_str,
+                    value: value_str,
+                }
+            }
+            MapMessage::Remove { key } => {
+                let key_str = std::str::from_utf8(key.as_ref()).unwrap_or("<<BAD UTF8>>");
+                MapMessage::Remove { key: key_str }
+            }
+            MapMessage::Clear => MapMessage::Clear,
+            MapMessage::Take(n) => MapMessage::Take(*n),
+            MapMessage::Drop(n) => MapMessage::Drop(*n),
+        });
+        f.debug_struct("Decode")
+            .field("key_type", &type_name::<K>())
+            .field("value_type", &type_name::<V>())
+            .field("content", &content)
+            .finish()
+    }
 }
 
 pub type DecodeAndApply<C, K, V> =
@@ -593,6 +706,7 @@ pub fn decode_and_apply<C, K, V>(
     projection: fn(&C) -> &MapLane<K, V>,
 ) -> DecodeAndApply<C, K, V>
 where
+    C: AgentDescription,
     K: Form + Clone + Eq + Hash,
     V: RecognizerReadable,
 {
@@ -617,6 +731,7 @@ impl<C, K, V, F> MapLaneTransformEntry<C, K, V, F> {
 
 impl<C, K, V, F> HandlerAction<C> for MapLaneTransformEntry<C, K, V, F>
 where
+    C: AgentDescription,
     K: Clone + Eq + Hash,
     F: FnOnce(Option<&V>) -> Option<V>,
 {
@@ -646,6 +761,21 @@ where
             StepResult::after_done()
         }
     }
+
+    fn describe(&self, context: &C, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        let MapLaneTransformEntry {
+            projection,
+            key_and_f,
+        } = self;
+        let lane = projection(context);
+        let name = context.item_name(lane.id());
+
+        f.debug_struct("MapLaneTransformEntry")
+            .field("id", &lane.id())
+            .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
+            .field("consumed", &key_and_f.is_none())
+            .finish()
+    }
 }
 
 impl<K, V> MapLikeItem<K, V> for MapLane<K, V>
@@ -655,17 +785,22 @@ where
 {
     type GetHandler<C> = MapLaneGet<C, K, V>
     where
-        C: 'static;
+        C: AgentDescription + 'static;
 
-    fn get_handler<C: 'static>(projection: fn(&C) -> &Self, key: K) -> Self::GetHandler<C> {
+    fn get_handler<C: AgentDescription + 'static>(
+        projection: fn(&C) -> &Self,
+        key: K,
+    ) -> Self::GetHandler<C> {
         MapLaneGet::new(projection, key)
     }
 
     type GetMapHandler<C> = MapLaneGetMap<C, K, V>
     where
-        C: 'static;
+        C: AgentDescription + 'static;
 
-    fn get_map_handler<C: 'static>(projection: fn(&C) -> &Self) -> Self::GetMapHandler<C> {
+    fn get_map_handler<C: AgentDescription + 'static>(
+        projection: fn(&C) -> &Self,
+    ) -> Self::GetMapHandler<C> {
         MapLaneGetMap::new(projection)
     }
 }
@@ -678,7 +813,7 @@ where
     type WithEntryHandler<'a, C, F, B, U> = MapLaneWithEntry<C, K, V, F, B>
     where
         Self: 'static,
-        C: 'a,
+        C: AgentDescription + 'a,
         B: ?Sized +'static,
         V: Borrow<B>,
         F: FnOnce(Option<&B>) -> U + Send + 'a;
@@ -690,7 +825,7 @@ where
     ) -> Self::WithEntryHandler<'a, C, F, B, U>
     where
         Self: 'static,
-        C: 'a,
+        C: AgentDescription + 'a,
         B: ?Sized + 'static,
         V: Borrow<B>,
         F: FnOnce(Option<&B>) -> U + Send + 'a,
@@ -706,17 +841,17 @@ where
 {
     type UpdateHandler<C> = MapLaneUpdate<C, K, V>
     where
-        C: 'static;
+        C: AgentDescription + 'static;
 
     type RemoveHandler<C> = MapLaneRemove<C, K, V>
     where
-        C: 'static;
+        C: AgentDescription + 'static;
 
     type ClearHandler<C> = MapLaneClear<C, K, V>
     where
-        C: 'static;
+        C: AgentDescription + 'static;
 
-    fn update_handler<C: 'static>(
+    fn update_handler<C: AgentDescription + 'static>(
         projection: fn(&C) -> &Self,
         key: K,
         value: V,
@@ -724,18 +859,23 @@ where
         MapLaneUpdate::new(projection, key, value)
     }
 
-    fn remove_handler<C: 'static>(projection: fn(&C) -> &Self, key: K) -> Self::RemoveHandler<C> {
+    fn remove_handler<C: AgentDescription + 'static>(
+        projection: fn(&C) -> &Self,
+        key: K,
+    ) -> Self::RemoveHandler<C> {
         MapLaneRemove::new(projection, key)
     }
 
-    fn clear_handler<C: 'static>(projection: fn(&C) -> &Self) -> Self::ClearHandler<C> {
+    fn clear_handler<C: AgentDescription + 'static>(
+        projection: fn(&C) -> &Self,
+    ) -> Self::ClearHandler<C> {
         MapLaneClear::new(projection)
     }
 
     type TransformEntryHandler<'a, C, F> = MapLaneTransformEntry<C, K, V, F>
     where
         Self: 'static,
-        C: 'a,
+        C: AgentDescription + 'a,
         F: FnOnce(Option<&V>) -> Option<V> + Send + 'a;
 
     fn transform_entry_handler<'a, C, F>(
@@ -745,7 +885,7 @@ where
     ) -> Self::TransformEntryHandler<'a, C, F>
     where
         Self: 'static,
-        C: 'a,
+        C: AgentDescription + 'a,
         F: FnOnce(Option<&V>) -> Option<V> + Send + 'a,
     {
         MapLaneTransformEntry::new(projection, key, f)
@@ -760,7 +900,7 @@ pub struct MapLaneSelectUpdate<C, K, V, F> {
 }
 
 impl<C, K: Debug, V: Debug, F: Debug> Debug for MapLaneSelectUpdate<C, K, V, F> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("MapLaneSelectUpdate")
             .field("projection_key_value", &self.projection_key_value)
             .finish()
@@ -782,6 +922,7 @@ impl<C, K, V, F> MapLaneSelectUpdate<C, K, V, F> {
 
 impl<C, K, V, F> HandlerAction<C> for MapLaneSelectUpdate<C, K, V, F>
 where
+    C: AgentDescription,
     K: Clone + Eq + Hash,
     F: SelectorFn<C, Target = MapLane<K, V>>,
 {
@@ -812,6 +953,27 @@ where
             StepResult::after_done()
         }
     }
+
+    fn describe(&self, _context: &C, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        let MapLaneSelectUpdate {
+            projection_key_value,
+            ..
+        } = self;
+        if let Some((projection, _, _)) = projection_key_value {
+            f.debug_struct("MapLaneSelectUpdate")
+                .field("lane_name", &projection.name())
+                .field("key_type", &type_name::<K>())
+                .field("value_type", &type_name::<V>())
+                .field("consumed", &false)
+                .finish()
+        } else {
+            f.debug_struct("MapLaneSelectUpdate")
+                .field("key_type", &type_name::<K>())
+                .field("value_type", &type_name::<V>())
+                .field("consumed", &true)
+                .finish()
+        }
+    }
 }
 
 /// An [event handler](crate::event_handler::EventHandler) that attempts to remove an entry from a map lane, if
@@ -822,7 +984,7 @@ pub struct MapLaneSelectRemove<C, K, V, F> {
 }
 
 impl<C, K: Debug, V: Debug, F: Debug> Debug for MapLaneSelectRemove<C, K, V, F> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("MapLaneSelectRemove")
             .field("projection_key", &self.projection_key)
             .finish()
@@ -870,6 +1032,24 @@ where
             StepResult::after_done()
         }
     }
+
+    fn describe(&self, _context: &C, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        let MapLaneSelectRemove { projection_key, .. } = self;
+        if let Some((projection, _)) = projection_key {
+            f.debug_struct("MapLaneSelectRemove")
+                .field("lane_name", &projection.name())
+                .field("key_type", &type_name::<K>())
+                .field("value_type", &type_name::<V>())
+                .field("consumed", &false)
+                .finish()
+        } else {
+            f.debug_struct("MapLaneSelectRemove")
+                .field("key_type", &type_name::<K>())
+                .field("value_type", &type_name::<V>())
+                .field("consumed", &true)
+                .finish()
+        }
+    }
 }
 
 /// An [event handler](crate::event_handler::EventHandler) that attempts to clear a map lane, if
@@ -880,7 +1060,7 @@ pub struct MapLaneSelectClear<C, K, V, F> {
 }
 
 impl<C, K, V, F: Debug> Debug for MapLaneSelectClear<C, K, V, F> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("MapLaneSelectClear")
             .field("projection", &self.projection)
             .finish()
@@ -900,6 +1080,7 @@ impl<C, K, V, F> MapLaneSelectClear<C, K, V, F> {
 
 impl<C, K, V, F> HandlerAction<C> for MapLaneSelectClear<C, K, V, F>
 where
+    C: AgentDescription,
     K: Clone + Eq + Hash,
     F: SelectorFn<C, Target = MapLane<K, V>>,
 {
@@ -927,6 +1108,24 @@ where
             StepResult::after_done()
         }
     }
+
+    fn describe(&self, _context: &C, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        let MapLaneSelectClear { projection, .. } = self;
+        if let Some(projection) = projection {
+            f.debug_struct("MapLaneSelectClear")
+                .field("lane_name", &projection.name())
+                .field("key_type", &type_name::<K>())
+                .field("value_type", &type_name::<V>())
+                .field("consumed", &false)
+                .finish()
+        } else {
+            f.debug_struct("MapLaneSelectClear")
+                .field("key_type", &type_name::<K>())
+                .field("value_type", &type_name::<V>())
+                .field("consumed", &true)
+                .finish()
+        }
+    }
 }
 
 #[derive(Default)]
@@ -943,6 +1142,7 @@ pub enum DecodeAndSelectApply<C, K, V, F> {
 
 impl<C, K, V, F> HandlerAction<C> for DecodeAndSelectApply<C, K, V, F>
 where
+    C: AgentDescription,
     K: Form + Clone + Eq + Hash,
     V: RecognizerReadable,
     F: SelectorFn<C, Target = MapLane<K, V>>,
@@ -1029,6 +1229,41 @@ where
             DecodeAndSelectApply::Done => StepResult::after_done(),
         }
     }
+
+    fn describe(&self, context: &C, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        match self {
+            DecodeAndSelectApply::Decoding(decode_map_message, proj) => f
+                .debug_struct("DecodeAndSelectApply")
+                .field("state", &"Decoding")
+                .field("decoder", &Described::new(context, decode_map_message))
+                .field("lane_name", &proj.name())
+                .finish(),
+            DecodeAndSelectApply::Updating(selector) => f
+                .debug_struct("DecodeAndSelectApply")
+                .field("state", &"Updating")
+                .field("selector", &Described::new(context, selector))
+                .finish(),
+            DecodeAndSelectApply::Removing(selector) => f
+                .debug_struct("DecodeAndSelectApply")
+                .field("state", &"Removing")
+                .field("selector", &Described::new(context, selector))
+                .finish(),
+            DecodeAndSelectApply::Clearing(selector) => f
+                .debug_struct("DecodeAndSelectApply")
+                .field("state", &"Clearing")
+                .field("selector", &Described::new(context, selector))
+                .finish(),
+            DecodeAndSelectApply::DroppingOrTaking(selector) => f
+                .debug_struct("DecodeAndSelectApply")
+                .field("state", &"DroppingOrTaking")
+                .field("selector", &Described::new(context, selector))
+                .finish(),
+            DecodeAndSelectApply::Done => f
+                .debug_tuple("DecodeAndSelectSet")
+                .field(&"<<CONSUMED>>")
+                .finish(),
+        }
+    }
 }
 
 /// Create an event handler that will decode an incoming map message and apply the value into a map lane.
@@ -1068,6 +1303,7 @@ impl<C, K, V, F> MapLaneSelectSync<C, K, V, F> {
 
 impl<C, K, V, F> HandlerAction<C> for MapLaneSelectSync<C, K, V, F>
 where
+    C: AgentDescription,
     K: Clone + Eq + Hash,
     F: SelectorFn<C, Target = MapLane<K, V>>,
 {
@@ -1095,6 +1331,20 @@ where
             StepResult::Fail(EventHandlerError::SteppedAfterComplete)
         }
     }
+
+    fn describe(&self, _context: &C, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        let MapLaneSelectSync { projection_id, .. } = self;
+        if let Some((proj, id)) = projection_id {
+            f.debug_struct("MapLaneSelectSync")
+                .field("lane_name", &proj.name())
+                .field("sync_id", id)
+                .finish()
+        } else {
+            f.debug_tuple("MapLaneSelectSync")
+                .field(&"<<CONSUMED>>")
+                .finish()
+        }
+    }
 }
 
 struct MapLaneRemoveMultiple<C, K, V> {
@@ -1103,18 +1353,9 @@ struct MapLaneRemoveMultiple<C, K, V> {
     current: Option<MapLaneRemove<C, K, V>>,
 }
 
-impl<C, K, V> MapLaneRemoveMultiple<C, K, V> {
-    fn new(projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>, keys: VecDeque<K>) -> Self {
-        MapLaneRemoveMultiple {
-            projection,
-            keys: Some(keys),
-            current: None,
-        }
-    }
-}
-
 impl<C, K, V> HandlerAction<C> for MapLaneRemoveMultiple<C, K, V>
 where
+    C: AgentDescription,
     K: Clone + Eq + Hash,
 {
     type Completion = ();
@@ -1173,21 +1414,6 @@ pub struct MapLaneDropOrTake<C, K, V> {
     state: DropOrTakeState<C, K, V>,
 }
 
-impl<C, K, V> MapLaneDropOrTake<C, K, V> {
-    fn new(
-        projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>,
-        kind: DropOrTake,
-        number: u64,
-    ) -> Self {
-        MapLaneDropOrTake {
-            projection,
-            kind,
-            number,
-            state: DropOrTakeState::Init,
-        }
-    }
-}
-
 fn drop_or_take<K, V>(map: &HashMap<K, V>, kind: DropOrTake, number: usize) -> VecDeque<K>
 where
     K: StructuralWritable + Clone + Eq + Hash,
@@ -1218,6 +1444,7 @@ where
 
 impl<C, K, V> HandlerAction<C> for MapLaneDropOrTake<C, K, V>
 where
+    C: AgentDescription,
     K: StructuralWritable + Clone + Eq + Hash,
 {
     type Completion = ();
@@ -1383,6 +1610,31 @@ where
                 result
             }
             SelectDropOrTakeState::Done => StepResult::after_done(),
+        }
+    }
+}
+
+impl<C, K, V> MapLaneRemoveMultiple<C, K, V> {
+    fn new(projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>, keys: VecDeque<K>) -> Self {
+        MapLaneRemoveMultiple {
+            projection,
+            keys: Some(keys),
+            current: None,
+        }
+    }
+}
+
+impl<C, K, V> MapLaneDropOrTake<C, K, V> {
+    fn new(
+        projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>,
+        kind: DropOrTake,
+        number: u64,
+    ) -> Self {
+        MapLaneDropOrTake {
+            projection,
+            kind,
+            number,
+            state: DropOrTakeState::Init,
         }
     }
 }

@@ -25,8 +25,8 @@ use tokio_util::codec::Encoder;
 use uuid::Uuid;
 
 use crate::{
-    agent_model::WriteResult,
-    event_handler::{ActionContext, HandlerAction, Modification, StepResult},
+    agent_model::{AgentDescription, WriteResult},
+    event_handler::{ActionContext, Described, HandlerAction, Modification, StepResult},
     item::AgentItem,
     meta::AgentMetadata,
 };
@@ -178,6 +178,7 @@ impl<Context, K, V> CueKey<Context, K, V> {
 
 impl<Context, K, V> HandlerAction<Context> for CueKey<Context, K, V>
 where
+    Context: AgentDescription,
     K: Eq + Clone + Hash,
 {
     type Completion = ();
@@ -202,6 +203,21 @@ where
             StepResult::after_done()
         }
     }
+
+    fn describe(
+        &self,
+        context: &Context,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        let CueKey { projection, key } = self;
+        let lane = projection(context);
+        let name = context.item_name(lane.id());
+        f.debug_struct("CueKey")
+            .field("id", &lane.id())
+            .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
+            .field("cued", &key.is_none())
+            .finish()
+    }
 }
 
 pub struct DemandMapLaneSync<Context, K, V> {
@@ -218,7 +234,10 @@ impl<Context, K, V> DemandMapLaneSync<Context, K, V> {
     }
 }
 
-impl<Context, K, V> HandlerAction<Context> for DemandMapLaneSync<Context, K, V> {
+impl<Context, K, V> HandlerAction<Context> for DemandMapLaneSync<Context, K, V>
+where
+    Context: AgentDescription,
+{
     type Completion = ();
 
     fn step(
@@ -241,6 +260,24 @@ impl<Context, K, V> HandlerAction<Context> for DemandMapLaneSync<Context, K, V> 
         } else {
             StepResult::after_done()
         }
+    }
+
+    fn describe(
+        &self,
+        context: &Context,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        let DemandMapLaneSync {
+            projection,
+            sync_id,
+        } = self;
+        let lane = (projection)(context);
+        let name = context.item_name(lane.id());
+        f.debug_struct("DemandMapLaneSync")
+            .field("id", &lane.id())
+            .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
+            .field("sync_id", &sync_id)
+            .finish()
     }
 }
 
@@ -375,6 +412,7 @@ impl<Context, K, V, Keys, OnCueK> DemandMap<Context, K, V, Keys, OnCueK> {
 
 impl<Context, K, V, H1, H2> HandlerAction<Context> for DemandMap<Context, K, V, H1, H2>
 where
+    Context: AgentDescription,
     K: Clone + Eq + Hash,
     H1: HandlerAction<Context, Completion = HashSet<K>>,
     H2: HandlerAction<Context, Completion = Option<V>>,
@@ -482,6 +520,51 @@ where
                 }
             }
             DemandMapInner::Done => StepResult::after_done(),
+        }
+    }
+
+    fn describe(
+        &self,
+        context: &Context,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        let DemandMap { projection, inner } = self;
+        let lane = (projection)(context);
+        let name = context.item_name(lane.id());
+        match inner {
+            DemandMapInner::GettingKeys(handler) => f
+                .debug_struct("DemandMap")
+                .field("id", &lane.id())
+                .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
+                .field("state", &"GettingKeys")
+                .field("handler", &Described::new(context, handler))
+                .finish(),
+            DemandMapInner::CueingKey(_, _, uuid) => f
+                .debug_struct("DemandMap")
+                .field("id", &lane.id())
+                .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
+                .field("state", &"CueingKey")
+                .field("sync_id", uuid)
+                .finish(),
+            DemandMapInner::NoHandler => f
+                .debug_struct("DemandMap")
+                .field("id", &lane.id())
+                .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
+                .field("state", &"NoHandler")
+                .finish(),
+            DemandMapInner::Complete(trigger) => f
+                .debug_struct("DemandMap")
+                .field("id", &lane.id())
+                .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
+                .field("state", &"Complete")
+                .field("trigger", trigger)
+                .finish(),
+            DemandMapInner::Done => f
+                .debug_struct("DemandMap")
+                .field("id", &lane.id())
+                .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
+                .field("state", &"Done")
+                .finish(),
         }
     }
 }

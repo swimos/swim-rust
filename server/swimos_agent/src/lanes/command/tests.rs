@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::HashMap;
+use std::{borrow::Cow, collections::HashMap};
 
 use bytes::BytesMut;
 use swimos_agent_protocol::{encoding::lane::RawValueLaneResponseDecoder, LaneResponse};
@@ -21,7 +21,7 @@ use swimos_utilities::routing::RouteUri;
 use tokio_util::codec::Decoder;
 
 use crate::{
-    agent_model::WriteResult,
+    agent_model::{AgentDescription, WriteResult},
     event_handler::{
         check_step::check_is_complete, EventHandlerError, HandlerAction, ModificationFlags,
         StepResult,
@@ -84,6 +84,15 @@ fn make_meta<'a>(
 
 struct TestAgent {
     lane: CommandLane<i32>,
+}
+
+impl AgentDescription for TestAgent {
+    fn item_name(&self, id: u64) -> Option<Cow<'_, str>> {
+        match id {
+            LANE_ID => Some(Cow::Borrowed("lane")),
+            _ => None,
+        }
+    }
 }
 
 impl Default for TestAgent {

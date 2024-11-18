@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{collections::HashMap, fmt::Debug};
+use std::{borrow::Cow, collections::HashMap, fmt::Debug};
 
 use bytes::BytesMut;
 use swimos_agent_protocol::{encoding::lane::RawValueLaneResponseDecoder, LaneResponse};
@@ -22,7 +22,7 @@ use tokio_util::codec::Decoder;
 use uuid::Uuid;
 
 use crate::{
-    agent_model::WriteResult,
+    agent_model::{AgentDescription, WriteResult},
     event_handler::{EventHandlerError, HandlerAction, Modification, StepResult},
     item::ValueItem,
     lanes::{
@@ -268,6 +268,16 @@ struct TestAgent {
     str_lane: ValueLane<String>,
 }
 
+impl AgentDescription for TestAgent {
+    fn item_name(&self, id: u64) -> Option<Cow<'_, str>> {
+        match id {
+            LANE_ID => Some(Cow::Borrowed("lane")),
+            STR_LANE_ID => Some(Cow::Borrowed("str_lane")),
+            _ => None,
+        }
+    }
+}
+
 const LANE_ID: u64 = 9;
 const STR_LANE_ID: u64 = 73;
 
@@ -475,6 +485,14 @@ impl SelectorFn<TestAgent> for TestSelectorFn {
 
     fn selector<'a>(&'a self, context: &'a TestAgent) -> impl Selector<Target = Self::Target> + 'a {
         TestSelector(context, self.0)
+    }
+
+    fn name(&self) -> &str {
+        if self.0 {
+            "lane"
+        } else {
+            "other"
+        }
     }
 }
 

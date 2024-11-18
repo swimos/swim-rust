@@ -17,7 +17,14 @@ pub mod lifecycle;
 #[cfg(test)]
 mod tests;
 
-use std::{borrow::Borrow, cell::RefCell, collections::VecDeque, fmt::Debug, marker::PhantomData};
+use std::{
+    any::type_name,
+    borrow::Borrow,
+    cell::RefCell,
+    collections::VecDeque,
+    fmt::{Debug, Formatter},
+    marker::PhantomData,
+};
 
 use bytes::BytesMut;
 use static_assertions::assert_impl_all;
@@ -27,10 +34,10 @@ use tokio_util::codec::Encoder;
 use uuid::Uuid;
 
 use crate::{
-    agent_model::WriteResult,
+    agent_model::{AgentDescription, WriteResult},
     event_handler::{
-        ActionContext, AndThen, Decode, EventHandlerError, HandlerAction, HandlerActionExt,
-        HandlerTrans, Modification, StepResult,
+        ActionContext, AndThen, Decode, Described, EventHandlerError, HandlerAction,
+        HandlerActionExt, HandlerTrans, Modification, StepResult,
     },
     item::{AgentItem, MutableValueLikeItem, ValueItem, ValueLikeItem},
     meta::AgentMetadata,
@@ -207,7 +214,7 @@ impl<C, T> ValueLaneSync<C, T> {
     }
 }
 
-impl<C, T: Clone> HandlerAction<C> for ValueLaneGet<C, T> {
+impl<C: AgentDescription, T: Clone> HandlerAction<C> for ValueLaneGet<C, T> {
     type Completion = T;
 
     fn step(
@@ -226,9 +233,18 @@ impl<C, T: Clone> HandlerAction<C> for ValueLaneGet<C, T> {
             StepResult::done(value)
         }
     }
+
+    fn describe(&self, context: &C, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        let lane = (self.projection)(context);
+        let name = context.item_name(lane.id());
+        f.debug_struct("ValueLaneGet")
+            .field("id", &lane.id())
+            .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
+            .finish()
+    }
 }
 
-impl<C, T> HandlerAction<C> for ValueLaneSet<C, T> {
+impl<C: AgentDescription, T> HandlerAction<C> for ValueLaneSet<C, T> {
     type Completion = ();
 
     fn step(
@@ -249,9 +265,24 @@ impl<C, T> HandlerAction<C> for ValueLaneSet<C, T> {
             StepResult::Fail(EventHandlerError::SteppedAfterComplete)
         }
     }
+
+    fn describe(
+        &self,
+        context: &C,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        let ValueLaneSet { projection, value } = self;
+        let lane = (projection)(context);
+        let name = context.item_name(lane.id());
+        f.debug_struct("ValueLaneSet")
+            .field("id", &lane.id())
+            .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
+            .field("consumed", &value.is_none())
+            .finish()
+    }
 }
 
-impl<C, T> HandlerAction<C> for ValueLaneSync<C, T> {
+impl<C: AgentDescription, T> HandlerAction<C> for ValueLaneSync<C, T> {
     type Completion = ();
 
     fn step(
@@ -271,6 +302,21 @@ impl<C, T> HandlerAction<C> for ValueLaneSync<C, T> {
         } else {
             StepResult::Fail(EventHandlerError::SteppedAfterComplete)
         }
+    }
+
+    fn describe(
+        &self,
+        context: &C,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        let ValueLaneSync { projection, id } = self;
+        let lane = (projection)(context);
+        let name = context.item_name(lane.id());
+        f.debug_struct("ValueLaneSync")
+            .field("id", &lane.id())
+            .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
+            .field("sync_id", &id)
+            .finish()
     }
 }
 
@@ -296,6 +342,7 @@ impl<C, T, F, B: ?Sized> ValueLaneWithValue<C, T, F, B> {
 
 impl<C, T, F, B, U> HandlerAction<C> for ValueLaneWithValue<C, T, F, B>
 where
+    C: AgentDescription,
     B: ?Sized,
     T: Borrow<B>,
     F: FnOnce(&B) -> U,
@@ -315,6 +362,20 @@ where
             StepResult::after_done()
         }
     }
+
+    fn describe(
+        &self,
+        context: &C,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        let lane = (self.projection)(context);
+        let name = context.item_name(lane.id());
+        f.debug_struct("ValueLaneWithValue")
+            .field("id", &lane.id())
+            .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
+            .field("result_type", &type_name::<U>())
+            .finish()
+    }
 }
 
 impl<C, T> HandlerTrans<T> for ProjTransform<C, ValueLane<T>> {
@@ -330,7 +391,7 @@ pub type DecodeAndSet<C, T> =
     AndThen<Decode<T>, ValueLaneSet<C, T>, ProjTransform<C, ValueLane<T>>>;
 
 /// Create an event handler that will decode an incoming command and set the value into a value lane.
-pub fn decode_and_set<C, T: RecognizerReadable>(
+pub fn decode_and_set<C: AgentDescription, T: RecognizerReadable>(
     buffer: BytesMut,
     projection: fn(&C) -> &ValueLane<T>,
 ) -> DecodeAndSet<C, T> {
@@ -344,17 +405,19 @@ where
 {
     type GetHandler<C> = ValueLaneGet<C, T>
     where
-        C: 'static;
+        C: AgentDescription + 'static;
 
     type WithValueHandler<'a, C, F, B, U> = ValueLaneWithValue<C, T, F, B>
     where
         Self: 'static,
-        C: 'a,
+        C: AgentDescription + 'a,
         T: Borrow<B>,
         B: ?Sized + 'static,
         F: FnOnce(&B) -> U + Send + 'a;
 
-    fn get_handler<C: 'static>(projection: fn(&C) -> &Self) -> Self::GetHandler<C> {
+    fn get_handler<C: AgentDescription + 'static>(
+        projection: fn(&C) -> &Self,
+    ) -> Self::GetHandler<C> {
         ValueLaneGet::new(projection)
     }
 
@@ -363,7 +426,7 @@ where
         f: F,
     ) -> Self::WithValueHandler<'a, C, F, B, U>
     where
-        C: 'a,
+        C: AgentDescription + 'a,
         T: Borrow<B>,
         B: ?Sized + 'static,
         F: FnOnce(&B) -> U + Send + 'a,
@@ -378,9 +441,12 @@ where
 {
     type SetHandler<C> = ValueLaneSet<C, T>
     where
-        C: 'static;
+        C: AgentDescription + 'static;
 
-    fn set_handler<C: 'static>(projection: fn(&C) -> &Self, value: T) -> Self::SetHandler<C> {
+    fn set_handler<C: AgentDescription + 'static>(
+        projection: fn(&C) -> &Self,
+        value: T,
+    ) -> Self::SetHandler<C> {
         ValueLaneSet::new(projection, value)
     }
 }
@@ -414,6 +480,7 @@ impl<C, T, F> ValueLaneSelectSet<C, T, F> {
 
 impl<C, T, F> HandlerAction<C> for ValueLaneSelectSet<C, T, F>
 where
+    C: AgentDescription,
     F: SelectorFn<C, Target = ValueLane<T>>,
 {
     type Completion = ();
@@ -442,6 +509,28 @@ where
             StepResult::Fail(EventHandlerError::SteppedAfterComplete)
         }
     }
+
+    fn describe(
+        &self,
+        _context: &C,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        let ValueLaneSelectSet {
+            projection_value, ..
+        } = self;
+        if let Some((projection, _)) = projection_value {
+            f.debug_struct("ValueLaneSelectSet")
+                .field("lane_name", &projection.name())
+                .field("value_type", &type_name::<T>())
+                .field("consumed", &false)
+                .finish()
+        } else {
+            f.debug_struct("ValueLaneSelectSet")
+                .field("value_type", &type_name::<T>())
+                .field("consumed", &true)
+                .finish()
+        }
+    }
 }
 
 #[derive(Default)]
@@ -455,6 +544,7 @@ pub enum DecodeAndSelectSet<C, T, F> {
 
 impl<C, T, F> HandlerAction<C> for DecodeAndSelectSet<C, T, F>
 where
+    C: AgentDescription,
     T: RecognizerReadable,
     F: SelectorFn<C, Target = ValueLane<T>>,
 {
@@ -495,6 +585,30 @@ where
             DecodeAndSelectSet::Done => StepResult::after_done(),
         }
     }
+
+    fn describe(
+        &self,
+        context: &C,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        match self {
+            DecodeAndSelectSet::Decoding(decode, proj) => f
+                .debug_struct("DecodeAndSelectSet")
+                .field("state", &"Decoding")
+                .field("decoder", &Described::new(context, decode))
+                .field("lane_name", &proj.name())
+                .finish(),
+            DecodeAndSelectSet::Selecting(selector) => f
+                .debug_struct("DecodeAndSelectSet")
+                .field("state", &"Selecting")
+                .field("selector", &Described::new(context, selector))
+                .finish(),
+            DecodeAndSelectSet::Done => f
+                .debug_tuple("DecodeAndSelectSet")
+                .field(&"<<CONSUMED>>")
+                .finish(),
+        }
+    }
 }
 
 /// Create an event handler that will decode an incoming command and set the value into a value lane.
@@ -530,6 +644,7 @@ impl<C, T, F> ValueLaneSelectSync<C, T, F> {
 
 impl<C, T, F> HandlerAction<C> for ValueLaneSelectSync<C, T, F>
 where
+    C: AgentDescription,
     F: SelectorFn<C, Target = ValueLane<T>>,
 {
     type Completion = ();
@@ -554,6 +669,24 @@ where
             }
         } else {
             StepResult::Fail(EventHandlerError::SteppedAfterComplete)
+        }
+    }
+
+    fn describe(
+        &self,
+        _context: &C,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        let ValueLaneSelectSync { projection_id, .. } = self;
+        if let Some((proj, id)) = projection_id {
+            f.debug_struct("ValueLaneSelectSync")
+                .field("lane_name", &proj.name())
+                .field("sync_id", id)
+                .finish()
+        } else {
+            f.debug_tuple("ValueLaneSelectSync")
+                .field(&"<<CONSUMED>>")
+                .finish()
         }
     }
 }

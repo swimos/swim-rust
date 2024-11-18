@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::time::Duration;
+use std::{any::type_name, time::Duration};
 
 use futures::{
     future::{BoxFuture, Either},
@@ -88,6 +88,18 @@ where
         } else {
             StepResult::after_done()
         }
+    }
+
+    fn describe(
+        &self,
+        _context: &Context,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        let Suspend { future } = self;
+        f.debug_struct("Suspend")
+            .field("handler_type", &type_name::<H>())
+            .field("consumed", &future.is_none())
+            .finish()
     }
 }
 

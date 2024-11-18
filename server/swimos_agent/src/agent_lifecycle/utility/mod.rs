@@ -36,6 +36,7 @@ use crate::agent_model::downlink::{EventDownlinkHandle, MapDownlinkHandle, Value
 use crate::agent_model::downlink::{
     OpenEventDownlinkAction, OpenMapDownlinkAction, OpenValueDownlinkAction,
 };
+use crate::agent_model::AgentDescription;
 use crate::commander::{Commander, RegisterCommander};
 use crate::config::{MapDownlinkConfig, SimpleDownlinkConfig};
 use crate::downlink_lifecycle::ValueDownlinkLifecycle;
@@ -108,68 +109,7 @@ impl<Agent> Clone for HandlerContext<Agent> {
 
 impl<Agent> Copy for HandlerContext<Agent> {}
 
-impl<Agent: 'static> HandlerContext<Agent> {
-    /// Create an event handler that resolves to a specific value.
-    pub fn value<T>(&self, val: T) -> impl HandlerAction<Agent, Completion = T> {
-        ConstHandler::from(val)
-    }
-
-    /// Create an event handler that executes a side effect.
-    pub fn effect<F, T>(&self, f: F) -> impl HandlerAction<Agent, Completion = T>
-    where
-        F: FnOnce() -> T,
-    {
-        SideEffect::from(f)
-    }
-
-    /// Send a command to a lane (either on a remote host or locally to an agent on the same plane).
-    ///
-    /// # Arguments
-    /// * `host` - The target remote host or [`None`] for an agent in the same plane.
-    /// * `node` - The target node hosting the lane.
-    /// * `lane` - The name of the target lane.
-    /// * `command` - The value to send.
-    pub fn send_command<'a, T>(
-        &self,
-        host: Option<&str>,
-        node: &str,
-        lane: &str,
-        command: T,
-    ) -> impl EventHandler<Agent> + 'a
-    where
-        T: StructuralWritable + 'a,
-    {
-        let addr = Address::text(host, node, lane);
-        SendCommand::new(addr, command, true)
-    }
-
-    /// Create an event handler that will fetch the metadata of the agent instance.
-    pub fn get_agent_uri(
-        &self,
-    ) -> impl HandlerAction<Agent, Completion = RouteUri> + Send + 'static {
-        GetAgentUri::default()
-    }
-
-    /// Get the value of a parameter extracted from the route URI of the agent instance.
-    /// # Arguments
-    /// * `name` - The name of the parameter.
-    pub fn get_parameter<'a>(
-        &self,
-        name: &'a str,
-    ) -> impl HandlerAction<Agent, Completion = Option<String>> + Send + 'a {
-        GetParameter::new(name)
-    }
-
-    /// Compute a value from the parameters extracted from the route URI of the agent instance.
-    /// # Arguments
-    /// * `f` - The function to apply to the parameters.
-    pub fn with_parameters<F, T>(&self, f: F) -> impl HandlerAction<Agent, Completion = T>
-    where
-        F: FnOnce(&HashMap<String, String>) -> T,
-    {
-        WithParameters::new(f)
-    }
-
+impl<Agent: AgentDescription + 'static> HandlerContext<Agent> {
     /// Create an event handler that will get the value of a value lane store of the agent.
     ///
     /// #Arguments
@@ -183,23 +123,6 @@ impl<Agent: 'static> HandlerContext<Agent> {
         T: Clone + Send + 'static,
     {
         Item::get_handler::<Agent>(item)
-    }
-
-    /// Create an event handler that will set a new value into a value lane or store of the agent.
-    ///
-    /// #Arguments
-    /// * `item` - Projection to the value lane or store.
-    /// * `value` - The value to set.
-    pub fn set_value<Item, T>(
-        &self,
-        item: fn(&Agent) -> &Item,
-        value: T,
-    ) -> impl HandlerAction<Agent, Completion = ()> + Send + 'static
-    where
-        Item: MutableValueLikeItem<T>,
-        T: Send + 'static,
-    {
-        Item::set_handler::<Agent>(item, value)
     }
 
     /// Create an event handler that will transform the value of a value lane or store of the agent.
@@ -241,6 +164,39 @@ impl<Agent: 'static> HandlerContext<Agent> {
         F: FnOnce(&B) -> U + Send + 'a,
     {
         Item::with_value_handler::<Item, Agent, F, B, U>(item, f)
+    }
+
+    /// Create an event handler that will set a new value into a value lane or store of the agent.
+    ///
+    /// #Arguments
+    /// * `item` - Projection to the value lane or store.
+    /// * `value` - The value to set.
+    pub fn set_value<Item, T>(
+        &self,
+        item: fn(&Agent) -> &Item,
+        value: T,
+    ) -> impl HandlerAction<Agent, Completion = ()> + Send + 'static
+    where
+        Item: MutableValueLikeItem<T>,
+        T: Send + 'static,
+    {
+        Item::set_handler::<Agent>(item, value)
+    }
+
+    /// Create an event handler that will send a command to a command lane of the agent.
+    ///
+    /// # Arguments
+    /// * `lane` - Projection to the value lane.
+    /// * `value` - The value of the command.
+    pub fn command<T>(
+        &self,
+        lane: fn(&Agent) -> &CommandLane<T>,
+        value: T,
+    ) -> impl HandlerAction<Agent, Completion = ()> + Send + 'static
+    where
+        T: Send + 'static,
+    {
+        DoCommand::new(lane, value)
     }
 
     /// Create an event handler that will update an entry in a map lane or store of the agent.
@@ -346,30 +302,6 @@ impl<Agent: 'static> HandlerContext<Agent> {
         Item::clear_handler::<Agent>(item)
     }
 
-    /// Create an event handler that replaces the entire contents of a map lane or store.
-    ///
-    /// #Arguments
-    /// * `item` - Projection to the map lane or store.
-    /// * `entries` - The new entries for the lane.
-    pub fn replace_map<Item, K, V, I>(
-        &self,
-        item: fn(&Agent) -> &Item,
-        entries: I,
-    ) -> impl HandlerAction<Agent, Completion = ()> + Send + 'static
-    where
-        Item: MutableMapLikeItem<K, V> + 'static,
-        K: Send + Clone + Eq + Hash + 'static,
-        V: Send + 'static,
-        I: IntoIterator<Item = (K, V)>,
-        I::IntoIter: Send + 'static,
-    {
-        let context = *self;
-        let insertions = entries
-            .into_iter()
-            .map(move |(k, v)| context.update(item, k, v));
-        self.clear(item).followed_by(Sequentially::new(insertions))
-    }
-
     /// Create an event handler that will attempt to get an entry from a map-like item of the agent.
     /// This includes map lanes and stores and join lanes.
     ///
@@ -406,20 +338,28 @@ impl<Agent: 'static> HandlerContext<Agent> {
         Item::get_map_handler::<Agent>(item)
     }
 
-    /// Create an event handler that will send a command to a command lane of the agent.
+    /// Create an event handler that replaces the entire contents of a map lane or store.
     ///
-    /// # Arguments
-    /// * `lane` - Projection to the value lane.
-    /// * `value` - The value of the command.
-    pub fn command<T>(
+    /// #Arguments
+    /// * `item` - Projection to the map lane or store.
+    /// * `entries` - The new entries for the lane.
+    pub fn replace_map<Item, K, V, I>(
         &self,
-        lane: fn(&Agent) -> &CommandLane<T>,
-        value: T,
+        item: fn(&Agent) -> &Item,
+        entries: I,
     ) -> impl HandlerAction<Agent, Completion = ()> + Send + 'static
     where
-        T: Send + 'static,
+        Item: MutableMapLikeItem<K, V> + 'static,
+        K: Send + Clone + Eq + Hash + 'static,
+        V: Send + 'static,
+        I: IntoIterator<Item = (K, V)>,
+        I::IntoIter: Send + 'static,
     {
-        DoCommand::new(lane, value)
+        let context = *self;
+        let insertions = entries
+            .into_iter()
+            .map(move |(k, v)| context.update(item, k, v));
+        self.clear(item).followed_by(Sequentially::new(insertions))
     }
 
     /// Create an event handler that will cue a demand lane to produce a value.
@@ -434,6 +374,22 @@ impl<Agent: 'static> HandlerContext<Agent> {
         T: Send + 'static,
     {
         Cue::new(lane)
+    }
+
+    /// Create an event handler that will supply an event to a supply lane.
+    ///
+    /// # Arguments
+    /// * `lane` - Projection to the supply lane.
+    /// * `value` - The value to supply.
+    pub fn supply<V>(
+        &self,
+        lane: fn(&Agent) -> &SupplyLane<V>,
+        value: V,
+    ) -> impl EventHandler<Agent> + Send + 'static
+    where
+        V: Send + 'static,
+    {
+        Supply::new(lane, value)
     }
 
     /// Create an event handler that will cue a key on a demand-map lane to produce a value.
@@ -453,20 +409,139 @@ impl<Agent: 'static> HandlerContext<Agent> {
         CueKey::new(lane, key)
     }
 
-    /// Create an event handler that will supply an event to a supply lane.
+    /// Add a downlink to a Join Value lane. All values received on the downlink will be set into the map
+    /// state of the lane, using the provided key.
     ///
     /// # Arguments
-    /// * `lane` - Projection to the supply lane.
-    /// * `value` - The value to supply.
-    pub fn supply<V>(
+    /// * `lane` - Projection to the lane.
+    /// * `key` - The key for the downlink.
+    /// * `host` - The remote host at which the agent resides (a local agent if not specified).
+    /// * `node` - The node URI of the agent.
+    /// * `lane_uri` - The lane to downlink from.
+    pub fn add_downlink<K, V>(
         &self,
-        lane: fn(&Agent) -> &SupplyLane<V>,
-        value: V,
-    ) -> impl EventHandler<Agent> + Send + 'static
+        lane: fn(&Agent) -> &JoinValueLane<K, V>,
+        key: K,
+        host: Option<&str>,
+        node: &str,
+        lane_uri: &str,
+    ) -> impl HandlerAction<Agent, Completion = ()> + Send + 'static
     where
-        V: Send + 'static,
+        K: Any + Clone + Eq + Hash + Send + 'static,
+        V: Form + Send + 'static,
+        V::Rec: Send,
     {
-        Supply::new(lane, value)
+        let address = Address::text(host, node, lane_uri);
+        JoinValueAddDownlink::new(lane, key, address)
+    }
+
+    /// Removes a downlink from a Join lane. Removing any associated values the downlink holds in
+    /// the underlying map.
+    ///
+    /// # Arguments
+    /// * `lane` - Projection to the lane.
+    /// * `link_key` - The link key for the downlink.
+    pub fn remove_downlink<L, K>(
+        &self,
+        lane: fn(&Agent) -> &L,
+        link_key: K,
+    ) -> impl HandlerAction<Agent, Completion = ()> + Send + 'static
+    where
+        K: Clone + Send + Eq + PartialEq + Hash + 'static,
+        L: JoinLikeItem<K>,
+    {
+        L::remove_downlink_handler(lane, link_key)
+    }
+
+    /// Add a downlink to a Join Map lane. All key-value pairs received on the downlink will be set into the
+    /// map state of the lane.
+    ///
+    /// # Arguments
+    /// * `lane` - Projection to the lane.
+    /// * `link_key` - A key to identify the link.
+    /// * `host` - The remote host at which the agent resides (a local agent if not specified).
+    /// * `node` - The node URI of the agent.
+    /// * `lane_uri` - The lane to downlink from.
+    pub fn add_map_downlink<L, K, V>(
+        &self,
+        lane: fn(&Agent) -> &JoinMapLane<L, K, V>,
+        link_key: L,
+        host: Option<&str>,
+        node: &str,
+        lane_uri: &str,
+    ) -> impl HandlerAction<Agent, Completion = ()> + Send + 'static
+    where
+        L: Any + Clone + Eq + Hash + Send + 'static,
+        K: Any + Form + Clone + Eq + Hash + Send + Ord + 'static,
+        V: Form + Send + 'static,
+        K::Rec: Send,
+        V::BodyRec: Send,
+    {
+        let address = Address::text(host, node, lane_uri);
+        JoinMapAddDownlink::new(lane, link_key, address)
+    }
+}
+
+impl<Agent: 'static> HandlerContext<Agent> {
+    /// Create an event handler that resolves to a specific value.
+    pub fn value<T>(&self, val: T) -> impl HandlerAction<Agent, Completion = T> {
+        ConstHandler::from(val)
+    }
+
+    /// Create an event handler that executes a side effect.
+    pub fn effect<F, T>(&self, f: F) -> impl HandlerAction<Agent, Completion = T>
+    where
+        F: FnOnce() -> T,
+    {
+        SideEffect::from(f)
+    }
+
+    /// Send a command to a lane (either on a remote host or locally to an agent on the same plane).
+    ///
+    /// # Arguments
+    /// * `host` - The target remote host or [`None`] for an agent in the same plane.
+    /// * `node` - The target node hosting the lane.
+    /// * `lane` - The name of the target lane.
+    /// * `command` - The value to send.
+    pub fn send_command<'a, T>(
+        &self,
+        host: Option<&str>,
+        node: &str,
+        lane: &str,
+        command: T,
+    ) -> impl EventHandler<Agent> + 'a
+    where
+        T: StructuralWritable + 'a,
+    {
+        let addr = Address::text(host, node, lane);
+        SendCommand::new(addr, command, true)
+    }
+
+    /// Create an event handler that will fetch the metadata of the agent instance.
+    pub fn get_agent_uri(
+        &self,
+    ) -> impl HandlerAction<Agent, Completion = RouteUri> + Send + 'static {
+        GetAgentUri::default()
+    }
+
+    /// Get the value of a parameter extracted from the route URI of the agent instance.
+    /// # Arguments
+    /// * `name` - The name of the parameter.
+    pub fn get_parameter<'a>(
+        &self,
+        name: &'a str,
+    ) -> impl HandlerAction<Agent, Completion = Option<String>> + Send + 'a {
+        GetParameter::new(name)
+    }
+
+    /// Compute a value from the parameters extracted from the route URI of the agent instance.
+    /// # Arguments
+    /// * `f` - The function to apply to the parameters.
+    pub fn with_parameters<F, T>(&self, f: F) -> impl HandlerAction<Agent, Completion = T>
+    where
+        F: FnOnce(&HashMap<String, String>) -> T,
+    {
+        WithParameters::new(f)
     }
 
     /// Suspend a future to be executed by the agent task. The future must result in another
@@ -497,7 +572,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
     where
         H: EventHandler<Agent> + Send + 'static,
     {
-        run_after(delay, handler)
+        run_after(delay, handler).annotated(("run_after", delay))
     }
 
     /// Run a (potentially infinite) sequence of [`EventHandler`]s on a schedule. For each pair of a duration
@@ -519,7 +594,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
         I::IntoIter: Send + 'static,
         H: EventHandler<Agent> + Send + 'static,
     {
-        run_schedule(schedule)
+        run_schedule(schedule).annotated("run_schedule")
     }
 
     /// Schedule a (potentially infinite) stream of [`EventHandler`]s to run. The handlers are scheduled sequentially,
@@ -537,7 +612,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
         S: Stream<Item = H> + Send + Unpin + 'static,
         H: EventHandler<Agent> + Send + 'static,
     {
-        run_schedule_async(handlers)
+        run_schedule_async(handlers).annotated("suspend_schedule")
     }
 
     /// Schedule a (potentially infinite) sequence of handlers to run with a fixed delay between them.
@@ -560,7 +635,8 @@ impl<Agent: 'static> HandlerContext<Agent> {
         I::IntoIter: Send + 'static,
         H: EventHandler<Agent> + Send + 'static,
     {
-        self.run_schedule(handlers.into_iter().map(move |h| (delay, h)))
+        run_schedule(handlers.into_iter().map(move |h| (delay, h)))
+            .annotated(("run_handlers_with_delay", delay))
     }
 
     /// Schedule a (potentially infinite) sequence of futures (each resulting in an [`EventHandler`]) to
@@ -598,7 +674,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
                 }
             },
         );
-        self.suspend_schedule(stream.boxed())
+        run_schedule_async(stream.boxed()).annotated(("suspend_handlers_with_delay", delay))
     }
 
     /// Schedule a (potentially infinite) sequence of handlers, generated by a closure, to run with a
@@ -817,78 +893,6 @@ impl<Agent: 'static> HandlerContext<Agent> {
         V::Rec: Send,
     {
         StatelessMapDownlinkBuilder::new(Address::text(host, node, lane), config)
-    }
-
-    /// Add a downlink to a Join Value lane. All values received on the downlink will be set into the map
-    /// state of the lane, using the provided key.
-    ///
-    /// # Arguments
-    /// * `lane` - Projection to the lane.
-    /// * `key` - The key for the downlink.
-    /// * `host` - The remote host at which the agent resides (a local agent if not specified).
-    /// * `node` - The node URI of the agent.
-    /// * `lane_uri` - The lane to downlink from.
-    pub fn add_downlink<K, V>(
-        &self,
-        lane: fn(&Agent) -> &JoinValueLane<K, V>,
-        key: K,
-        host: Option<&str>,
-        node: &str,
-        lane_uri: &str,
-    ) -> impl HandlerAction<Agent, Completion = ()> + Send + 'static
-    where
-        K: Any + Clone + Eq + Hash + Send + 'static,
-        V: Form + Send + 'static,
-        V::Rec: Send,
-    {
-        let address = Address::text(host, node, lane_uri);
-        JoinValueAddDownlink::new(lane, key, address)
-    }
-
-    /// Removes a downlink from a Join lane. Removing any associated values the downlink holds in
-    /// the underlying map.
-    ///
-    /// # Arguments
-    /// * `lane` - Projection to the lane.
-    /// * `link_key` - The link key for the downlink.
-    pub fn remove_downlink<L, K>(
-        &self,
-        lane: fn(&Agent) -> &L,
-        link_key: K,
-    ) -> impl HandlerAction<Agent, Completion = ()> + Send + 'static
-    where
-        K: Clone + Send + Eq + PartialEq + Hash + 'static,
-        L: JoinLikeItem<K>,
-    {
-        L::remove_downlink_handler(lane, link_key)
-    }
-
-    /// Add a downlink to a Join Map lane. All key-value pairs received on the downlink will be set into the
-    /// map state of the lane.
-    ///
-    /// # Arguments
-    /// * `lane` - Projection to the lane.
-    /// * `link_key` - A key to identify the link.
-    /// * `host` - The remote host at which the agent resides (a local agent if not specified).
-    /// * `node` - The node URI of the agent.
-    /// * `lane_uri` - The lane to downlink from.
-    pub fn add_map_downlink<L, K, V>(
-        &self,
-        lane: fn(&Agent) -> &JoinMapLane<L, K, V>,
-        link_key: L,
-        host: Option<&str>,
-        node: &str,
-        lane_uri: &str,
-    ) -> impl HandlerAction<Agent, Completion = ()> + Send + 'static
-    where
-        L: Any + Clone + Eq + Hash + Send + 'static,
-        K: Any + Form + Clone + Eq + Hash + Send + Ord + 'static,
-        V: Form + Send + 'static,
-        K::Rec: Send,
-        V::BodyRec: Send,
-    {
-        let address = Address::text(host, node, lane_uri);
-        JoinMapAddDownlink::new(lane, link_key, address)
     }
 
     /// Causes the agent to stop. If this is encountered during the `on_start` event of an agent it will

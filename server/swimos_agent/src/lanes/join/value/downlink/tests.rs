@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::borrow::Cow;
 use std::{cell::RefCell, collections::HashMap};
 
 use bytes::BytesMut;
@@ -20,6 +21,7 @@ use swimos_api::{address::Address, agent::AgentConfig};
 use swimos_model::Text;
 use swimos_utilities::routing::RouteUri;
 
+use crate::agent_model::AgentDescription;
 use crate::event_handler::LocalBoxHandlerAction;
 use crate::lanes::join_value::Link;
 use crate::{
@@ -48,6 +50,16 @@ use super::JoinValueDownlink;
 
 struct TestAgent {
     lane: JoinValueLane<i32, String>,
+}
+
+impl AgentDescription for TestAgent {
+    fn item_name(&self, id: u64) -> Option<Cow<'_, str>> {
+        if id == ID {
+            Some(Cow::Borrowed("lane"))
+        } else {
+            None
+        }
+    }
 }
 
 const ID: u64 = 12;

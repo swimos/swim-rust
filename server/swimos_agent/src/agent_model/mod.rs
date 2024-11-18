@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
@@ -190,10 +191,18 @@ pub type MapLikeInitializer<T> =
 #[doc(hidden)]
 pub type ValueLikeInitializer<T> = Box<dyn ItemInitializer<T, BytesMut> + Send + 'static>;
 
+/// A trait for agents that can describe the names of their items (lanes and stores).
+pub trait AgentDescription {
+    /// Get the item name for an item ID.
+    fn item_name(&self, _id: u64) -> Option<Cow<'_, str>> {
+        None
+    }
+}
+
 /// A trait which describes the lanes of an agent which can be run as a task attached to an
 /// [`AgentContext`]. A type implementing this trait is sufficient to produce a functional agent
 /// although it will not provided any lifecycle events for the agent or its lanes.
-pub trait AgentSpec: Sized + Send {
+pub trait AgentSpec: AgentDescription + Sized + Send {
     /// The type of handler to run when a command is received for a value lane.
     type ValCommandHandler: HandlerAction<Self, Completion = ()> + Send + 'static;
 

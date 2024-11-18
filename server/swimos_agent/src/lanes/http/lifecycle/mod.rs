@@ -22,11 +22,14 @@ use swimos_api::{
 use swimos_utilities::handlers::{FnHandler, NoHandler};
 use tracing::debug;
 
-use crate::event_handler::EventHandlerError;
 use crate::{
     agent_lifecycle::HandlerContext,
     event_handler::{ActionContext, HandlerAction, StepResult},
     meta::AgentMetadata,
+};
+use crate::{
+    agent_model::AgentDescription,
+    event_handler::{Described, EventHandlerError},
 };
 
 use self::{
@@ -130,6 +133,14 @@ impl<Context> HandlerAction<Context> for UnsupportedHandler {
         _context: &Context,
     ) -> StepResult<Self::Completion> {
         StepResult::done(Response::not_supported())
+    }
+
+    fn describe(
+        &self,
+        _context: &Context,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        f.debug_tuple("UnsupportedHandler").finish()
     }
 }
 
@@ -476,6 +487,7 @@ macro_rules! step {
 impl<'a, Context, Get, Post, Put, Codec, LC> HandlerAction<Context>
     for HttpLifecycleHandler<'a, Context, Get, Post, Put, Codec, LC>
 where
+    Context: AgentDescription,
     Codec: HttpLaneCodec<Get>,
     LC: HttpLaneLifecycle<Get, Post, Put, Context>,
 {
@@ -548,6 +560,51 @@ where
             }
         } else {
             StepResult::after_done()
+        }
+    }
+
+    fn describe(
+        &self,
+        context: &Context,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        let HttpLifecycleHandler {
+            inner, response_tx, ..
+        } = self;
+        if response_tx.is_none() {
+            f.debug_tuple("HttpLifecycleHandler")
+                .field(&"<<CONSUMED>>")
+                .finish()
+        } else {
+            match inner {
+                HttpLifecycleHandlerInner::Get(mime, handler) => f
+                    .debug_struct("HttpLifecycleHandler")
+                    .field("method", &"GET")
+                    .field("mime_type", mime)
+                    .field("handler", &Described::new(context, handler))
+                    .finish(),
+                HttpLifecycleHandlerInner::Head(mime, handler) => f
+                    .debug_struct("HttpLifecycleHandler")
+                    .field("method", &"HEAD")
+                    .field("mime_type", mime)
+                    .field("handler", &Described::new(context, handler))
+                    .finish(),
+                HttpLifecycleHandlerInner::Post(handler) => f
+                    .debug_struct("HttpLifecycleHandler")
+                    .field("method", &"POST")
+                    .field("handler", &Described::new(context, handler))
+                    .finish(),
+                HttpLifecycleHandlerInner::Put(handler) => f
+                    .debug_struct("HttpLifecycleHandler")
+                    .field("method", &"PUT")
+                    .field("handler", &Described::new(context, handler))
+                    .finish(),
+                HttpLifecycleHandlerInner::Delete(handler) => f
+                    .debug_struct("HttpLifecycleHandler")
+                    .field("method", &"DELETE")
+                    .field("handler", &Described::new(context, handler))
+                    .finish(),
+            }
         }
     }
 }
@@ -719,6 +776,7 @@ where
 impl<'a, Context, Shared, Get, Post, Put, Codec, LC> HandlerAction<Context>
     for HttpLifecycleHandlerShared<'a, Context, Shared, Get, Post, Put, Codec, LC>
 where
+    Context: AgentDescription,
     Codec: HttpLaneCodec<Get>,
     LC: HttpLaneLifecycleShared<Get, Post, Put, Context, Shared>,
 {
@@ -789,6 +847,51 @@ where
             }
         } else {
             StepResult::after_done()
+        }
+    }
+
+    fn describe(
+        &self,
+        context: &Context,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        let HttpLifecycleHandlerShared {
+            inner, response_tx, ..
+        } = self;
+        if response_tx.is_none() {
+            f.debug_tuple("HttpLifecycleHandlerShared")
+                .field(&"<<CONSUMED>>")
+                .finish()
+        } else {
+            match inner {
+                HttpLifecycleHandlerSharedInner::Get(mime, handler) => f
+                    .debug_struct("HttpLifecycleHandlerShared")
+                    .field("method", &"GET")
+                    .field("mime_type", mime)
+                    .field("handler", &Described::new(context, handler))
+                    .finish(),
+                HttpLifecycleHandlerSharedInner::Head(mime, handler) => f
+                    .debug_struct("HttpLifecycleHandlerShared")
+                    .field("method", &"HEAD")
+                    .field("mime_type", mime)
+                    .field("handler", &Described::new(context, handler))
+                    .finish(),
+                HttpLifecycleHandlerSharedInner::Post(handler) => f
+                    .debug_struct("HttpLifecycleHandlerShared")
+                    .field("method", &"POST")
+                    .field("handler", &Described::new(context, handler))
+                    .finish(),
+                HttpLifecycleHandlerSharedInner::Put(handler) => f
+                    .debug_struct("HttpLifecycleHandlerShared")
+                    .field("method", &"PUT")
+                    .field("handler", &Described::new(context, handler))
+                    .finish(),
+                HttpLifecycleHandlerSharedInner::Delete(handler) => f
+                    .debug_struct("HttpLifecycleHandlerShared")
+                    .field("method", &"DELETE")
+                    .field("handler", &Described::new(context, handler))
+                    .finish(),
+            }
         }
     }
 }

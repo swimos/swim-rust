@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use std::{
+    borrow::Cow,
     cell::RefCell,
     collections::{HashMap, HashSet},
 };
@@ -24,7 +25,6 @@ use swimos_api::{address::Address, agent::AgentConfig};
 use swimos_model::Text;
 use swimos_utilities::routing::RouteUri;
 
-use crate::event_handler::LocalBoxHandlerAction;
 use crate::{
     agent_lifecycle::HandlerContext,
     downlink_lifecycle::{OnConsumeEvent, OnFailed, OnLinked, OnSynced, OnUnlinked},
@@ -47,9 +47,20 @@ use crate::{
     meta::AgentMetadata,
     test_context::dummy_context,
 };
+use crate::{agent_model::AgentDescription, event_handler::LocalBoxHandlerAction};
 
 struct TestAgent {
     lane: JoinMapLane<String, i32, String>,
+}
+
+impl AgentDescription for TestAgent {
+    fn item_name(&self, id: u64) -> Option<Cow<'_, str>> {
+        if id == ID {
+            Some(Cow::Borrowed("lane"))
+        } else {
+            None
+        }
+    }
 }
 
 const ID: u64 = 12;

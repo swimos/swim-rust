@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::HashMap;
+use std::{borrow::Cow, collections::HashMap};
 
 use bytes::{Bytes, BytesMut};
 use mime::Mime;
@@ -22,10 +22,13 @@ use swimos_api::{
 };
 use swimos_utilities::routing::RouteUri;
 
-use crate::event_handler::{EventHandler, Modification, ModificationFlags, StepResult};
 use crate::lanes::http::model::MethodAndPayload;
 use crate::meta::AgentMetadata;
 use crate::test_context::dummy_context;
+use crate::{
+    agent_model::AgentDescription,
+    event_handler::{EventHandler, Modification, ModificationFlags, StepResult},
+};
 
 use super::headers::content_type_header;
 use super::model::Request;
@@ -34,6 +37,16 @@ use super::{content_type::recon, HttpLaneAccept, Recon, SimpleHttpLane};
 
 struct FakeAgent {
     lane: SimpleHttpLane<i32, Recon>,
+}
+
+impl AgentDescription for FakeAgent {
+    fn item_name(&self, id: u64) -> Option<Cow<'_, str>> {
+        if id == LANE_ID {
+            Some(Cow::Borrowed("lane"))
+        } else {
+            None
+        }
+    }
 }
 
 const LANE_ID: u64 = 6;

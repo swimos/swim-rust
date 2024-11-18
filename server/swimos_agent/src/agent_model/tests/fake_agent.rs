@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use std::{
+    borrow::Cow,
     cell::RefCell,
     collections::{hash_map::Entry, HashMap, VecDeque},
     sync::atomic::{AtomicU64, Ordering},
@@ -34,7 +35,7 @@ use uuid::Uuid;
 
 use crate::agent_model::{ItemDescriptor, ItemSpec, MapLikeInitializer, ValueLikeInitializer};
 use crate::{
-    agent_model::{AgentSpec, ItemFlags, WriteResult},
+    agent_model::{AgentDescription, AgentSpec, ItemFlags, WriteResult},
     event_handler::{ActionContext, HandlerAction, Modification, StepResult},
     meta::AgentMetadata,
 };
@@ -151,6 +152,18 @@ pub struct TestHttpHandler {
 impl From<TestEvent> for TestHandler {
     fn from(ev: TestEvent) -> Self {
         TestHandler { event: Some(ev) }
+    }
+}
+
+impl AgentDescription for TestAgent {
+    fn item_name(&self, id: u64) -> Option<Cow<'_, str>> {
+        match id {
+            VAL_ID => Some(Cow::Borrowed(VAL_LANE)),
+            CMD_ID => Some(Cow::Borrowed(CMD_LANE)),
+            MAP_ID => Some(Cow::Borrowed(MAP_LANE)),
+            HTTP_ID => Some(Cow::Borrowed(HTTP_LANE)),
+            _ => None,
+        }
     }
 }
 

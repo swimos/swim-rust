@@ -75,4 +75,36 @@ where
             StepResult::after_done()
         }
     }
+
+    fn describe(
+        &self,
+        _context: &Context,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        let SendCommand {
+            body,
+            overwrite_permitted,
+        } = self;
+        if let Some(Body {
+            address: Address { host, node, lane },
+            ..
+        }) = body
+        {
+            let addr: Address<&str> = Address::new(
+                host.as_ref().map(|s| s.as_ref()),
+                node.as_ref(),
+                lane.as_ref(),
+            );
+            f.debug_struct("SendCommand")
+                .field("address", &addr)
+                .field("overwrite_permitted", overwrite_permitted)
+                .field("consumed", &false)
+                .finish()
+        } else {
+            f.debug_struct("SendCommand")
+                .field("overwrite_permitted", overwrite_permitted)
+                .field("consumed", &true)
+                .finish()
+        }
+    }
 }

@@ -102,6 +102,9 @@ pub trait SelectorFn<C> {
     /// The type of the component chosen by the [`Selector`].
     type Target: ?Sized;
 
+    /// The name of the selected component.
+    fn name(&self) -> &str;
+
     /// Bind the selector.
     ///
     /// #Arguments
@@ -157,5 +160,22 @@ where
         } else {
             StepResult::after_done()
         }
+    }
+
+    fn describe(
+        &self,
+        _context: &Context,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        let OpenLane {
+            name,
+            kind,
+            on_done,
+        } = self;
+        f.debug_struct("OpenLane")
+            .field("name", name)
+            .field("kind", kind)
+            .field("consumed", &on_done.is_none())
+            .finish()
     }
 }

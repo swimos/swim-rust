@@ -18,6 +18,7 @@ use swimos_form::Form;
 use swimos_utilities::handlers::{FnHandler, NoHandler};
 
 use crate::{
+    agent_model::AgentDescription,
     event_handler::{ActionContext, BoxJoinLaneInit},
     item::AgentItem,
     lanes::{
@@ -197,7 +198,7 @@ impl<Context, Shared, K, V, F> RegisterJoinValue<Context, Shared, K, V, F> {
 impl<Context, Shared, K, V, F, LC> OnInitShared<Context, Shared>
     for RegisterJoinValue<Context, Shared, K, V, F>
 where
-    Context: 'static,
+    Context: AgentDescription + 'static,
     K: Clone + Eq + Hash + Send + 'static,
     V: Form + Send + Sync + 'static,
     V::Rec: Send,
@@ -262,7 +263,7 @@ impl<Context, Shared, L, K, V, F> RegisterJoinMap<Context, Shared, L, K, V, F> {
 impl<Context, Shared, L, K, V, F, LC> OnInitShared<Context, Shared>
     for RegisterJoinMap<Context, Shared, L, K, V, F>
 where
-    Context: 'static,
+    Context: AgentDescription + 'static,
     L: Clone + Eq + Hash + Send + 'static,
     K: Clone + Form + Eq + Hash + Ord + Send + 'static,
     V: Form + Send + Sync + 'static,

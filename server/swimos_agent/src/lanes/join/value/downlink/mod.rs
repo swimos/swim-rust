@@ -17,6 +17,7 @@ use std::hash::Hash;
 use swimos_api::address::Address;
 use swimos_model::Text;
 
+use crate::agent_model::AgentDescription;
 use crate::lanes::join_value::Link;
 use crate::{
     downlink_lifecycle::{OnConsumeEvent, OnFailed, OnLinked, OnSynced, OnUnlinked},
@@ -72,6 +73,7 @@ impl<K, V, LC, Context> JoinValueDownlink<K, V, LC, Context> {
 
 impl<K, V, LC, Context> OnLinked<Context> for JoinValueDownlink<K, V, LC, Context>
 where
+    Context: AgentDescription,
     K: Clone + Hash + Eq + Send,
     LC: OnJoinValueLinked<K, Context>,
 {
@@ -122,6 +124,7 @@ where
 
 impl<K, V, LC, Context> OnUnlinked<Context> for JoinValueDownlink<K, V, LC, Context>
 where
+    Context: AgentDescription,
     K: Clone + Hash + Eq + Send,
     LC: OnJoinValueUnlinked<K, Context>,
 {
@@ -145,6 +148,7 @@ where
 
 impl<K, V, LC, Context> OnFailed<Context> for JoinValueDownlink<K, V, LC, Context>
 where
+    Context: AgentDescription,
     K: Clone + Hash + Eq + Send,
     LC: OnJoinValueFailed<K, Context>,
 {
@@ -168,6 +172,7 @@ where
 
 impl<K, V, LC, Context> OnConsumeEvent<V, Context> for JoinValueDownlink<K, V, LC, Context>
 where
+    Context: AgentDescription,
     LC: Send,
     K: Clone + Hash + Eq + Send,
 {
@@ -207,6 +212,7 @@ impl<K, V, Context> AlterKeyState<K, V, Context> {
 
 impl<K, V, Context> HandlerAction<Context> for AlterKeyState<K, V, Context>
 where
+    Context: AgentDescription,
     K: Hash + Eq,
 {
     type Completion = ();
@@ -240,6 +246,26 @@ where
             StepResult::after_done()
         }
     }
+
+    fn describe(
+        &self,
+        context: &Context,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        let AlterKeyState {
+            projection,
+            state,
+            key,
+        } = self;
+        let lane = (projection)(context);
+        let name = context.item_name(lane.id());
+        f.debug_struct("AlterLinkState")
+            .field("id", &lane.id())
+            .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
+            .field("consumed", &key.is_none())
+            .field("state", state)
+            .finish()
+    }
 }
 
 /// An event handler that cleans up after a downlink unlinks or fails.
@@ -265,6 +291,7 @@ impl<K, V, Context> AfterClosed<K, V, Context> {
 
 impl<K, V, Context> HandlerAction<Context> for AfterClosed<K, V, Context>
 where
+    Context: AgentDescription,
     K: Hash + Eq + Clone,
 {
     type Completion = ();
@@ -296,6 +323,25 @@ where
             Some(LinkClosedResponse::Retry) => todo!(),
             _ => StepResult::after_done(),
         }
+    }
+
+    fn describe(
+        &self,
+        context: &Context,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        let AfterClosed {
+            projection,
+            response,
+            ..
+        } = self;
+        let lane = (projection)(context);
+        let name = context.item_name(lane.id());
+        f.debug_struct("AfterClosed")
+            .field("id", &lane.id())
+            .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
+            .field("consumed", &response.is_none())
+            .finish()
     }
 }
 
@@ -337,6 +383,7 @@ impl<C, K, V> JoinValueLaneUpdate<C, K, V> {
 
 impl<C, K, V> HandlerAction<C> for JoinValueLaneUpdate<C, K, V>
 where
+    C: AgentDescription,
     K: Clone + Eq + Hash,
 {
     type Completion = ();
@@ -362,6 +409,24 @@ where
         } else {
             StepResult::after_done()
         }
+    }
+
+    fn describe(
+        &self,
+        context: &C,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        let JoinValueLaneUpdate {
+            projection,
+            key_value,
+        } = self;
+        let lane = (projection)(context);
+        let name = context.item_name(lane.id());
+        f.debug_struct("JoinValueLaneUpdate")
+            .field("id", &lane.id())
+            .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
+            .field("consumed", &key_value.is_none())
+            .finish()
     }
 }
 

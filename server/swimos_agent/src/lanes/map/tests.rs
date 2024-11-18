@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::borrow::Cow;
 use std::collections::{HashMap, VecDeque};
 use std::fmt::Debug;
 
@@ -28,7 +29,7 @@ use uuid::Uuid;
 use crate::event_handler::ModificationFlags;
 use crate::lanes::map::MapLaneSelectDropOrTake;
 use crate::{
-    agent_model::WriteResult,
+    agent_model::{AgentDescription, WriteResult},
     event_handler::{EventHandlerError, HandlerAction, Modification, StepResult},
     item::MapItem,
     lanes::{
@@ -468,6 +469,16 @@ struct TestAgent {
     lane: MapLane<i32, String>,
 }
 
+impl AgentDescription for TestAgent {
+    fn item_name(&self, id: u64) -> Option<Cow<'_, str>> {
+        if id == LANE_ID {
+            Some(Cow::Borrowed("lane"))
+        } else {
+            None
+        }
+    }
+}
+
 const LANE_ID: u64 = 9;
 
 impl Default for TestAgent {
@@ -851,6 +862,10 @@ impl SelectorFn<TestAgent> for TestSelectorFn {
 
     fn selector<'a>(&'a self, context: &'a TestAgent) -> impl Selector<Target = Self::Target> + 'a {
         TestSelector(context, self.0)
+    }
+
+    fn name(&self) -> &str {
+        "lane"
     }
 }
 
