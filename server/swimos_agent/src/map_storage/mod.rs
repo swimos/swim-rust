@@ -12,7 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{borrow::Borrow, collections::HashMap, hash::Hash};
+use std::{
+    borrow::Borrow,
+    collections::{BTreeMap, HashMap},
+    hash::{BuildHasher, Hash},
+};
 
 use swimos_agent_protocol::MapOperation;
 
@@ -20,9 +24,9 @@ use crate::lanes::map::MapLaneEvent;
 
 /// Common backing store used by both map stores and map lanes.
 #[derive(Debug)]
-pub struct MapStoreInner<K, V, Q> {
-    content: HashMap<K, V>,
-    previous: Option<MapLaneEvent<K, V>>,
+pub struct MapStoreInner<K, V, Q, M = HashMap<K, V>> {
+    content: M,
+    previous: Option<MapLaneEvent<K, V, M>>,
     queue: Q,
 }
 
@@ -37,11 +41,14 @@ pub trait MapEventQueue<K, V>: Default {
 
     fn push(&mut self, action: MapOperation<K, ()>);
 
-    fn pop<'a>(&mut self, content: &'a HashMap<K, V>) -> Option<Self::Output<'a>>;
+    fn pop<'a, M>(&mut self, content: &'a M) -> Option<Self::Output<'a>>
+    where
+        K: 'a,
+        M: MapOps<K, V>;
 }
 
-impl<K, V, Q: Default> MapStoreInner<K, V, Q> {
-    pub fn new(content: HashMap<K, V>) -> Self {
+impl<K, V, Q: Default, M> MapStoreInner<K, V, Q, M> {
+    pub fn new(content: M) -> Self {
         MapStoreInner {
             content,
             previous: Default::default(),
@@ -56,15 +63,108 @@ pub enum TransformEntryResult {
     Remove,
 }
 
-impl<K, V, Q> MapStoreInner<K, V, Q>
-where
-    K: Eq + Hash + Clone,
-    Q: MapEventQueue<K, V>,
-{
-    pub fn init(&mut self, map: HashMap<K, V>) {
+impl<K, V, Q, M> MapStoreInner<K, V, Q, M> {
+    pub fn init(&mut self, map: M) {
         self.content = map;
     }
+}
 
+impl<K, V, Q, M> MapStoreInner<K, V, Q, M>
+where
+    Q: MapEventQueue<K, V>,
+    M: MapOps<K, V>,
+{
+    pub fn queue(&mut self) -> &mut Q {
+        &mut self.queue
+    }
+
+    pub fn pop_operation(&mut self) -> Option<Q::Output<'_>> {
+        let MapStoreInner { content, queue, .. } = self;
+        queue.pop(content)
+    }
+}
+
+pub trait MapOps<K, V> {
+    fn get(&self, key: &K) -> Option<&V>;
+    fn insert(&mut self, key: K, value: V) -> Option<V>;
+    fn remove(&mut self, key: &K) -> Option<V>;
+    fn take(&mut self) -> Self;
+}
+
+pub trait MapOpsWithEntry<K, V, BK: ?Sized, BV: ?Sized> {
+    fn with_item<F, R>(&self, key: &BK, f: F) -> R
+    where
+        K: Borrow<BK>,
+        V: Borrow<BV>,
+        F: FnOnce(Option<&BV>) -> R;
+}
+
+impl<K, V, S> MapOps<K, V> for HashMap<K, V, S>
+where
+    K: Hash + Eq,
+    S: BuildHasher + Default,
+{
+    fn get(&self, key: &K) -> Option<&V> {
+        HashMap::get(self, key)
+    }
+
+    fn insert(&mut self, key: K, value: V) -> Option<V> {
+        HashMap::insert(self, key, value)
+    }
+
+    fn remove(&mut self, key: &K) -> Option<V> {
+        HashMap::remove(self, key)
+    }
+
+    fn take(&mut self) -> Self {
+        std::mem::take(self)
+    }
+}
+
+impl<K, V> MapOps<K, V> for BTreeMap<K, V>
+where
+    K: Ord,
+{
+    fn get(&self, key: &K) -> Option<&V> {
+        BTreeMap::get(self, key)
+    }
+
+    fn insert(&mut self, key: K, value: V) -> Option<V> {
+        BTreeMap::insert(self, key, value)
+    }
+
+    fn remove(&mut self, key: &K) -> Option<V> {
+        BTreeMap::remove(self, key)
+    }
+
+    fn take(&mut self) -> Self {
+        std::mem::take(self)
+    }
+}
+
+impl<K, V, BK, BV> MapOpsWithEntry<K, V, BK, BV> for HashMap<K, V>
+where
+    BK: ?Sized,
+    BV: ?Sized,
+    K: Hash + Eq,
+    BK: Hash + Eq,
+{
+    fn with_item<F, R>(&self, key: &BK, f: F) -> R
+    where
+        K: Borrow<BK>,
+        V: Borrow<BV>,
+        F: FnOnce(Option<&BV>) -> R,
+    {
+        f(self.get(key).map(Borrow::borrow))
+    }
+}
+
+impl<K, V, Q, M> MapStoreInner<K, V, Q, M>
+where
+    K: Clone,
+    Q: MapEventQueue<K, V>,
+    M: MapOps<K, V>,
+{
     pub fn update(&mut self, key: K, value: V) {
         let MapStoreInner {
             content,
@@ -130,13 +230,13 @@ where
             previous,
             queue,
         } = self;
-        *previous = Some(MapLaneEvent::Clear(std::mem::take(content)));
+        *previous = Some(MapLaneEvent::Clear(content.take()));
         queue.push(MapOperation::Clear);
     }
 
     pub fn get_map<F, R>(&self, f: F) -> R
     where
-        F: FnOnce(&HashMap<K, V>) -> R,
+        F: FnOnce(&M) -> R,
     {
         let MapStoreInner { content, .. } = self;
         f(content)
@@ -144,38 +244,26 @@ where
 
     pub fn read_with_prev<F, R>(&mut self, f: F) -> R
     where
-        F: FnOnce(Option<MapLaneEvent<K, V>>, &HashMap<K, V>) -> R,
+        F: FnOnce(Option<MapLaneEvent<K, V, M>>, &M) -> R,
     {
         let MapStoreInner {
             content, previous, ..
         } = self;
         f(previous.take(), content)
     }
-
-    pub fn queue(&mut self) -> &mut Q {
-        &mut self.queue
-    }
-
-    pub fn pop_operation(&mut self) -> Option<Q::Output<'_>> {
-        let MapStoreInner { content, queue, .. } = self;
-        queue.pop(content)
-    }
 }
 
-impl<K, V, Q> MapStoreInner<K, V, Q>
-where
-    K: Eq + Hash,
-{
-    pub fn with_entry<B1, B2, F, R>(&self, key: &B1, f: F) -> R
+impl<K, V, Q, M> MapStoreInner<K, V, Q, M> {
+    pub fn with_entry<BK, BV, F, R>(&self, key: &BK, f: F) -> R
     where
-        B1: ?Sized,
-        B2: ?Sized,
-        K: Borrow<B1>,
-        V: Borrow<B2>,
-        B1: Hash + Eq,
-        F: FnOnce(Option<&B2>) -> R,
+        BK: ?Sized,
+        BV: ?Sized,
+        K: Borrow<BK>,
+        V: Borrow<BV>,
+        F: FnOnce(Option<&BV>) -> R,
+        M: MapOpsWithEntry<K, V, BK, BV>,
     {
         let MapStoreInner { content, .. } = self;
-        f(content.get(key).map(Borrow::borrow))
+        MapOpsWithEntry::with_item(content, key, f)
     }
 }
