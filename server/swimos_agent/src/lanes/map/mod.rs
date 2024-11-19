@@ -1353,6 +1353,16 @@ struct MapLaneRemoveMultiple<C, K, V> {
     current: Option<MapLaneRemove<C, K, V>>,
 }
 
+impl<C, K, V> MapLaneRemoveMultiple<C, K, V> {
+    fn new(projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>, keys: VecDeque<K>) -> Self {
+        MapLaneRemoveMultiple {
+            projection,
+            keys: Some(keys),
+            current: None,
+        }
+    }
+}
+
 impl<C, K, V> HandlerAction<C> for MapLaneRemoveMultiple<C, K, V>
 where
     C: AgentDescription,
@@ -1392,6 +1402,20 @@ where
             StepResult::after_done()
         }
     }
+
+    fn describe(&self, context: &C, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        let MapLaneRemoveMultiple {
+            projection, keys, ..
+        } = self;
+        let lane = projection(context);
+        let name = context.item_name(lane.id());
+        f.debug_struct("MapLaneRemoveMultiple")
+            .field("id", &lane.id())
+            .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
+            .field("keys", &keys.as_ref().map(|v| v.len()))
+            .field("consumed", &keys.is_none())
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -1412,6 +1436,21 @@ pub struct MapLaneDropOrTake<C, K, V> {
     kind: DropOrTake,
     number: u64,
     state: DropOrTakeState<C, K, V>,
+}
+
+impl<C, K, V> MapLaneDropOrTake<C, K, V> {
+    fn new(
+        projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>,
+        kind: DropOrTake,
+        number: u64,
+    ) -> Self {
+        MapLaneDropOrTake {
+            projection,
+            kind,
+            number,
+            state: DropOrTakeState::Init,
+        }
+    }
 }
 
 fn drop_or_take<K, V>(map: &HashMap<K, V>, kind: DropOrTake, number: usize) -> VecDeque<K>
@@ -1479,6 +1518,31 @@ where
             DropOrTakeState::Removing(h) => h.step(action_context, meta, context),
         }
     }
+
+    fn describe(&self, context: &C, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        let MapLaneDropOrTake {
+            projection,
+            kind,
+            number,
+            state,
+        } = self;
+        let mut dbg = f.debug_struct("MapLaneRemoveMultiple");
+        dbg.field("kind", kind).field("number", number);
+        match state {
+            DropOrTakeState::Init => {
+                let lane = projection(context);
+                let name = context.item_name(lane.id());
+                dbg.field("id", &lane.id())
+                    .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
+                    .field("state", &"Init")
+                    .finish()
+            }
+            DropOrTakeState::Removing(h) => dbg
+                .field("state", &"Removing")
+                .field("inner", &Described::new(context, h))
+                .finish(),
+        }
+    }
 }
 
 struct MapLaneSelectRemoveMultiple<C, K, V, F> {
@@ -1532,6 +1596,17 @@ where
             StepResult::after_done()
         }
     }
+
+    fn describe(&self, _context: &C, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        let MapLaneSelectRemoveMultiple {
+            projection, keys, ..
+        } = self;
+        f.debug_struct("MapLaneSelectRemoveMultiple")
+            .field("lane_name", &projection.name())
+            .field("keys", &keys.as_ref().map(|v| v.len()))
+            .field("consumed", &keys.is_none())
+            .finish()
+    }
 }
 
 #[derive(Default)]
@@ -1562,6 +1637,7 @@ impl<C, K, V, F> MapLaneSelectDropOrTake<C, K, V, F> {
 
 impl<C, K, V, F> HandlerAction<C> for MapLaneSelectDropOrTake<C, K, V, F>
 where
+    C: AgentDescription,
     K: StructuralWritable + Clone + Eq + Hash,
     F: SelectorFn<C, Target = MapLane<K, V>>,
 {
@@ -1612,29 +1688,22 @@ where
             SelectDropOrTakeState::Done => StepResult::after_done(),
         }
     }
-}
 
-impl<C, K, V> MapLaneRemoveMultiple<C, K, V> {
-    fn new(projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>, keys: VecDeque<K>) -> Self {
-        MapLaneRemoveMultiple {
-            projection,
-            keys: Some(keys),
-            current: None,
-        }
-    }
-}
-
-impl<C, K, V> MapLaneDropOrTake<C, K, V> {
-    fn new(
-        projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>,
-        kind: DropOrTake,
-        number: u64,
-    ) -> Self {
-        MapLaneDropOrTake {
-            projection,
+    fn describe(&self, context: &C, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        let MapLaneSelectDropOrTake {
             kind,
             number,
-            state: DropOrTakeState::Init,
+            state,
+        } = self;
+        let mut dbg = f.debug_struct("MapLaneRemoveMultiple");
+        dbg.field("kind", kind).field("number", number);
+        match state {
+            SelectDropOrTakeState::Init(_) => dbg.field("state", &"Init").finish(),
+            SelectDropOrTakeState::Removing(h) => dbg
+                .field("state", &"Removing")
+                .field("inner", &Described::new(context, h))
+                .finish(),
+            SelectDropOrTakeState::Done => dbg.field("state", &"Done").finish(),
         }
     }
 }
