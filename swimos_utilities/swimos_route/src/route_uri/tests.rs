@@ -55,6 +55,33 @@ fn route_uri_parse_good() {
     } else {
         panic!("Bad route URI.");
     }
+
+    if let Ok(route_uri) = "swimos:/example?a=2&b=3".parse::<RouteUri>() {
+        assert_eq!(route_uri.scheme(), Some("swimos"));
+        assert_eq!(route_uri.path(), "/example");
+        assert_eq!(route_uri.query(), Some("a=2&b=3"));
+        assert!(route_uri.fragment().is_none());
+    } else {
+        panic!("Bad route URI.");
+    }
+
+    if let Ok(route_uri) = "swimos:/example#target".parse::<RouteUri>() {
+        assert_eq!(route_uri.scheme(), Some("swimos"));
+        assert_eq!(route_uri.path(), "/example");
+        assert!(route_uri.query().is_none());
+        assert_eq!(route_uri.fragment(), Some("target"));
+    } else {
+        panic!("Bad route URI.");
+    }
+
+    if let Ok(route_uri) = "swimos:/example?a=2&b=3#target".parse::<RouteUri>() {
+        assert_eq!(route_uri.scheme(), Some("swimos"));
+        assert_eq!(route_uri.path(), "/example");
+        assert_eq!(route_uri.query(), Some("a=2&b=3"));
+        assert_eq!(route_uri.fragment(), Some("target"));
+    } else {
+        panic!("Bad route URI.");
+    }
 }
 
 #[test]
