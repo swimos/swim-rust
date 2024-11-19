@@ -18,6 +18,7 @@ use futures::future::Either;
 
 use crate::{
     agent_lifecycle::HandlerContext,
+    agent_model::AgentDescription,
     lanes::http::{
         lifecycle::{
             HttpLaneLifecycle, HttpLaneLifecycleShared, HttpLifecycleHandler,
@@ -147,6 +148,7 @@ where
 impl<Context, Get, Post, Put, Codec, LC, L, R> ItemEvent<Context>
     for HttpBranch<Context, Get, Post, Put, Codec, LC, L, R>
 where
+    Context: AgentDescription,
     Codec: HttpLaneCodec<Get>,
     LC: HttpLaneLifecycle<Get, Post, Put, Context>,
     L: HTree + ItemEvent<Context>,
@@ -190,6 +192,7 @@ where
 impl<Context, Shared, Get, Post, Put, Codec, LC, L, R> ItemEventShared<Context, Shared>
     for HttpBranch<Context, Get, Post, Put, Codec, LC, L, R>
 where
+    Context: AgentDescription,
     LC: HttpLaneLifecycleShared<Get, Post, Put, Context, Shared>,
     Codec: HttpLaneCodec<Get>,
     L: HTree + ItemEventShared<Context, Shared>,

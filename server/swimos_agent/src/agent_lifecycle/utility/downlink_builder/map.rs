@@ -22,6 +22,7 @@ use swimos_form::Form;
 use swimos_model::Text;
 use swimos_utilities::handlers::{BorrowHandler, FnHandler};
 
+use crate::agent_model::AgentDescription;
 use crate::downlink_lifecycle::{
     OnFailed, OnFailedShared, OnSynced, OnSyncedShared, StatefulMapLifecycle, StatelessMapLifecycle,
 };
@@ -278,7 +279,7 @@ where
 
 impl<Context, K, V, LC> StatelessMapDownlinkBuilder<Context, K, V, LC>
 where
-    Context: 'static,
+    Context: AgentDescription + 'static,
     K: Form + Hash + Eq + Ord + Clone + Send + Sync + 'static,
     K::Rec: Send,
     V: Form + Send + Sync + 'static,
@@ -484,7 +485,7 @@ where
 
 impl<Context, K, V, State, LC> StatefulMapDownlinkBuilder<Context, K, V, State, LC>
 where
-    Context: 'static,
+    Context: AgentDescription + 'static,
     K: Form + Hash + Eq + Ord + Clone + Send + Sync + 'static,
     K::Rec: Send,
     V: Form + Send + Sync + 'static,

@@ -13,8 +13,9 @@
 // limitations under the License.
 
 use std::{
-    any::{Any, TypeId},
+    any::{type_name, Any, TypeId},
     collections::HashMap,
+    fmt::{Debug, Formatter},
     marker::PhantomData,
 };
 
@@ -33,19 +34,14 @@ use swimos_api::{
 use swimos_form::{read::RecognizerReadable, write::StructuralWritable};
 use swimos_model::Text;
 use swimos_recon::parser::{AsyncParseError, RecognizerDecoder};
-use swimos_utilities::{
-    byte_channel::{ByteReader, ByteWriter},
-    never::Never,
-    routing::RouteUri,
-};
+use swimos_utilities::{never::Never, routing::RouteUri};
 use thiserror::Error;
 use tokio::time::Instant;
 use tokio_util::codec::{Decoder, Encoder};
 
 use crate::{
     agent_model::downlink::{
-        BoxDownlinkChannel, BoxDownlinkChannelFactory, DownlinkChannelFactory, MapDownlinkHandle,
-        ValueDownlinkHandle,
+        BoxDownlinkChannelFactory, DownlinkChannelFactory, MapDownlinkHandle, ValueDownlinkHandle,
     },
     lanes::JoinLaneKind,
     meta::AgentMetadata,
@@ -305,30 +301,6 @@ where
     Box::new(f(result.map(|_| ())))
 }
 
-struct ConstructDownlink<F> {
-    inner: Option<(ByteWriter, ByteReader, F)>,
-}
-
-impl<Context, F> HandlerAction<Context> for ConstructDownlink<F>
-where
-    F: FnOnce(&Context, ByteWriter, ByteReader) -> BoxDownlinkChannel<Context> + Send + 'static,
-{
-    type Completion = BoxDownlinkChannel<Context>;
-
-    fn step(
-        &mut self,
-        _action_context: &mut ActionContext<Context>,
-        _meta: AgentMetadata,
-        context: &Context,
-    ) -> StepResult<Self::Completion> {
-        if let Some((writer, reader, f)) = self.inner.take() {
-            StepResult::done(f(context, writer, reader))
-        } else {
-            StepResult::after_done()
-        }
-    }
-}
-
 /// Trait to describe an action to be taken, within the context of an agent, when an event occurs. The
 /// execution of an event handler can be suspended (so that it can trigger the execution of other handlers).
 /// This could be expressed using generators from the standard library after this feature is stabilized.
@@ -358,6 +330,18 @@ pub trait HandlerAction<Context> {
         meta: AgentMetadata,
         context: &Context,
     ) -> StepResult<Self::Completion>;
+
+    /// Write a debug formatted description of the handler, potentially including information from
+    /// the context (such as the names of lanes etc.).
+    ///
+    /// # Arguments
+    ///
+    /// * `context` - The execution context of the handler (providing access to the lanes of the agent).
+    /// * `f` - Formatter to be written to.
+    #[allow(unused_variables)]
+    fn describe(&self, context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        f.debug_tuple("OpaqueHandler").finish()
+    }
 }
 
 /// A [`HandlerAction`] that does not produce a result.
@@ -392,7 +376,11 @@ where
         meta: AgentMetadata,
         context: &Context,
     ) -> StepResult<Self::Completion> {
-        (*self).step(action_context, meta, context)
+        (**self).step(action_context, meta, context)
+    }
+
+    fn describe(&self, context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        (**self).describe(context, f)
     }
 }
 
@@ -409,6 +397,10 @@ where
         context: &Context,
     ) -> StepResult<Self::Completion> {
         (**self).step(action_context, meta, context)
+    }
+
+    fn describe(&self, context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        (**self).describe(context, f)
     }
 }
 
@@ -614,6 +606,12 @@ where
             StepResult::after_done()
         }
     }
+
+    fn describe(&self, _context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        f.debug_struct("SideEffect")
+            .field("result_type", &type_name::<R>())
+            .finish()
+    }
 }
 
 impl<Context, I> HandlerAction<Context> for SideEffects<I>
@@ -638,6 +636,12 @@ where
             *done = true;
             StepResult::done(std::mem::take(results))
         }
+    }
+
+    fn describe(&self, _context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        f.debug_struct("SideEffects")
+            .field("item_type", &type_name::<I::Item>())
+            .finish()
     }
 }
 
@@ -799,6 +803,41 @@ where
             StepResult::after_done()
         }
     }
+
+    fn describe(&self, context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        let mut dbg = f.debug_struct("Map");
+        if let Map(Some((h, _))) = self {
+            dbg.field("input", &Described::new(context, h));
+        } else {
+            dbg.field("input", &CONSUMED);
+        }
+        dbg.field("result_type", &type_name::<T>()).finish()
+    }
+}
+
+/// Utility type with a [`std::fmt::Debug`] implementation that calls the [`HandlerAction::describe`] method
+/// on an event handler, providing a reference to its context. This is to allow implementations of
+/// describe functions on nested handlers to format their inner handlers.
+#[derive(Clone, Copy)]
+pub struct Described<'a, Context, H> {
+    context: &'a Context,
+    handler: &'a H,
+}
+
+impl<'a, Context, H> Described<'a, Context, H> {
+    pub fn new(context: &'a Context, handler: &'a H) -> Self {
+        Described { context, handler }
+    }
+}
+
+impl<'a, Context, H> std::fmt::Debug for Described<'a, Context, H>
+where
+    H: HandlerAction<Context>,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let Described { context, handler } = self;
+        handler.describe(context, f)
+    }
 }
 
 impl<Context, H1, H2, F> HandlerAction<Context> for AndThenContextual<H1, H2, F>
@@ -849,6 +888,26 @@ where
             _ => StepResult::after_done(),
         }
     }
+
+    fn describe(&self, context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        match self {
+            AndThenContextual::First { first, .. } => f
+                .debug_struct("AndThenContextual")
+                .field("stage", &"First")
+                .field("first", &Described::new(context, first))
+                .field("second_type", &type_name::<H2>())
+                .field("result_type", &type_name::<H2::Completion>())
+                .finish(),
+            AndThenContextual::Second(second) => f
+                .debug_struct("AndThenContextual")
+                .field("stage", &"Second")
+                .field("second", &Described::new(context, second))
+                .field("second_type", &type_name::<H2>())
+                .field("result_type", &type_name::<H2::Completion>())
+                .finish(),
+            AndThenContextual::Done => f.debug_tuple("AndThenContextual").field(&CONSUMED).finish(),
+        }
+    }
 }
 
 impl<Context, H1, H2, F> HandlerAction<Context> for AndThen<H1, H2, F>
@@ -895,6 +954,26 @@ where
                 step_result
             }
             _ => StepResult::after_done(),
+        }
+    }
+
+    fn describe(&self, context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        match self {
+            AndThen::First { first, .. } => f
+                .debug_struct("AndThen")
+                .field("stage", &"First")
+                .field("first", &Described::new(context, first))
+                .field("second_type", &type_name::<H2>())
+                .field("result_type", &type_name::<H2::Completion>())
+                .finish(),
+            AndThen::Second(second) => f
+                .debug_struct("AndThen")
+                .field("stage", &"Second")
+                .field("second", &Described::new(context, second))
+                .field("second_type", &type_name::<H2>())
+                .field("result_type", &type_name::<H2::Completion>())
+                .finish(),
+            AndThen::Done => f.debug_tuple("AndThen").field(&CONSUMED).finish(),
         }
     }
 }
@@ -949,6 +1028,26 @@ where
             _ => StepResult::after_done(),
         }
     }
+
+    fn describe(&self, context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        match self {
+            AndThenTry::First { first, .. } => f
+                .debug_struct("AndThenTry")
+                .field("stage", &"First")
+                .field("first", &Described::new(context, first))
+                .field("second_type", &type_name::<H2>())
+                .field("result_type", &type_name::<H2::Completion>())
+                .finish(),
+            AndThenTry::Second(second) => f
+                .debug_struct("AndThenTry")
+                .field("stage", &"Second")
+                .field("second", &Described::new(context, second))
+                .field("second_type", &type_name::<H2>())
+                .field("result_type", &type_name::<H2::Completion>())
+                .finish(),
+            AndThenTry::Done => f.debug_tuple("AndThenTry").field(&CONSUMED).finish(),
+        }
+    }
 }
 
 impl<Context, H1, H2> HandlerAction<Context> for FollowedBy<H1, H2>
@@ -997,6 +1096,25 @@ where
             _ => StepResult::after_done(),
         }
     }
+
+    fn describe(&self, context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        match self {
+            FollowedBy::First { first, next } => f
+                .debug_struct("FollowedBy")
+                .field("stage", &"First")
+                .field("first", &Described::new(context, first))
+                .field("next", &Described::new(context, next))
+                .field("result_type", &type_name::<H2::Completion>())
+                .finish(),
+            FollowedBy::Second(second) => f
+                .debug_struct("FollowedBy")
+                .field("stage", &"Second")
+                .field("second", &Described::new(context, second))
+                .field("result_type", &type_name::<H2::Completion>())
+                .finish(),
+            FollowedBy::Done => f.debug_tuple("FollowedBy").field(&CONSUMED).finish(),
+        }
+    }
 }
 
 /// An event handler that immediately returns a constant value.
@@ -1032,6 +1150,14 @@ impl<T, Context> HandlerAction<Context> for ConstHandler<T> {
             StepResult::after_done()
         }
     }
+
+    fn describe(&self, _context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        let ConstHandler(value) = self;
+        f.debug_struct("ConstHandler")
+            .field("value_type", &type_name::<T>())
+            .field("consumed", &value.is_none())
+            .finish()
+    }
 }
 
 impl<Context> HandlerAction<Context> for CNil {
@@ -1043,6 +1169,10 @@ impl<Context> HandlerAction<Context> for CNil {
         _meta: AgentMetadata,
         _context: &Context,
     ) -> StepResult<Self::Completion> {
+        match *self {}
+    }
+
+    fn describe(&self, _context: &Context, _f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         match *self {}
     }
 }
@@ -1063,6 +1193,21 @@ where
         match self {
             Coproduct::Inl(h) => h.step(action_context, meta, context),
             Coproduct::Inr(t) => t.step(action_context, meta, context),
+        }
+    }
+
+    fn describe(&self, context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        match self {
+            Coproduct::Inl(h) => f
+                .debug_tuple("Coproduct")
+                .field(&"L")
+                .field(&Described::new(context, h))
+                .finish(),
+            Coproduct::Inr(h) => f
+                .debug_tuple("Coproduct")
+                .field(&"R")
+                .field(&Described::new(context, h))
+                .finish(),
         }
     }
 }
@@ -1090,6 +1235,10 @@ impl<Context> HandlerAction<Context> for GetAgentUri {
             StepResult::done(meta.agent_uri().clone())
         }
     }
+
+    fn describe(&self, _context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        f.debug_tuple("GetAgentUri").finish()
+    }
 }
 
 /// Get a parameter from the route URI of the running agent.
@@ -1102,6 +1251,8 @@ impl<S> GetParameter<S> {
         GetParameter { key: Some(key) }
     }
 }
+
+const CONSUMED: &str = "<<CONSUMED>>";
 
 impl<Context, S: AsRef<str>> HandlerAction<Context> for GetParameter<S> {
     type Completion = Option<String>;
@@ -1118,6 +1269,15 @@ impl<Context, S: AsRef<str>> HandlerAction<Context> for GetParameter<S> {
         } else {
             StepResult::after_done()
         }
+    }
+
+    fn describe(&self, _context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        let body = if let GetParameter { key: Some(name) } = self {
+            name.as_ref()
+        } else {
+            CONSUMED
+        };
+        f.debug_tuple("GetParameter").field(&body).finish()
     }
 }
 
@@ -1163,6 +1323,21 @@ impl<Context, T: RecognizerReadable> HandlerAction<Context> for Decode<T> {
             }
         }
     }
+
+    fn describe(&self, _context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        let Decode {
+            buffer, complete, ..
+        } = self;
+        let content = if *complete {
+            CONSUMED
+        } else {
+            std::str::from_utf8(buffer.as_ref()).unwrap_or("<<BAD UTF8>>")
+        };
+        f.debug_struct("Decode")
+            .field("target_type", &type_name::<T>())
+            .field("content", &content)
+            .finish()
+    }
 }
 
 impl<Context, H1, H2> HandlerAction<Context> for Either<H1, H2>
@@ -1181,6 +1356,21 @@ where
         match self {
             Either::Left(h1) => h1.step(action_context, meta, context),
             Either::Right(h2) => h2.step(action_context, meta, context),
+        }
+    }
+
+    fn describe(&self, context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        match self {
+            Either::Left(h) => f
+                .debug_tuple("Either")
+                .field(&"L")
+                .field(&Described::new(context, h))
+                .finish(),
+            Either::Right(h) => f
+                .debug_tuple("Either")
+                .field(&"R")
+                .field(&Described::new(context, h))
+                .finish(),
         }
     }
 }
@@ -1254,6 +1444,18 @@ pub trait HandlerActionExt<Context>: HandlerAction<Context> {
         Self: Sized,
     {
         Discard::new(self)
+    }
+
+    /// Attach an annotation to the handler. This will only show up in the description of the
+    /// handler and will not affect how it executes or the final result.
+    ///
+    /// # Arguments
+    /// * `annotation` - The annotation value.
+    fn annotated<S: Debug>(self, annotation: S) -> Annotated<S, Self>
+    where
+        Self: Sized,
+    {
+        Annotated::new(annotation, self)
     }
 
     /// `BoxHandlerAction` without the `Send` requirement.
@@ -1346,6 +1548,21 @@ where
             }
         }
     }
+
+    fn describe(&self, context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        match self {
+            Sequentially::Init(_) => f
+                .debug_struct("Sequentially")
+                .field("handler_type", &type_name::<H>())
+                .finish(),
+            Sequentially::Running(_, current) => f
+                .debug_struct("Sequentially")
+                .field("handler_type", &type_name::<H>())
+                .field("current", &Described::new(context, current))
+                .finish(),
+            Sequentially::Done => f.debug_tuple("Sequentially").field(&CONSUMED).finish(),
+        }
+    }
 }
 
 /// Event handler that runs another handler and discards its result.
@@ -1369,6 +1586,13 @@ impl<Context, H: HandlerAction<Context>> HandlerAction<Context> for Discard<H> {
     ) -> StepResult<Self::Completion> {
         let Discard(inner) = self;
         inner.step(action_context, meta, context).map(|_| ())
+    }
+
+    fn describe(&self, context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        let Discard(h) = self;
+        f.debug_tuple("Discard")
+            .field(&Described::new(context, h))
+            .finish()
     }
 }
 
@@ -1410,6 +1634,21 @@ where
             inner.step(action_context, meta, context).map(Option::Some)
         } else {
             StepResult::done(None)
+        }
+    }
+
+    fn describe(&self, context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        match self {
+            Some(inner) => f
+                .debug_struct("Option")
+                .field("defined", &true)
+                .field("inner", &Described::new(context, inner))
+                .finish(),
+            None => f
+                .debug_struct("Option")
+                .field("defined", &false)
+                .field("inner_type", &type_name::<H>())
+                .finish(),
         }
     }
 }
@@ -1475,6 +1714,10 @@ impl<Context> HandlerAction<Context> for Stop {
         _context: &Context,
     ) -> StepResult<Self::Completion> {
         StepResult::Fail(EventHandlerError::StopInstructed)
+    }
+
+    fn describe(&self, _context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        f.debug_tuple("Stop").finish()
     }
 }
 
@@ -1544,6 +1787,30 @@ where
                 },
             },
             JoinState::AfterDone => StepResult::after_done(),
+        }
+    }
+
+    fn describe(&self, context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        let Join { state } = self;
+        match state {
+            JoinState::Init(h1, h2) => f
+                .debug_struct("Join")
+                .field("state", &"First")
+                .field("first_handler", &Described::new(context, h1))
+                .field("second_handler", &Described::new(context, h2))
+                .finish(),
+            JoinState::FirstDone(_, h2) => f
+                .debug_struct("Join")
+                .field("state", &"Second")
+                .field("first_handler_type", &type_name::<H1>())
+                .field("second_handler", &Described::new(context, h2))
+                .finish(),
+            JoinState::AfterDone => f
+                .debug_struct("Join")
+                .field("state", &CONSUMED)
+                .field("first_handler_type", &type_name::<H1>())
+                .field("second_handler_type", &type_name::<H2>())
+                .finish(),
         }
     }
 }
@@ -1645,6 +1912,40 @@ where
             Join3State::AfterDone => StepResult::after_done(),
         }
     }
+
+    fn describe(&self, context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        let Join3 { state } = self;
+        match state {
+            Join3State::Init(h1, h2, h3) => f
+                .debug_struct("Join3")
+                .field("state", &"First")
+                .field("first_handler", &Described::new(context, h1))
+                .field("second_handler", &Described::new(context, h2))
+                .field("third_handler", &Described::new(context, h3))
+                .finish(),
+            Join3State::FirstDone(_, h2, h3) => f
+                .debug_struct("Join3")
+                .field("state", &"Second")
+                .field("first_handler_type", &type_name::<H1>())
+                .field("second_handler", &Described::new(context, h2))
+                .field("third_handler", &Described::new(context, h3))
+                .finish(),
+            Join3State::SecondDone(_, _, h3) => f
+                .debug_struct("Join3")
+                .field("state", &"Third")
+                .field("first_handler_type", &type_name::<H1>())
+                .field("second_handler_type", &type_name::<H2>())
+                .field("third_handler", &Described::new(context, h3))
+                .finish(),
+            Join3State::AfterDone => f
+                .debug_struct("Join3")
+                .field("state", &CONSUMED)
+                .field("first_handler_type", &type_name::<H1>())
+                .field("second_handler_type", &type_name::<H2>())
+                .field("third_handler_type", &type_name::<H3>())
+                .finish(),
+        }
+    }
 }
 
 /// An event handler that fails with the provided error.
@@ -1680,6 +1981,14 @@ where
             StepResult::after_done()
         }
     }
+
+    fn describe(&self, _context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        let Fail { error, .. } = self;
+        f.debug_struct("Fail")
+            .field("dummy_type", &type_name::<T>())
+            .field("error", error)
+            .finish()
+    }
 }
 
 /// Computes a value from the parameters passed to the agent.
@@ -1712,9 +2021,14 @@ where
             StepResult::after_done()
         }
     }
+
+    fn describe(&self, _context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        f.debug_tuple("WithParameters").finish()
+    }
 }
 
 /// Schedule the agent's `on_timer` event to be called.
+#[derive(Debug)]
 pub struct ScheduleTimerEvent {
     at: Option<Instant>,
     id: u64,
@@ -1745,5 +2059,53 @@ impl<Context> HandlerAction<Context> for ScheduleTimerEvent {
         } else {
             StepResult::after_done()
         }
+    }
+
+    fn describe(&self, _context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        write!(f, "{:?}", self)
+    }
+}
+
+/// Adds an annotation to an event handler. This will be visible in the description message for
+/// the handler but has not effect on how the handler executes or its final result.
+pub struct Annotated<S, H> {
+    annotation: S,
+    handler: H,
+}
+
+impl<S, H> Annotated<S, H> {
+    pub fn new(annotation: S, handler: H) -> Self {
+        Annotated {
+            annotation,
+            handler,
+        }
+    }
+}
+
+impl<S, Context, H> HandlerAction<Context> for Annotated<S, H>
+where
+    S: Debug,
+    H: HandlerAction<Context>,
+{
+    type Completion = H::Completion;
+
+    fn step(
+        &mut self,
+        action_context: &mut ActionContext<Context>,
+        meta: AgentMetadata,
+        context: &Context,
+    ) -> StepResult<Self::Completion> {
+        self.handler.step(action_context, meta, context)
+    }
+
+    fn describe(&self, context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        let Annotated {
+            annotation,
+            handler,
+        } = self;
+        f.debug_struct("Annotated")
+            .field("annotation", annotation)
+            .field("handler", &Described::new(context, handler))
+            .finish()
     }
 }

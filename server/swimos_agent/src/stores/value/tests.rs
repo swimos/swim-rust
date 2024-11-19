@@ -13,14 +13,14 @@
 // limitations under the License.
 
 use bytes::BytesMut;
-use std::{collections::HashMap, fmt::Debug};
+use std::{borrow::Cow, collections::HashMap, fmt::Debug};
 use swimos_agent_protocol::{encoding::store::RawValueStoreResponseDecoder, StoreResponse};
 use swimos_api::agent::AgentConfig;
 use swimos_utilities::routing::RouteUri;
 use tokio_util::codec::Decoder;
 
 use crate::{
-    agent_model::WriteResult,
+    agent_model::{AgentDescription, WriteResult},
     event_handler::{EventHandlerError, HandlerAction, Modification, StepResult},
     meta::AgentMetadata,
     stores::{
@@ -115,6 +115,16 @@ fn make_meta<'a>(
 struct TestAgent {
     store: ValueStore<i32>,
     str_store: ValueStore<String>,
+}
+
+impl AgentDescription for TestAgent {
+    fn item_name(&self, id: u64) -> Option<Cow<'_, str>> {
+        match id {
+            STORE_ID => Some(Cow::Borrowed("store")),
+            STR_STORE_ID => Some(Cow::Borrowed("str_store")),
+            _ => None,
+        }
+    }
 }
 
 const STORE_ID: u64 = 9;

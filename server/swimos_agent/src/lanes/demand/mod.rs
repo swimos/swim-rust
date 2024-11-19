@@ -15,6 +15,7 @@
 use std::{
     cell::{Cell, RefCell},
     collections::VecDeque,
+    fmt::Formatter,
 };
 
 use bytes::BytesMut;
@@ -25,8 +26,8 @@ use tokio_util::codec::Encoder;
 use uuid::Uuid;
 
 use crate::{
-    agent_model::WriteResult,
-    event_handler::{ActionContext, HandlerAction, Modification, StepResult},
+    agent_model::{AgentDescription, WriteResult},
+    event_handler::{ActionContext, Described, HandlerAction, Modification, StepResult},
     item::AgentItem,
     meta::AgentMetadata,
 };
@@ -159,6 +160,7 @@ impl<Context, T, H> Demand<Context, T, H> {
 
 impl<Context, T, H> HandlerAction<Context> for Demand<Context, T, H>
 where
+    Context: AgentDescription,
     H: HandlerAction<Context, Completion = T>,
 {
     type Completion = ();
@@ -201,6 +203,34 @@ where
             }
         }
     }
+
+    fn describe(&self, context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        let Demand { projection, state } = self;
+        let lane = projection(context);
+        let id = lane.id();
+        let name = context.item_name(id);
+        match state {
+            DemandInner::Pending(handler) => f
+                .debug_struct("Demand")
+                .field("id", &lane.id())
+                .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
+                .field("state", &"Running")
+                .field("handler", &Described::new(context, handler))
+                .finish(),
+            DemandInner::Complete(Some(_)) => f
+                .debug_struct("Demand")
+                .field("id", &lane.id())
+                .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
+                .field("state", &"Complete")
+                .finish(),
+            _ => f
+                .debug_struct("Demand")
+                .field("id", &lane.id())
+                .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
+                .field("state", &"Consumed")
+                .finish(),
+        }
+    }
 }
 
 pub struct Cue<Context, T> {
@@ -217,7 +247,10 @@ impl<Context, T> Cue<Context, T> {
     }
 }
 
-impl<Context, T> HandlerAction<Context> for Cue<Context, T> {
+impl<Context, T> HandlerAction<Context> for Cue<Context, T>
+where
+    Context: AgentDescription,
+{
     type Completion = ();
 
     fn step(
@@ -238,6 +271,17 @@ impl<Context, T> HandlerAction<Context> for Cue<Context, T> {
             }
         }
     }
+
+    fn describe(&self, context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        let Cue { projection, cued } = self;
+        let lane = projection(context);
+        let name = context.item_name(lane.id());
+        f.debug_struct("Cue")
+            .field("id", &lane.id())
+            .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
+            .field("cued", cued)
+            .finish()
+    }
 }
 
 pub struct DemandLaneSync<Context, T> {
@@ -254,7 +298,10 @@ impl<Context, T> DemandLaneSync<Context, T> {
     }
 }
 
-impl<Context, T> HandlerAction<Context> for DemandLaneSync<Context, T> {
+impl<Context, T> HandlerAction<Context> for DemandLaneSync<Context, T>
+where
+    Context: AgentDescription,
+{
     type Completion = ();
 
     fn step(
@@ -274,5 +321,16 @@ impl<Context, T> HandlerAction<Context> for DemandLaneSync<Context, T> {
         } else {
             StepResult::after_done()
         }
+    }
+
+    fn describe(&self, context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        let DemandLaneSync { projection, id } = self;
+        let lane = (projection)(context);
+        let name = context.item_name(lane.id());
+        f.debug_struct("DemandLaneSync")
+            .field("id", &lane.id())
+            .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
+            .field("sync_id", &id)
+            .finish()
     }
 }

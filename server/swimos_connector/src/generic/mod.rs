@@ -16,6 +16,7 @@
 mod tests;
 
 use std::{
+    borrow::Cow,
     cell::{Cell, Ref, RefCell},
     collections::{HashMap, HashSet},
     ops::Deref,
@@ -26,7 +27,8 @@ use frunk::Coprod;
 use swimos_agent::{
     agent_lifecycle::item_event::{BorrowItem, DynamicAgent, DynamicItem},
     agent_model::{
-        AgentSpec, ItemDescriptor, ItemSpec, MapLikeInitializer, ValueLikeInitializer, WriteResult,
+        AgentDescription, AgentSpec, ItemDescriptor, ItemSpec, MapLikeInitializer,
+        ValueLikeInitializer, WriteResult,
     },
     event_handler::{ActionContext, HandlerAction, StepResult, UnitHandler},
     lanes::{
@@ -34,7 +36,7 @@ use swimos_agent::{
         value::{decode_and_select_set, DecodeAndSelectSet, ValueLaneSelectSync},
         LaneItem, MapLane, Selector, SelectorFn, ValueLane,
     },
-    AgentMetadata,
+    AgentItem, AgentMetadata,
 };
 use swimos_agent_protocol::MapMessage;
 use swimos_api::{
@@ -139,6 +141,36 @@ impl<'a, L> Deref for LaneRef<'a, L> {
 
     fn deref(&self) -> &Self::Target {
         &self.map[self.key]
+    }
+}
+
+impl AgentDescription for ConnectorAgent {
+    fn item_name(&self, id: u64) -> Option<Cow<'_, str>> {
+        let ConnectorAgent {
+            value_lanes,
+            map_lanes,
+            ..
+        } = self;
+        let value_guard = value_lanes.borrow();
+        value_guard
+            .iter()
+            .find_map(|(name, l)| {
+                if l.id() == id {
+                    Some(Cow::Owned(name.clone()))
+                } else {
+                    None
+                }
+            })
+            .or_else(|| {
+                let map_guard = map_lanes.borrow();
+                map_guard.iter().find_map(|(name, l)| {
+                    if l.id() == id {
+                        Some(Cow::Owned(name.clone()))
+                    } else {
+                        None
+                    }
+                })
+            })
     }
 }
 
@@ -329,6 +361,10 @@ impl ValueLaneSelectorFn {
 impl SelectorFn<ConnectorAgent> for ValueLaneSelectorFn {
     type Target = GenericValueLane;
 
+    fn name(&self) -> &str {
+        &self.name
+    }
+
     fn selector(self, context: &ConnectorAgent) -> impl Selector<Target = Self::Target> + '_ {
         let ConnectorAgent { value_lanes, .. } = context;
         let map = value_lanes.borrow();
@@ -357,6 +393,10 @@ impl SelectorFn<ConnectorAgent> for MapLaneSelectorFn {
         let ConnectorAgent { map_lanes, .. } = context;
         let map = map_lanes.borrow();
         LaneSelector::new(map, self.name)
+    }
+
+    fn name(&self) -> &str {
+        &self.name
     }
 }
 

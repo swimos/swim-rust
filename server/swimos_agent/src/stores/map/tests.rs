@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::HashMap;
 use std::fmt::Debug;
+use std::{borrow::Cow, collections::HashMap};
 
 use bytes::BytesMut;
 use swimos_agent_protocol::{
@@ -26,7 +26,7 @@ use swimos_utilities::routing::RouteUri;
 use tokio_util::codec::Decoder;
 
 use crate::{
-    agent_model::WriteResult,
+    agent_model::{AgentDescription, WriteResult},
     event_handler::{EventHandlerError, HandlerAction, Modification, StepResult},
     item::MapItem,
     lanes::map::MapLaneEvent,
@@ -341,6 +341,16 @@ fn make_meta<'a>(
 
 struct TestAgent {
     store: MapStore<i32, Text>,
+}
+
+impl AgentDescription for TestAgent {
+    fn item_name(&self, id: u64) -> Option<Cow<'_, str>> {
+        if id == STORE_ID {
+            Some(Cow::Borrowed("store"))
+        } else {
+            None
+        }
+    }
 }
 
 const STORE_ID: u64 = 9;

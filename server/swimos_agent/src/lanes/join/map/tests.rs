@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -25,6 +26,7 @@ use swimos_api::{
 };
 use swimos_utilities::routing::RouteUri;
 
+use crate::agent_model::AgentDescription;
 use crate::event_handler::{
     ActionContext, BoxJoinLaneInit, EventHandlerError, HandlerAction, Modification,
 };
@@ -101,6 +103,16 @@ fn make_meta<'a>(
 }
 struct TestAgent {
     lane: JoinMapLane<String, i32, String>,
+}
+
+impl AgentDescription for TestAgent {
+    fn item_name(&self, id: u64) -> Option<Cow<'_, str>> {
+        if id == ID {
+            Some(Cow::Borrowed("lane"))
+        } else {
+            None
+        }
+    }
 }
 
 impl TestAgent {

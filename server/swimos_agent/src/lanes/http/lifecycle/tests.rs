@@ -23,6 +23,7 @@ use swimos_utilities::routing::RouteUri;
 
 use crate::{
     agent_lifecycle::HandlerContext,
+    agent_model::AgentDescription,
     event_handler::{ActionContext, HandlerAction, StepResult},
     lanes::http::{
         content_type::recon,
@@ -38,7 +39,7 @@ use super::{
     on_delete::OnDeleteShared, on_get::OnGetShared, on_post::OnPostShared, on_put::OnPutShared,
     HttpLifecycleHandlerShared, HttpRequestContext, StatefulHttpLaneLifecycle,
 };
-use std::{collections::HashMap, sync::Arc};
+use std::{borrow::Cow, collections::HashMap, sync::Arc};
 
 #[derive(Debug, PartialEq, Eq)]
 enum Event {
@@ -49,6 +50,12 @@ enum Event {
 }
 
 struct TestAgent;
+
+impl AgentDescription for TestAgent {
+    fn item_name(&self, _id: u64) -> Option<Cow<'_, str>> {
+        None
+    }
+}
 
 struct TestLifecycle;
 

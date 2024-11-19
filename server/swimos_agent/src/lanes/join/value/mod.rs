@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::any::{Any, TypeId};
+use std::any::{type_name, Any, TypeId};
 use std::borrow::Borrow;
 use std::collections::hash_map::Entry;
 use std::hash::Hash;
@@ -27,8 +27,9 @@ use swimos_model::Text;
 use uuid::Uuid;
 
 use crate::agent_model::downlink::OpenEventDownlinkAction;
+use crate::agent_model::AgentDescription;
 use crate::config::SimpleDownlinkConfig;
-use crate::event_handler::{EventHandler, EventHandlerError, Modification};
+use crate::event_handler::{Described, EventHandler, EventHandlerError, Modification};
 use crate::item::{InspectableMapLikeItem, JoinLikeItem, MapLikeItem};
 use crate::{
     agent_model::WriteResult,
@@ -174,7 +175,7 @@ where
 
 impl<Context, K, V, LC> HandlerAction<Context> for AddDownlinkAction<Context, K, V, LC>
 where
-    Context: 'static,
+    Context: AgentDescription + 'static,
     K: Clone + Eq + Hash + Send + 'static,
     V: Form + Send + 'static,
     V::Rec: Send,
@@ -222,6 +223,38 @@ where
             StepResult::after_done()
         }
     }
+
+    fn describe(
+        &self,
+        context: &Context,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        let AddDownlinkAction {
+            projection,
+            started,
+            inner,
+            ..
+        } = self;
+        let lane = (projection)(context);
+        let name = context.item_name(lane.id());
+        match inner {
+            Some(open_downlink) => f
+                .debug_struct("AddDownlinkAction")
+                .field("id", &lane.id())
+                .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
+                .field("started", started)
+                .field("consumed", &false)
+                .field("open_downlink", &Described::new(context, open_downlink))
+                .finish(),
+            None => f
+                .debug_struct("AddDownlinkAction")
+                .field("id", &lane.id())
+                .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
+                .field("started", started)
+                .field("consumed", &true)
+                .finish(),
+        }
+    }
 }
 
 impl<K, V> MapItem<K, V> for JoinValueLane<K, V>
@@ -259,6 +292,7 @@ impl<C, K, V> JoinValueLaneGet<C, K, V> {
 
 impl<C, K, V> HandlerAction<C> for JoinValueLaneGet<C, K, V>
 where
+    C: AgentDescription,
     K: Clone + Eq + Hash,
     V: Clone,
 {
@@ -283,6 +317,20 @@ where
             StepResult::after_done()
         }
     }
+
+    fn describe(
+        &self,
+        context: &C,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        let lane = (self.projection)(context);
+        let name = context.item_name(lane.id());
+        f.debug_struct("JoinValueLaneGet")
+            .field("id", &lane.id())
+            .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
+            .field("consumed", &self.done)
+            .finish()
+    }
 }
 
 ///  An [event handler](crate::event_handler::EventHandler)`] that will get an entry from the map.
@@ -302,6 +350,7 @@ impl<C, K, V> JoinValueLaneGetMap<C, K, V> {
 
 impl<C, K, V> HandlerAction<C> for JoinValueLaneGetMap<C, K, V>
 where
+    C: AgentDescription,
     K: Clone + Eq + Hash,
     V: Clone,
 {
@@ -322,6 +371,20 @@ where
             StepResult::after_done()
         }
     }
+
+    fn describe(
+        &self,
+        context: &C,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        let lane = (self.projection)(context);
+        let name = context.item_name(lane.id());
+        f.debug_struct("JoinValueLaneGetMap")
+            .field("id", &lane.id())
+            .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
+            .field("consumed", &self.done)
+            .finish()
+    }
 }
 
 ///  An [event handler](crate::event_handler::EventHandler)`] that will request a sync from the lane.
@@ -341,6 +404,7 @@ impl<C, K, V> JoinValueLaneSync<C, K, V> {
 
 impl<C, K, V> HandlerAction<C> for JoinValueLaneSync<C, K, V>
 where
+    C: AgentDescription,
     K: Clone + Eq + Hash,
 {
     type Completion = ();
@@ -363,12 +427,26 @@ where
             StepResult::after_done()
         }
     }
+
+    fn describe(
+        &self,
+        context: &C,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        let JoinValueLaneSync { projection, id } = self;
+        let lane = (projection)(context);
+        let name = context.item_name(lane.id());
+        f.debug_struct("JoinValueLaneSync")
+            .field("id", &lane.id())
+            .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
+            .field("sync_id", &id)
+            .finish()
+    }
 }
 
 #[derive(Default)]
-enum OpenDownlinkState<C, K, V> {
+enum OpenDownlinkState<C, K> {
     Init {
-        projection: fn(&C) -> &JoinValueLane<K, V>,
         key: K,
         address: Address<Text>,
     },
@@ -380,12 +458,13 @@ enum OpenDownlinkState<C, K, V> {
 }
 
 pub struct JoinValueAddDownlink<C, K, V> {
-    state: OpenDownlinkState<C, K, V>,
+    projection: fn(&C) -> &JoinValueLane<K, V>,
+    state: OpenDownlinkState<C, K>,
 }
 
 impl<C, K, V> HandlerAction<C> for JoinValueAddDownlink<C, K, V>
 where
-    C: 'static,
+    C: AgentDescription + 'static,
     K: Any + Clone + Eq + Hash + Send + 'static,
     V: Any + Form + Send + 'static,
     V::Rec: Send,
@@ -398,14 +477,10 @@ where
         meta: AgentMetadata,
         context: &C,
     ) -> StepResult<Self::Completion> {
-        let JoinValueAddDownlink { state } = self;
+        let JoinValueAddDownlink { projection, state } = self;
         loop {
             match std::mem::take(state) {
-                OpenDownlinkState::Init {
-                    projection,
-                    key,
-                    address,
-                } => {
+                OpenDownlinkState::Init { key, address } => {
                     let lane_id = projection(context).id();
                     let handler = if let Some(init) = action_context.join_lane_initializer(lane_id)
                     {
@@ -422,7 +497,7 @@ where
                         }
                     } else {
                         let action = AddDownlinkAction::new(
-                            projection,
+                            *projection,
                             key,
                             address,
                             DefaultJoinValueLifecycle,
@@ -443,6 +518,38 @@ where
             }
         }
     }
+
+    fn describe(
+        &self,
+        context: &C,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        let JoinValueAddDownlink { projection, state } = self;
+        let lane = (projection)(context);
+        let name = context.item_name(lane.id());
+        match state {
+            OpenDownlinkState::Init { address, .. } => f
+                .debug_struct("JoinValueAddDownlink")
+                .field("id", &lane.id())
+                .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
+                .field("address", address)
+                .field("state", &"Init")
+                .finish(),
+            OpenDownlinkState::Running { handler } => f
+                .debug_struct("JoinValueAddDownlink")
+                .field("id", &lane.id())
+                .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
+                .field("handler", &Described::new(context, handler))
+                .field("state", &"Running")
+                .finish(),
+            OpenDownlinkState::Done => f
+                .debug_struct("JoinValueAddDownlink")
+                .field("id", &lane.id())
+                .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
+                .field("state", &"Done")
+                .finish(),
+        }
+    }
 }
 
 impl<C, K, V> JoinValueAddDownlink<C, K, V> {
@@ -452,11 +559,8 @@ impl<C, K, V> JoinValueAddDownlink<C, K, V> {
         address: Address<Text>,
     ) -> Self {
         JoinValueAddDownlink {
-            state: OpenDownlinkState::Init {
-                projection,
-                key,
-                address,
-            },
+            projection,
+            state: OpenDownlinkState::Init { key, address },
         }
     }
 }
@@ -488,7 +592,7 @@ impl<C, K, V, F, B: ?Sized> JoinValueLaneWithEntry<C, K, V, F, B> {
 impl<'a, C, K, V, F, B, U> HandlerAction<C> for JoinValueLaneWithEntry<C, K, V, F, B>
 where
     K: Eq + Hash + 'static,
-    C: 'a,
+    C: AgentDescription + 'a,
     B: ?Sized + 'static,
     V: Borrow<B>,
     F: FnOnce(Option<&B>) -> U + Send + 'a,
@@ -508,6 +612,21 @@ where
             StepResult::after_done()
         }
     }
+
+    fn describe(
+        &self,
+        context: &C,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        let lane = (self.projection)(context);
+        let name = context.item_name(lane.id());
+        f.debug_struct("JoinValueLaneWithEntry")
+            .field("id", &lane.id())
+            .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
+            .field("result_type", &type_name::<U>())
+            .field("consumed", &self.f.is_none())
+            .finish()
+    }
 }
 
 impl<K, V> MapLikeItem<K, V> for JoinValueLane<K, V>
@@ -517,17 +636,22 @@ where
 {
     type GetHandler<C> = JoinValueLaneGet<C, K, V>
     where
-        C: 'static;
+        C: AgentDescription + 'static;
 
     type GetMapHandler<C> = JoinValueLaneGetMap<C, K, V>
     where
-        C: 'static;
+        C: AgentDescription + 'static;
 
-    fn get_handler<C: 'static>(projection: fn(&C) -> &Self, key: K) -> Self::GetHandler<C> {
+    fn get_handler<C: AgentDescription + 'static>(
+        projection: fn(&C) -> &Self,
+        key: K,
+    ) -> Self::GetHandler<C> {
         JoinValueLaneGet::new(projection, key)
     }
 
-    fn get_map_handler<C: 'static>(projection: fn(&C) -> &Self) -> Self::GetMapHandler<C> {
+    fn get_map_handler<C: AgentDescription + 'static>(
+        projection: fn(&C) -> &Self,
+    ) -> Self::GetMapHandler<C> {
         JoinValueLaneGetMap::new(projection)
     }
 }
@@ -540,7 +664,7 @@ where
     type WithEntryHandler<'a, C, F, B, U> = JoinValueLaneWithEntry<C, K, V, F, B>
     where
         Self: 'static,
-        C: 'a,
+        C: AgentDescription + 'a,
         B: ?Sized + 'static,
         V: Borrow<B>,
         F: FnOnce(Option<&B>) -> U + Send + 'a;
@@ -552,7 +676,7 @@ where
     ) -> Self::WithEntryHandler<'a, C, F, B, U>
     where
         Self: 'static,
-        C: 'a,
+        C: AgentDescription + 'a,
         B: ?Sized + 'static,
         V: Borrow<B>,
         F: FnOnce(Option<&B>) -> U + Send + 'a,
@@ -581,7 +705,7 @@ impl<C, K, V> JoinValueRemoveDownlink<C, K, V> {
 
 impl<C, K, V> HandlerAction<C> for JoinValueRemoveDownlink<C, K, V>
 where
-    C: 'static,
+    C: AgentDescription + 'static,
     K: Clone + Send + Eq + PartialEq + Hash + 'static,
     V: 'static,
 {
@@ -612,6 +736,21 @@ where
             None => StepResult::after_done(),
         }
     }
+
+    fn describe(
+        &self,
+        context: &C,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        let JoinValueRemoveDownlink { projection, key } = self;
+        let lane = (projection)(context);
+        let name = context.item_name(lane.id());
+        f.debug_struct("JoinValueRemoveDownlink")
+            .field("id", &lane.id())
+            .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
+            .field("consumed", &key.is_none())
+            .finish()
+    }
 }
 
 impl<K, V> JoinLikeItem<K> for JoinValueLane<K, V>
@@ -621,9 +760,9 @@ where
 {
     type RemoveDownlinkHandler<C> = JoinValueRemoveDownlink<C, K, V>
     where
-        C: 'static;
+        C: AgentDescription + 'static;
 
-    fn remove_downlink_handler<C: 'static>(
+    fn remove_downlink_handler<C: AgentDescription + 'static>(
         projection: fn(&C) -> &Self,
         link_key: K,
     ) -> Self::RemoveDownlinkHandler<C> {

@@ -15,6 +15,7 @@
 use std::{borrow::Borrow, collections::HashMap};
 
 use crate::{
+    agent_model::AgentDescription,
     event_handler::{EventHandler, HandlerAction},
     lanes::map::MapLaneEvent,
 };
@@ -45,21 +46,26 @@ pub trait MapItem<K, V>: AgentItem {
 pub trait MapLikeItem<K, V> {
     type GetHandler<C>: HandlerAction<C, Completion = Option<V>> + Send + 'static
     where
-        C: 'static;
+        C: AgentDescription + 'static;
     type GetMapHandler<C>: HandlerAction<C, Completion = HashMap<K, V>> + Send + 'static
     where
-        C: 'static;
+        C: AgentDescription + 'static;
 
-    fn get_handler<C: 'static>(projection: fn(&C) -> &Self, key: K) -> Self::GetHandler<C>;
+    fn get_handler<C: AgentDescription + 'static>(
+        projection: fn(&C) -> &Self,
+        key: K,
+    ) -> Self::GetHandler<C>;
 
-    fn get_map_handler<C: 'static>(projection: fn(&C) -> &Self) -> Self::GetMapHandler<C>;
+    fn get_map_handler<C: AgentDescription + 'static>(
+        projection: fn(&C) -> &Self,
+    ) -> Self::GetMapHandler<C>;
 }
 
 pub trait InspectableMapLikeItem<K, V> {
     type WithEntryHandler<'a, C, F, B, U>: HandlerAction<C, Completion = U> + Send + 'a
     where
         Self: 'static,
-        C: 'a,
+        C: AgentDescription + 'a,
         B: ?Sized + 'static,
         V: Borrow<B>,
         F: FnOnce(Option<&B>) -> U + Send + 'a;
@@ -71,7 +77,7 @@ pub trait InspectableMapLikeItem<K, V> {
     ) -> Self::WithEntryHandler<'a, C, F, B, U>
     where
         Self: 'static,
-        C: 'a,
+        C: AgentDescription + 'a,
         B: ?Sized + 'static,
         V: Borrow<B>,
         F: FnOnce(Option<&B>) -> U + Send + 'a;
@@ -80,26 +86,31 @@ pub trait InspectableMapLikeItem<K, V> {
 pub trait MutableMapLikeItem<K, V> {
     type UpdateHandler<C>: EventHandler<C> + Send + 'static
     where
-        C: 'static;
+        C: AgentDescription + 'static;
     type RemoveHandler<C>: EventHandler<C> + Send + 'static
     where
-        C: 'static;
+        C: AgentDescription + 'static;
     type ClearHandler<C>: EventHandler<C> + Send + 'static
     where
-        C: 'static;
+        C: AgentDescription + 'static;
 
-    fn update_handler<C: 'static>(
+    fn update_handler<C: AgentDescription + 'static>(
         projection: fn(&C) -> &Self,
         key: K,
         value: V,
     ) -> Self::UpdateHandler<C>;
-    fn remove_handler<C: 'static>(projection: fn(&C) -> &Self, key: K) -> Self::RemoveHandler<C>;
-    fn clear_handler<C: 'static>(projection: fn(&C) -> &Self) -> Self::ClearHandler<C>;
+    fn remove_handler<C: AgentDescription + 'static>(
+        projection: fn(&C) -> &Self,
+        key: K,
+    ) -> Self::RemoveHandler<C>;
+    fn clear_handler<C: AgentDescription + 'static>(
+        projection: fn(&C) -> &Self,
+    ) -> Self::ClearHandler<C>;
 
     type TransformEntryHandler<'a, C, F>: EventHandler<C> + Send + 'a
     where
         Self: 'static,
-        C: 'a,
+        C: AgentDescription + 'a,
         F: FnOnce(Option<&V>) -> Option<V> + Send + 'a;
 
     fn transform_entry_handler<'a, C, F>(
@@ -109,31 +120,33 @@ pub trait MutableMapLikeItem<K, V> {
     ) -> Self::TransformEntryHandler<'a, C, F>
     where
         Self: 'static,
-        C: 'a,
+        C: AgentDescription + 'a,
         F: FnOnce(Option<&V>) -> Option<V> + Send + 'a;
 }
 
 pub trait ValueLikeItem<T> {
     type GetHandler<C>: HandlerAction<C, Completion = T> + Send + 'static
     where
-        C: 'static;
+        C: AgentDescription + 'static;
 
     type WithValueHandler<'a, C, F, B, U>: HandlerAction<C, Completion = U> + Send + 'a
     where
         Self: 'static,
-        C: 'a,
+        C: AgentDescription + 'a,
         T: Borrow<B>,
         B: ?Sized + 'static,
         F: FnOnce(&B) -> U + Send + 'a;
 
-    fn get_handler<C: 'static>(projection: fn(&C) -> &Self) -> Self::GetHandler<C>;
+    fn get_handler<C: AgentDescription + 'static>(
+        projection: fn(&C) -> &Self,
+    ) -> Self::GetHandler<C>;
 
     fn with_value_handler<'a, Item, C, F, B, U>(
         projection: fn(&C) -> &Self,
         f: F,
     ) -> Self::WithValueHandler<'a, C, F, B, U>
     where
-        C: 'a,
+        C: AgentDescription + 'a,
         T: Borrow<B>,
         B: ?Sized + 'static,
         F: FnOnce(&B) -> U + Send + 'a;
@@ -142,9 +155,12 @@ pub trait ValueLikeItem<T> {
 pub trait MutableValueLikeItem<T> {
     type SetHandler<C>: EventHandler<C> + Send + 'static
     where
-        C: 'static;
+        C: AgentDescription + 'static;
 
-    fn set_handler<C: 'static>(projection: fn(&C) -> &Self, value: T) -> Self::SetHandler<C>;
+    fn set_handler<C: AgentDescription + 'static>(
+        projection: fn(&C) -> &Self,
+        value: T,
+    ) -> Self::SetHandler<C>;
 }
 
 /// Trait for abstracting over common functionality between Join Map and Join Value lanes.
@@ -152,7 +168,7 @@ pub trait JoinLikeItem<L> {
     /// Handler action for removing a downlink from a join lane.
     type RemoveDownlinkHandler<C>: HandlerAction<C, Completion = ()> + Send + 'static
     where
-        C: 'static;
+        C: AgentDescription + 'static;
 
     /// Create a handler that will remove a downlink from the lane and clear any entries in the
     /// underlying map.
@@ -160,7 +176,7 @@ pub trait JoinLikeItem<L> {
     /// # Arguments
     /// * `projection`: a projection to the join lane.
     /// * `link_key`: a key that signifies the downlink to remove.
-    fn remove_downlink_handler<C: 'static>(
+    fn remove_downlink_handler<C: AgentDescription + 'static>(
         projection: fn(&C) -> &Self,
         link_key: L,
     ) -> Self::RemoveDownlinkHandler<C>;

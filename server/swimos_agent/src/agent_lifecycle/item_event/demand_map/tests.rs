@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use std::{
+    borrow::Cow,
     collections::{HashMap, HashSet},
     fmt::Debug,
     hash::Hash,
@@ -31,7 +32,7 @@ use uuid::Uuid;
 
 use crate::{
     agent_lifecycle::item_event::{DemandMapBranch, DemandMapLeaf, HLeaf, ItemEvent},
-    agent_model::WriteResult,
+    agent_model::{AgentDescription, WriteResult},
     event_handler::{ActionContext, HandlerAction, Modification, ModificationFlags, StepResult},
     lanes::{
         demand_map::lifecycle::{keys::Keys, on_cue_key::OnCueKey},
@@ -45,6 +46,17 @@ struct TestAgent {
     first: DemandMapLane<i32, i32>,
     second: DemandMapLane<i32, Text>,
     third: DemandMapLane<i32, bool>,
+}
+
+impl AgentDescription for TestAgent {
+    fn item_name(&self, id: u64) -> Option<Cow<'_, str>> {
+        match id {
+            LANE_ID1 => Some(Cow::Borrowed("first")),
+            LANE_ID2 => Some(Cow::Borrowed("second")),
+            LANE_ID3 => Some(Cow::Borrowed("third")),
+            _ => None,
+        }
+    }
 }
 
 const LANE_ID1: u64 = 0;

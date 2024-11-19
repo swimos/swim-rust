@@ -19,6 +19,7 @@ use swimos_api::address::Address;
 use swimos_form::Form;
 use swimos_model::Text;
 
+use crate::agent_model::AgentDescription;
 use crate::event_handler::{DowncastError, EventHandler, JoinLaneInitializer};
 use crate::lanes::JoinLaneKind;
 
@@ -52,7 +53,7 @@ where
 
 impl<Context, K, V, F, LC> JoinLaneInitializer<Context> for LifecycleInitializer<Context, K, V, F>
 where
-    Context: 'static,
+    Context: AgentDescription + 'static,
     K: Any + Clone + Eq + Hash + Send + 'static,
     V: Any + Form + Send + Sync + 'static,
     V::Rec: Send,

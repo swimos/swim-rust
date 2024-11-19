@@ -13,8 +13,10 @@
 // limitations under the License.
 
 use std::{
+    any::type_name,
     borrow::Borrow,
     cell::{Cell, RefCell},
+    fmt::Formatter,
     marker::PhantomData,
 };
 
@@ -25,7 +27,7 @@ use swimos_form::write::StructuralWritable;
 use tokio_util::codec::Encoder;
 
 use crate::{
-    agent_model::WriteResult,
+    agent_model::{AgentDescription, WriteResult},
     event_handler::{ActionContext, EventHandlerError, HandlerAction, Modification, StepResult},
     item::{AgentItem, MutableValueLikeItem, ValueItem, ValueLikeItem},
     meta::AgentMetadata,
@@ -232,7 +234,7 @@ impl<C, T> ValueStoreSet<C, T> {
     }
 }
 
-impl<C, T: Clone> HandlerAction<C> for ValueStoreGet<C, T> {
+impl<C: AgentDescription, T: Clone> HandlerAction<C> for ValueStoreGet<C, T> {
     type Completion = T;
 
     fn step(
@@ -251,9 +253,18 @@ impl<C, T: Clone> HandlerAction<C> for ValueStoreGet<C, T> {
             StepResult::done(value)
         }
     }
+
+    fn describe(&self, context: &C, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        let lane = (self.projection)(context);
+        let name = context.item_name(lane.id());
+        f.debug_struct("ValueStoreGet")
+            .field("id", &lane.id())
+            .field("store_name", &name.as_ref().map(|s| s.as_ref()))
+            .finish()
+    }
 }
 
-impl<C, T> HandlerAction<C> for ValueStoreSet<C, T> {
+impl<C: AgentDescription, T> HandlerAction<C> for ValueStoreSet<C, T> {
     type Completion = ();
 
     fn step(
@@ -273,6 +284,21 @@ impl<C, T> HandlerAction<C> for ValueStoreSet<C, T> {
         } else {
             StepResult::Fail(EventHandlerError::SteppedAfterComplete)
         }
+    }
+
+    fn describe(
+        &self,
+        context: &C,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        let ValueStoreSet { projection, value } = self;
+        let lane = (projection)(context);
+        let name = context.item_name(lane.id());
+        f.debug_struct("ValueStoreSet")
+            .field("id", &lane.id())
+            .field("store_name", &name.as_ref().map(|s| s.as_ref()))
+            .field("consumed", &value.is_none())
+            .finish()
     }
 }
 
@@ -296,7 +322,7 @@ impl<C, T, F, B: ?Sized> ValueStoreWithValue<C, T, F, B> {
     }
 }
 
-impl<C, T, F, B, U> HandlerAction<C> for ValueStoreWithValue<C, T, F, B>
+impl<C: AgentDescription, T, F, B, U> HandlerAction<C> for ValueStoreWithValue<C, T, F, B>
 where
     T: Borrow<B>,
     B: ?Sized,
@@ -317,6 +343,20 @@ where
             StepResult::after_done()
         }
     }
+
+    fn describe(
+        &self,
+        context: &C,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
+        let lane = (self.projection)(context);
+        let name = context.item_name(lane.id());
+        f.debug_struct("ValueStoreWithValue")
+            .field("id", &lane.id())
+            .field("store_name", &name.as_ref().map(|s| s.as_ref()))
+            .field("result_type", &type_name::<U>())
+            .finish()
+    }
 }
 
 impl<T> ValueLikeItem<T> for ValueStore<T>
@@ -325,17 +365,19 @@ where
 {
     type GetHandler<C> = ValueStoreGet<C, T>
     where
-        C: 'static;
+        C: AgentDescription + 'static;
 
     type WithValueHandler<'a, C, F, B, U> = ValueStoreWithValue<C, T, F, B>
     where
         Self: 'static,
-        C: 'a,
+        C: AgentDescription + 'a,
         T: Borrow<B>,
         B: ?Sized + 'static,
         F: FnOnce(&B) -> U + Send + 'a;
 
-    fn get_handler<C: 'static>(projection: fn(&C) -> &Self) -> Self::GetHandler<C> {
+    fn get_handler<C: AgentDescription + 'static>(
+        projection: fn(&C) -> &Self,
+    ) -> Self::GetHandler<C> {
         ValueStoreGet::new(projection)
     }
 
@@ -344,7 +386,7 @@ where
         f: F,
     ) -> Self::WithValueHandler<'a, C, F, B, U>
     where
-        C: 'a,
+        C: AgentDescription + 'a,
         T: Borrow<B>,
         B: ?Sized + 'static,
         F: FnOnce(&B) -> U + Send + 'a,
@@ -359,9 +401,12 @@ where
 {
     type SetHandler<C> = ValueStoreSet<C, T>
     where
-        C: 'static;
+        C: AgentDescription + 'static;
 
-    fn set_handler<C: 'static>(projection: fn(&C) -> &Self, value: T) -> Self::SetHandler<C> {
+    fn set_handler<C: AgentDescription + 'static>(
+        projection: fn(&C) -> &Self,
+        value: T,
+    ) -> Self::SetHandler<C> {
         ValueStoreSet::new(projection, value)
     }
 }

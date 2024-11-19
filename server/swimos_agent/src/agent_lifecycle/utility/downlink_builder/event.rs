@@ -21,7 +21,10 @@ use swimos_model::Text;
 use swimos_utilities::handlers::FnHandler;
 
 use crate::{
-    agent_model::downlink::{EventDownlinkHandle, OpenEventDownlinkAction},
+    agent_model::{
+        downlink::{EventDownlinkHandle, OpenEventDownlinkAction},
+        AgentDescription,
+    },
     config::SimpleDownlinkConfig,
     downlink_lifecycle::{
         OnConsumeEvent, OnConsumeEventShared, OnFailed, OnFailedShared, OnLinked, OnLinkedShared,
@@ -266,7 +269,7 @@ where
 
 impl<Context, T, LC> StatelessEventDownlinkBuilder<Context, T, LC>
 where
-    Context: 'static,
+    Context: AgentDescription + 'static,
     LC: StatelessEventLifecycle<Context, T> + 'static,
     T: RecognizerReadable + Send + 'static,
     T::Rec: Send,
@@ -429,7 +432,7 @@ where
 
 impl<Context, State, T, LC> StatefulEventDownlinkBuilder<Context, T, State, LC>
 where
-    Context: 'static,
+    Context: AgentDescription + 'static,
     LC: StatefulEventLifecycle<Context, State, T> + 'static,
     T: RecognizerReadable + Send + 'static,
     T::Rec: Send,

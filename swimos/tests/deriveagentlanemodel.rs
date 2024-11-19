@@ -124,7 +124,9 @@ where
 
     assert_eq!(A::item_specs(), expected);
 
-    for (name, ItemSpec { descriptor, .. }) in expected {
+    for (name, ItemSpec { descriptor, id, .. }) in expected {
+        let name_for_id = agent.item_name(id).expect("Item name absent.");
+        assert_eq!(name_for_id.as_ref(), name);
         match descriptor {
             ItemDescriptor::WarpLane { kind, .. } => {
                 if kind.map_like() {

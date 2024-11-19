@@ -20,7 +20,10 @@ use swimos_model::Text;
 use swimos_utilities::handlers::{BorrowHandler, FnHandler};
 
 use crate::{
-    agent_model::downlink::{OpenValueDownlinkAction, ValueDownlinkHandle},
+    agent_model::{
+        downlink::{OpenValueDownlinkAction, ValueDownlinkHandle},
+        AgentDescription,
+    },
     config::SimpleDownlinkConfig,
     downlink_lifecycle::{
         OnDownlinkEvent, OnDownlinkEventShared, OnDownlinkSet, OnDownlinkSetShared, OnFailed,
@@ -267,7 +270,7 @@ where
 
 impl<Context, T, LC> StatelessValueDownlinkBuilder<Context, T, LC>
 where
-    Context: 'static,
+    Context: AgentDescription + 'static,
     LC: StatelessValueLifecycle<Context, T> + 'static,
     T: Form + Send + 'static,
     T::Rec: Send,
@@ -451,7 +454,7 @@ where
 
 impl<Context, State, T, LC> StatefulValueDownlinkBuilder<Context, T, State, LC>
 where
-    Context: 'static,
+    Context: AgentDescription + 'static,
     LC: StatefulValueLifecycle<Context, State, T> + 'static,
     T: Form + Send + 'static,
     T::Rec: Send,
