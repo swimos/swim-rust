@@ -1151,12 +1151,13 @@ pub enum DecodeAndSelectApply<C, K, V, F> {
     Done,
 }
 
-impl<C, K, V, F> HandlerAction<C> for DecodeAndSelectApply<C, K, V, F>
+impl<C, K, V, F, M> HandlerAction<C> for DecodeAndSelectApply<C, K, V, F>
 where
     C: AgentDescription,
     K: Form + Clone + Eq + Hash,
     V: RecognizerReadable,
-    F: SelectorFn<C, Target = MapLane<K, V>>,
+    F: SelectorFn<C, Target = MapLane<K, V, M>>,
+    M: MapOps<K, V>,
 {
     type Completion = ();
 
@@ -1278,14 +1279,15 @@ where
 }
 
 /// Create an event handler that will decode an incoming map message and apply the value into a map lane.
-pub fn decode_and_select_apply<C, K, V, F>(
+pub fn decode_and_select_apply<C, K, V, M, F>(
     message: MapMessage<BytesMut, BytesMut>,
     projection: F,
 ) -> DecodeAndSelectApply<C, K, V, F>
 where
     K: Clone + Eq + Hash + RecognizerReadable,
     V: RecognizerReadable,
-    F: SelectorFn<C, Target = MapLane<K, V>>,
+    F: SelectorFn<C, Target = MapLane<K, V, M>>,
+    M: MapOps<K, V>,
 {
     let decode: DecodeMapMessage<K, V> = DecodeMapMessage::new(message);
     DecodeAndSelectApply::Decoding(decode, projection)

@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::HashMap;
-
 use swimos_utilities::handlers::{FnHandler, NoHandler};
 
 use crate::{
@@ -22,7 +20,7 @@ use crate::{
 };
 
 /// Lifecycle event for the `on_remove` event of a map lane.
-pub trait OnRemove<K, V, Context>: Send {
+pub trait OnRemove<K, V, M, Context>: Send {
     type OnRemoveHandler<'a>: EventHandler<Context> + 'a
     where
         Self: 'a;
@@ -31,17 +29,12 @@ pub trait OnRemove<K, V, Context>: Send {
     /// * `map` - The current contents of the map.
     /// * `key` - The key that was removed.
     /// * `prev_value` - The value that was removed.
-    fn on_remove<'a>(
-        &'a self,
-        map: &HashMap<K, V>,
-        key: K,
-        prev_value: V,
-    ) -> Self::OnRemoveHandler<'a>;
+    fn on_remove<'a>(&'a self, map: &M, key: K, prev_value: V) -> Self::OnRemoveHandler<'a>;
 }
 
 /// Lifecycle event for the `on_remove` event of a map lane where the event handler
 /// has shared state with other handlers for the same agent.
-pub trait OnRemoveShared<K, V, Context, Shared>: Send {
+pub trait OnRemoveShared<K, V, M, Context, Shared>: Send {
     type OnRemoveHandler<'a>: EventHandler<Context> + 'a
     where
         Self: 'a,
@@ -57,28 +50,23 @@ pub trait OnRemoveShared<K, V, Context, Shared>: Send {
         &'a self,
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
-        map: &HashMap<K, V>,
+        map: &M,
         key: K,
         prev_value: V,
     ) -> Self::OnRemoveHandler<'a>;
 }
 
-impl<K, V, Context> OnRemove<K, V, Context> for NoHandler {
+impl<K, V, M, Context> OnRemove<K, V, M, Context> for NoHandler {
     type OnRemoveHandler<'a> = UnitHandler
     where
         Self: 'a;
 
-    fn on_remove<'a>(
-        &'a self,
-        _map: &HashMap<K, V>,
-        _key: K,
-        _prev_value: V,
-    ) -> Self::OnRemoveHandler<'a> {
+    fn on_remove<'a>(&'a self, _map: &M, _key: K, _prev_value: V) -> Self::OnRemoveHandler<'a> {
         UnitHandler::default()
     }
 }
 
-impl<K, V, Context, Shared> OnRemoveShared<K, V, Context, Shared> for NoHandler {
+impl<K, V, M, Context, Shared> OnRemoveShared<K, V, M, Context, Shared> for NoHandler {
     type OnRemoveHandler<'a> = UnitHandler
     where
         Self: 'a,
@@ -88,7 +76,7 @@ impl<K, V, Context, Shared> OnRemoveShared<K, V, Context, Shared> for NoHandler 
         &'a self,
         _shared: &'a Shared,
         _handler_context: HandlerContext<Context>,
-        _map: &HashMap<K, V>,
+        _map: &M,
         _key: K,
         _prev_value: V,
     ) -> Self::OnRemoveHandler<'a> {
@@ -96,31 +84,26 @@ impl<K, V, Context, Shared> OnRemoveShared<K, V, Context, Shared> for NoHandler 
     }
 }
 
-impl<K, V, Context, F, H> OnRemove<K, V, Context> for FnHandler<F>
+impl<K, V, M, Context, F, H> OnRemove<K, V, M, Context> for FnHandler<F>
 where
-    F: Fn(&HashMap<K, V>, K, V) -> H + Send,
+    F: Fn(&M, K, V) -> H + Send,
     H: EventHandler<Context> + 'static,
 {
     type OnRemoveHandler<'a> = H
     where
         Self: 'a;
 
-    fn on_remove<'a>(
-        &'a self,
-        map: &HashMap<K, V>,
-        key: K,
-        prev_value: V,
-    ) -> Self::OnRemoveHandler<'a> {
+    fn on_remove<'a>(&'a self, map: &M, key: K, prev_value: V) -> Self::OnRemoveHandler<'a> {
         let FnHandler(f) = self;
         f(map, key, prev_value)
     }
 }
 
-impl<K, V, Context, Shared, F> OnRemoveShared<K, V, Context, Shared> for FnHandler<F>
+impl<K, V, M, Context, Shared, F> OnRemoveShared<K, V, M, Context, Shared> for FnHandler<F>
 where
-    F: for<'a> MapRemoveFn<'a, Context, Shared, K, V> + Send,
+    F: for<'a> MapRemoveFn<'a, Context, Shared, K, V, M> + Send,
 {
-    type OnRemoveHandler<'a> = <F as MapRemoveFn<'a, Context, Shared, K, V>>::Handler
+    type OnRemoveHandler<'a> = <F as MapRemoveFn<'a, Context, Shared, K, V, M>>::Handler
     where
         Self: 'a,
         Shared: 'a;
@@ -129,7 +112,7 @@ where
         &'a self,
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
-        map: &HashMap<K, V>,
+        map: &M,
         key: K,
         prev_value: V,
     ) -> Self::OnRemoveHandler<'a> {

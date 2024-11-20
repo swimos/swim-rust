@@ -92,6 +92,9 @@ pub trait MapOps<K, V> {
     fn keys<'a>(&'a self) -> impl Iterator<Item = &'a K>
     where
         K: 'a;
+    fn from_entries<I>(it: I) -> Self
+    where
+        I: IntoIterator<Item = (K, V)>;
 }
 
 pub trait MapOpsWithEntry<K, V, BK: ?Sized, BV: ?Sized> {
@@ -129,6 +132,13 @@ where
     {
         HashMap::keys(self)
     }
+
+    fn from_entries<I>(it: I) -> Self
+    where
+        I: IntoIterator<Item = (K, V)>,
+    {
+        it.into_iter().collect()
+    }
 }
 
 impl<K, V> MapOps<K, V> for BTreeMap<K, V>
@@ -156,6 +166,13 @@ where
         K: 'a,
     {
         BTreeMap::keys(self)
+    }
+
+    fn from_entries<I>(it: I) -> Self
+    where
+        I: IntoIterator<Item = (K, V)>,
+    {
+        it.into_iter().collect()
     }
 }
 
