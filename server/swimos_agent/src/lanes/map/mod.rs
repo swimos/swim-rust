@@ -805,29 +805,26 @@ where
     }
 }
 
-impl<K, V> InspectableMapLikeItem<K, V> for MapLane<K, V>
+impl<K, V, B> InspectableMapLikeItem<K, V, B> for MapLane<K, V>
 where
     K: Eq + Hash + Send + 'static,
-    V: 'static,
+    V: Borrow<B> + 'static,
+    B: ?Sized + 'static,
 {
-    type WithEntryHandler<'a, C, F, B, U> = MapLaneWithEntry<C, K, V, F, B>
+    type WithEntryHandler<'a, C, F, U> = MapLaneWithEntry<C, K, V, F, B>
     where
         Self: 'static,
         C: AgentDescription + 'a,
-        B: ?Sized +'static,
-        V: Borrow<B>,
         F: FnOnce(Option<&B>) -> U + Send + 'a;
 
-    fn with_entry_handler<'a, C, F, B, U>(
+    fn with_entry_handler<'a, C, F, U>(
         projection: fn(&C) -> &Self,
         key: K,
         f: F,
-    ) -> Self::WithEntryHandler<'a, C, F, B, U>
+    ) -> Self::WithEntryHandler<'a, C, F, U>
     where
         Self: 'static,
         C: AgentDescription + 'a,
-        B: ?Sized + 'static,
-        V: Borrow<B>,
         F: FnOnce(Option<&B>) -> U + Send + 'a,
     {
         MapLaneWithEntry::new(projection, key, f)

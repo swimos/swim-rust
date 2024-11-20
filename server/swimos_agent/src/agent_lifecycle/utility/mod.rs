@@ -234,13 +234,13 @@ impl<Agent: AgentDescription + 'static> HandlerContext<Agent> {
     ) -> impl HandlerAction<Agent, Completion = U> + Send + 'a
     where
         Agent: 'static,
-        Item: InspectableMapLikeItem<K, V> + 'static,
+        Item: InspectableMapLikeItem<K, V, B> + 'static,
         K: Send + Clone + Eq + Hash + 'static,
         V: Borrow<B> + 'static,
         B: ?Sized + 'static,
         F: FnOnce(Option<&B>) -> U + Send + 'a,
     {
-        Item::with_entry_handler::<Agent, F, B, U>(item, key, f)
+        Item::with_entry_handler::<Agent, F, U>(item, key, f)
     }
 
     /// Create an event handler that will transform the value in an entry of a map lane or store of the agent.

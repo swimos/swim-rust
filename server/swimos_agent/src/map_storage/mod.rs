@@ -223,7 +223,13 @@ where
             queue.push(MapOperation::Remove { key: key.clone() });
         }
     }
+}
 
+impl<K, V, Q, M> MapStoreInner<K, V, Q, M>
+where
+    Q: MapEventQueue<K, V>,
+    M: MapOps<K, V>,
+{
     pub fn clear(&mut self) {
         let MapStoreInner {
             content,

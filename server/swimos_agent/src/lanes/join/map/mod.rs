@@ -882,30 +882,27 @@ where
     }
 }
 
-impl<L, K, V> InspectableMapLikeItem<K, V> for JoinMapLane<L, K, V>
+impl<L, K, V, B> InspectableMapLikeItem<K, V, B> for JoinMapLane<L, K, V>
 where
     L: Send + 'static,
     K: Clone + Eq + Hash + Send + 'static,
-    V: Send + 'static,
+    V: Borrow<B> + Send + 'static,
+    B: ?Sized + 'static,
 {
-    type WithEntryHandler<'a, C, F, B, U> = JoinMapLaneWithEntry<C, L, K, V, F, B>
+    type WithEntryHandler<'a, C, F, U> = JoinMapLaneWithEntry<C, L, K, V, F, B>
     where
         Self: 'static,
         C: AgentDescription + 'a,
-        B: ?Sized + 'static,
-        V: Borrow<B>,
         F: FnOnce(Option<&B>) -> U + Send + 'a;
 
-    fn with_entry_handler<'a, C, F, B, U>(
+    fn with_entry_handler<'a, C, F, U>(
         projection: fn(&C) -> &Self,
         key: K,
         f: F,
-    ) -> Self::WithEntryHandler<'a, C, F, B, U>
+    ) -> Self::WithEntryHandler<'a, C, F, U>
     where
         Self: 'static,
         C: AgentDescription + 'a,
-        B: ?Sized + 'static,
-        V: Borrow<B>,
         F: FnOnce(Option<&B>) -> U + Send + 'a,
     {
         JoinMapLaneWithEntry::new(projection, key, f)
