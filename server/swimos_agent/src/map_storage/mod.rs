@@ -89,6 +89,9 @@ pub trait MapOps<K, V> {
     fn insert(&mut self, key: K, value: V) -> Option<V>;
     fn remove(&mut self, key: &K) -> Option<V>;
     fn take(&mut self) -> Self;
+    fn keys<'a>(&'a self) -> impl Iterator<Item = &'a K>
+    where
+        K: 'a;
 }
 
 pub trait MapOpsWithEntry<K, V, BK: ?Sized, BV: ?Sized> {
@@ -119,6 +122,13 @@ where
     fn take(&mut self) -> Self {
         std::mem::take(self)
     }
+
+    fn keys<'a>(&'a self) -> impl Iterator<Item = &'a K>
+    where
+        K: 'a,
+    {
+        HashMap::keys(self)
+    }
 }
 
 impl<K, V> MapOps<K, V> for BTreeMap<K, V>
@@ -139,6 +149,13 @@ where
 
     fn take(&mut self) -> Self {
         std::mem::take(self)
+    }
+
+    fn keys<'a>(&'a self) -> impl Iterator<Item = &'a K>
+    where
+        K: 'a,
+    {
+        BTreeMap::keys(self)
     }
 }
 
