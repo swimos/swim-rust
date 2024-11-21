@@ -129,7 +129,7 @@ impl<K, V, M> MapStore<K, V, M> {
     where
         K: Borrow<Q>,
         F: FnOnce(Option<&V>) -> R,
-        M: MapOpsWithEntry<K, V, Q, V>,
+        M: MapOpsWithEntry<K, V, Q>,
     {
         self.inner.borrow().with_entry(key, f)
     }
@@ -143,7 +143,7 @@ impl<K, V, M> MapStore<K, V, M> {
         K: Borrow<B1>,
         V: Borrow<B2>,
         F: FnOnce(Option<&B2>) -> U,
-        M: MapOpsWithEntry<K, V, B1, B2>,
+        M: MapOpsWithEntry<K, V, B1>,
     {
         self.inner.borrow().with_entry(key, f)
     }
@@ -363,7 +363,7 @@ impl<C, K, V, M> HandlerAction<C> for MapStoreGet<C, K, V, M>
 where
     C: AgentDescription,
     V: Clone,
-    M: MapOpsWithEntry<K, V, K, V>,
+    M: MapOpsWithEntry<K, V, K>,
 {
     type Completion = Option<V>;
 
@@ -545,7 +545,7 @@ where
     B: ?Sized,
     V: Borrow<B>,
     F: FnOnce(Option<&B>) -> U,
-    M: MapOpsWithEntry<K, V, K, B>,
+    M: MapOpsWithEntry<K, V, K>,
 {
     type Completion = U;
 
@@ -583,7 +583,7 @@ impl<K, V, M> MapLikeItem<K, V, M> for MapStore<K, V, M>
 where
     K: Clone + Eq + Hash + Send + 'static,
     V: Clone + 'static,
-    M: MapOps<K, V> + MapOpsWithEntry<K, V, K, V> + Clone + 'static,
+    M: MapOps<K, V> + MapOpsWithEntry<K, V, K> + Clone + 'static,
 {
     type GetHandler<C> = MapStoreGet<C, K, V, M>
     where
@@ -612,7 +612,7 @@ where
     K: Send + 'static,
     V: Borrow<B> + 'static,
     B: ?Sized + 'static,
-    M: MapOpsWithEntry<K, V, K, B>,
+    M: MapOpsWithEntry<K, V, K>,
 {
     type WithEntryHandler<'a, C, F, U> = MapStoreWithEntry<C, K, V, F, B, M>
     where

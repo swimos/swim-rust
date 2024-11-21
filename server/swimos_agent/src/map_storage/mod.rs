@@ -16,6 +16,7 @@ use std::{
     borrow::Borrow,
     collections::{BTreeMap, HashMap},
     hash::{BuildHasher, Hash},
+    ops::Index,
 };
 
 use swimos_agent_protocol::MapOperation;
@@ -97,10 +98,9 @@ pub trait MapOps<K, V> {
         I: IntoIterator<Item = (K, V)>;
 }
 
-pub trait MapOpsWithEntry<K, V, BK: ?Sized, BV: ?Sized> {
-    fn with_item<F, R>(&self, key: &BK, f: F) -> R
+pub trait MapOpsWithEntry<K, V, BK: ?Sized>: for<'a> Index<&'a BK, Output = V> {
+    fn with_item<BV: ?Sized, F, R>(&self, key: &BK, f: F) -> R
     where
-        K: Borrow<BK>,
         V: Borrow<BV>,
         F: FnOnce(Option<&BV>) -> R;
 }
@@ -176,16 +176,15 @@ where
     }
 }
 
-impl<K, V, BK, BV> MapOpsWithEntry<K, V, BK, BV> for HashMap<K, V>
+impl<K, V, BK> MapOpsWithEntry<K, V, BK> for HashMap<K, V>
 where
+    K: Borrow<BK>,
     BK: ?Sized,
-    BV: ?Sized,
     K: Hash + Eq,
     BK: Hash + Eq,
 {
-    fn with_item<F, R>(&self, key: &BK, f: F) -> R
+    fn with_item<BV: ?Sized, F, R>(&self, key: &BK, f: F) -> R
     where
-        K: Borrow<BK>,
         V: Borrow<BV>,
         F: FnOnce(Option<&BV>) -> R,
     {
@@ -193,16 +192,15 @@ where
     }
 }
 
-impl<K, V, BK, BV> MapOpsWithEntry<K, V, BK, BV> for BTreeMap<K, V>
+impl<K, V, BK> MapOpsWithEntry<K, V, BK> for BTreeMap<K, V>
 where
+    K: Borrow<BK>,
     BK: ?Sized,
-    BV: ?Sized,
     K: Ord,
     BK: Ord,
 {
-    fn with_item<F, R>(&self, key: &BK, f: F) -> R
+    fn with_item<BV: ?Sized, F, R>(&self, key: &BK, f: F) -> R
     where
-        K: Borrow<BK>,
         V: Borrow<BV>,
         F: FnOnce(Option<&BV>) -> R,
     {
@@ -318,7 +316,7 @@ impl<K, V, Q, M> MapStoreInner<K, V, Q, M> {
         K: Borrow<BK>,
         V: Borrow<BV>,
         F: FnOnce(Option<&BV>) -> R,
-        M: MapOpsWithEntry<K, V, BK, BV>,
+        M: MapOpsWithEntry<K, V, BK>,
     {
         let MapStoreInner { content, .. } = self;
         MapOpsWithEntry::with_item(content, key, f)

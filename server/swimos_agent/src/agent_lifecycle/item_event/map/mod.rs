@@ -32,7 +32,7 @@ use crate::lanes::map::{
     },
     MapLaneEvent,
 };
-use crate::map_storage::MapOps;
+use crate::map_storage::MapOpsWithEntry;
 
 use super::{HLeaf, HTree, ItemEvent, ItemEventShared};
 
@@ -75,11 +75,11 @@ fn map_handler<'a, Context, K, V, M, LC>(
 where
     K: Hash + Eq,
     LC: MapLaneLifecycle<K, V, M, Context>,
-    M: MapOps<K, V>,
+    M: MapOpsWithEntry<K, V, K>,
 {
     match event {
         MapLaneEvent::Update(k, old) => {
-            let new = map.get(&k).expect("Entry missing.");
+            let new = &map[&k];
             Coproduct::Inl(lifecycle.on_update(map, k, old, new))
         }
         MapLaneEvent::Remove(k, v) => {
@@ -101,11 +101,11 @@ fn map_handler_shared<'a, Context, Shared, K, V, M, LC>(
 where
     K: Hash + Eq,
     LC: MapLaneLifecycleShared<K, V, M, Context, Shared>,
-    M: MapOps<K, V>,
+    M: MapOpsWithEntry<K, V, K>,
 {
     match event {
         MapLaneEvent::Update(k, old) => {
-            let new = map.get(&k).expect("Entry missing.");
+            let new = &map[&k];
             Coproduct::Inl(lifecycle.on_update(shared, handler_context, map, k, old, new))
         }
         MapLaneEvent::Remove(k, v) => Coproduct::Inr(Coproduct::Inl(lifecycle.on_remove(
@@ -215,7 +215,7 @@ where
     LC: MapLaneLifecycle<K, V, M, Context>,
     L: HTree + ItemEvent<Context>,
     R: HTree + ItemEvent<Context>,
-    M: MapOps<K, V>,
+    M: MapOpsWithEntry<K, V, K>,
 {
     type ItemEventHandler<'a> = MapBranchHandler<'a, Context, K, V, M, LC, L, R>
     where
@@ -257,7 +257,7 @@ where
     LC: MapLaneLifecycleShared<K, V, M, Context, Shared>,
     L: HTree + ItemEventShared<Context, Shared>,
     R: HTree + ItemEventShared<Context, Shared>,
-    M: MapOps<K, V>,
+    M: MapOpsWithEntry<K, V, K>,
 {
     type ItemEventHandler<'a> = MapBranchHandlerShared<'a, Context, Shared, K, V, M, LC, L, R>
     where
