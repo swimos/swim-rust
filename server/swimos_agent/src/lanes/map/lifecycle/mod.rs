@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{borrow::Borrow, collections::HashMap, marker::PhantomData};
+use std::{borrow::Borrow, marker::PhantomData};
 
 use swimos_utilities::handlers::{BorrowHandler, FnHandler, NoHandler};
 
@@ -58,11 +58,16 @@ impl<L, K, V, M, Context, Shared> MapLaneLifecycleShared<K, V, M, Context, Share
 {
 }
 
+type LifecycleType<Context, Shared, K, V, M> = fn(Context, Shared, K, V, M);
+
 /// A lifecycle for a map lane with some shared state (shard with other lifecycles in the same agent).
 ///
 /// # Type Parameters
 /// * `Context` - The context for the event handlers (providing access to the agent lanes).
 /// * `Shared` - The shared state to which the lifecycle has access.
+/// * `K` - The key type of the map.
+/// * `V` - The value type of the map.
+/// * `M` - The map type (for example `HashMap<K, V>`).
 /// * `FUpd` - The `on_update` event handler.
 /// * `FRem` - The `on_remove` event handler.
 /// * `FClr` - The `on_clear` event handler.
@@ -71,18 +76,19 @@ pub struct StatefulMapLaneLifecycle<
     Shared,
     K,
     V,
+    M,
     FUpd = NoHandler,
     FRem = NoHandler,
     FClr = NoHandler,
 > {
-    _value_type: PhantomData<fn(Context, Shared, K, V)>,
+    _value_type: PhantomData<LifecycleType<Context, Shared, K, V, M>>,
     on_update: FUpd,
     on_remove: FRem,
     on_clear: FClr,
 }
 
-impl<Context, Shared, K, V, FUpd: Clone, FRem: Clone, FClr: Clone> Clone
-    for StatefulMapLaneLifecycle<Context, Shared, K, V, FUpd, FRem, FClr>
+impl<Context, Shared, K, V, M, FUpd: Clone, FRem: Clone, FClr: Clone> Clone
+    for StatefulMapLaneLifecycle<Context, Shared, K, V, M, FUpd, FRem, FClr>
 {
     fn clone(&self) -> Self {
         Self {
@@ -94,7 +100,7 @@ impl<Context, Shared, K, V, FUpd: Clone, FRem: Clone, FClr: Clone> Clone
     }
 }
 
-impl<Context, Shared, K, V> Default for StatefulMapLaneLifecycle<Context, Shared, K, V> {
+impl<Context, Shared, K, V, M> Default for StatefulMapLaneLifecycle<Context, Shared, K, V, M> {
     fn default() -> Self {
         Self {
             _value_type: Default::default(),
@@ -105,17 +111,17 @@ impl<Context, Shared, K, V> Default for StatefulMapLaneLifecycle<Context, Shared
     }
 }
 
-impl<Context, Shared, K, V, FUpd, FRem, FClr>
-    StatefulMapLaneLifecycle<Context, Shared, K, V, FUpd, FRem, FClr>
+impl<Context, Shared, K, V, M, FUpd, FRem, FClr>
+    StatefulMapLaneLifecycle<Context, Shared, K, V, M, FUpd, FRem, FClr>
 {
     pub fn on_update<F, B>(
         self,
         f: F,
-    ) -> StatefulMapLaneLifecycle<Context, Shared, K, V, BorrowHandler<F, B>, FRem, FClr>
+    ) -> StatefulMapLaneLifecycle<Context, Shared, K, V, M, BorrowHandler<F, B>, FRem, FClr>
     where
         B: ?Sized,
         V: Borrow<B>,
-        BorrowHandler<F, B>: for<'a> OnUpdateShared<K, V, HashMap<K, V>, Context, Shared>,
+        BorrowHandler<F, B>: for<'a> OnUpdateShared<K, V, M, Context, Shared>,
     {
         StatefulMapLaneLifecycle {
             _value_type: PhantomData,
@@ -128,9 +134,9 @@ impl<Context, Shared, K, V, FUpd, FRem, FClr>
     pub fn on_remove<F>(
         self,
         f: F,
-    ) -> StatefulMapLaneLifecycle<Context, Shared, K, V, FUpd, FnHandler<F>, FClr>
+    ) -> StatefulMapLaneLifecycle<Context, Shared, K, V, M, FUpd, FnHandler<F>, FClr>
     where
-        FnHandler<F>: OnRemoveShared<K, V, HashMap<K, V>, Context, Shared>,
+        FnHandler<F>: OnRemoveShared<K, V, M, Context, Shared>,
     {
         StatefulMapLaneLifecycle {
             _value_type: PhantomData,
@@ -143,9 +149,9 @@ impl<Context, Shared, K, V, FUpd, FRem, FClr>
     pub fn on_clear<F>(
         self,
         f: F,
-    ) -> StatefulMapLaneLifecycle<Context, Shared, K, V, FUpd, FRem, FnHandler<F>>
+    ) -> StatefulMapLaneLifecycle<Context, Shared, K, V, M, FUpd, FRem, FnHandler<F>>
     where
-        FnHandler<F>: OnClearShared<HashMap<K, V>, Context, Shared>,
+        FnHandler<F>: OnClearShared<M, Context, Shared>,
     {
         StatefulMapLaneLifecycle {
             _value_type: PhantomData,
@@ -157,7 +163,7 @@ impl<Context, Shared, K, V, FUpd, FRem, FClr>
 }
 
 impl<K, V, M, Context, Shared, FUpd, FRem, FClr> OnUpdateShared<K, V, M, Context, Shared>
-    for StatefulMapLaneLifecycle<Context, Shared, K, V, FUpd, FRem, FClr>
+    for StatefulMapLaneLifecycle<Context, Shared, K, V, M, FUpd, FRem, FClr>
 where
     FUpd: OnUpdateShared<K, V, M, Context, Shared>,
     FRem: Send,
@@ -183,7 +189,7 @@ where
 }
 
 impl<K, V, M, Context, Shared, FUpd, FRem, FClr> OnRemoveShared<K, V, M, Context, Shared>
-    for StatefulMapLaneLifecycle<Context, Shared, K, V, FUpd, FRem, FClr>
+    for StatefulMapLaneLifecycle<Context, Shared, K, V, M, FUpd, FRem, FClr>
 where
     FUpd: Send,
     FRem: OnRemoveShared<K, V, M, Context, Shared>,
@@ -208,7 +214,7 @@ where
 }
 
 impl<K, V, M, Context, Shared, FUpd, FRem, FClr> OnClearShared<M, Context, Shared>
-    for StatefulMapLaneLifecycle<Context, Shared, K, V, FUpd, FRem, FClr>
+    for StatefulMapLaneLifecycle<Context, Shared, K, V, M, FUpd, FRem, FClr>
 where
     FUpd: Send,
     FRem: Send,

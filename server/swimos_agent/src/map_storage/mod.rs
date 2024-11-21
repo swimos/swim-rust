@@ -193,6 +193,23 @@ where
     }
 }
 
+impl<K, V, BK, BV> MapOpsWithEntry<K, V, BK, BV> for BTreeMap<K, V>
+where
+    BK: ?Sized,
+    BV: ?Sized,
+    K: Ord,
+    BK: Ord,
+{
+    fn with_item<F, R>(&self, key: &BK, f: F) -> R
+    where
+        K: Borrow<BK>,
+        V: Borrow<BV>,
+        F: FnOnce(Option<&BV>) -> R,
+    {
+        f(self.get(key).map(Borrow::borrow))
+    }
+}
+
 impl<K, V, Q, M> MapStoreInner<K, V, Q, M>
 where
     K: Clone,
