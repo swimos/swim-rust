@@ -1473,28 +1473,25 @@ where
     K: StructuralWritable + Clone + Eq + Hash,
     M: MapOps<K, V>,
 {
-    let mut keys_with_recon = map.keys().map(|k| (k.structure(), k)).collect::<Vec<_>>();
-    keys_with_recon.sort_by(|(k1, _), (k2, _)| k1.cmp(k2));
-    let mut to_remove: VecDeque<K> = VecDeque::new();
-    match kind {
-        DropOrTake::Drop => {
-            to_remove.extend(
-                keys_with_recon
-                    .into_iter()
-                    .take(number)
-                    .map(|(_, k1)| k1.clone()),
-            );
-        }
-        DropOrTake::Take => {
-            to_remove.extend(
-                keys_with_recon
-                    .into_iter()
-                    .skip(number)
-                    .map(|(_, k1)| k1.clone()),
-            );
-        }
+    if M::ORDERED_KEYS {
+        to_deque(kind, number, map.keys())
+    } else {
+        let mut keys_with_recon = map.keys().map(|k| (k.structure(), k)).collect::<Vec<_>>();
+        keys_with_recon.sort_by(|(k1, _), (k2, _)| k1.cmp(k2));
+        let it = keys_with_recon.into_iter().map(|(_, k)| k);
+        to_deque(kind, number, it)
     }
-    to_remove
+}
+
+fn to_deque<'a, I, K>(kind: DropOrTake, number: usize, it: I) -> VecDeque<K>
+where
+    K: Clone + 'a,
+    I: Iterator<Item = &'a K>,
+{
+    match kind {
+        DropOrTake::Drop => it.take(number).cloned().collect(),
+        DropOrTake::Take => it.skip(number).cloned().collect(),
+    }
 }
 
 impl<C, K, V, M> HandlerAction<C> for MapLaneDropOrTake<C, K, V, M>

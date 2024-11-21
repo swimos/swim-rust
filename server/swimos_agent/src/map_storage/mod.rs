@@ -93,6 +93,7 @@ pub trait MapOps<K, V> {
     fn keys<'a>(&'a self) -> impl Iterator<Item = &'a K>
     where
         K: 'a;
+    const ORDERED_KEYS: bool;
     fn from_entries<I>(it: I) -> Self
     where
         I: IntoIterator<Item = (K, V)>;
@@ -139,6 +140,8 @@ where
     {
         it.into_iter().collect()
     }
+
+    const ORDERED_KEYS: bool = false;
 }
 
 impl<K, V> MapOps<K, V> for BTreeMap<K, V>
@@ -174,6 +177,8 @@ where
     {
         it.into_iter().collect()
     }
+
+    const ORDERED_KEYS: bool = true;
 }
 
 impl<K, V, BK> MapOpsWithEntry<K, V, BK> for HashMap<K, V>
