@@ -381,7 +381,7 @@ where
     C: AgentDescription,
     K: Clone + Eq + Hash,
     V: Clone,
-    M: MapOps<K, V> + MapOpsWithEntry<K, V, K>,
+    M: MapOpsWithEntry<K, V, K>,
 {
     type Completion = Option<V>;
 
@@ -790,7 +790,7 @@ impl<K, V, M> MapLikeItem<K, V, M> for MapLane<K, V, M>
 where
     K: Clone + Eq + Hash + Send + 'static,
     V: Clone + 'static,
-    M: MapOps<K, V> + MapOpsWithEntry<K, V, K> + Clone + 'static,
+    M: MapOpsWithEntry<K, V, K> + Clone + 'static,
 {
     type GetHandler<C> = MapLaneGet<C, K, V, M>
     where

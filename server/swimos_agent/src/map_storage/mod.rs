@@ -85,21 +85,59 @@ where
     }
 }
 
+/// Operations that a map implementation (e.g. [`HashMap`], [`BTreeMap`]) must support to be
+/// used as a backing store for a [`MapStoreInner`] (which underlies all map stores and map lanes).
 pub trait MapOps<K, V> {
+    /// Attempt to get the value associated with a key.
+    /// 
+    /// # Arguments
+    /// * `key` - The key.
     fn get(&self, key: &K) -> Option<&V>;
+
+    /// Insert a new entry into the map. If such an entry already existed, the old value
+    /// will be returned.
+    /// 
+    /// # Arguments
+    /// * `key` - The key.
+    /// * `value` - The new value.
     fn insert(&mut self, key: K, value: V) -> Option<V>;
+
+    /// Remove an entry from the map. If the entry existed, it's previous value will be returned.
+    /// # Arguments
+    /// * `key` - The key of the entry to remove.
     fn remove(&mut self, key: &K) -> Option<V>;
+
+    /// Clear the map, returning the previous contents.
     fn take(&mut self) -> Self;
+
+    /// Get an iterator over the keys of the map. If [`MapOps::ORDERED_KEYS`] is true, this must
+    /// return the keys in their intrinsic order (which must be consistent with the order of their
+    /// Recon representation, if the key type implements [`swimos_form::Form`]).
     fn keys<'a>(&'a self) -> impl Iterator<Item = &'a K>
     where
         K: 'a;
+    
+    /// If this is true, the keys returned by [`MapOps::keys`] will be in order.
     const ORDERED_KEYS: bool;
+
+    /// Build an instance of the map from an iterator of key-value pairs.
+    /// 
+    /// # Arguments
+    /// * `it` - The key value pairs to insert into the map.
     fn from_entries<I>(it: I) -> Self
     where
         I: IntoIterator<Item = (K, V)>;
 }
 
-pub trait MapOpsWithEntry<K, V, BK: ?Sized>: for<'a> Index<&'a BK, Output = V> {
+/// Extension to [`MapOps`] that allows entries of the map to be inspected with a borrowed form
+/// of the key.
+pub trait MapOpsWithEntry<K, V, BK: ?Sized>: MapOps<K, V> + for<'a> Index<&'a BK, Output = V> {
+    
+    /// Compute a value based on an entry of the map.
+    /// 
+    /// # Arguments
+    /// * `key` - Borrowed form of the key.
+    /// * `f` - A function to apply to a borrow of the value associated with the key.
     fn with_item<BV: ?Sized, F, R>(&self, key: &BK, f: F) -> R
     where
         V: Borrow<BV>,

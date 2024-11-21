@@ -583,7 +583,7 @@ impl<K, V, M> MapLikeItem<K, V, M> for MapStore<K, V, M>
 where
     K: Clone + Eq + Hash + Send + 'static,
     V: Clone + 'static,
-    M: MapOps<K, V> + MapOpsWithEntry<K, V, K> + Clone + 'static,
+    M: MapOpsWithEntry<K, V, K> + Clone + 'static,
 {
     type GetHandler<C> = MapStoreGet<C, K, V, M>
     where
