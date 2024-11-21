@@ -85,18 +85,23 @@ where
     }
 }
 
+pub trait MapBacking {
+    type KeyType;
+    type ValueType;
+}
+
 /// Operations that a map implementation (e.g. [`HashMap`], [`BTreeMap`]) must support to be
 /// used as a backing store for a [`MapStoreInner`] (which underlies all map stores and map lanes).
-pub trait MapOps<K, V> {
+pub trait MapOps<K, V>: MapBacking<KeyType = K, ValueType = V> {
     /// Attempt to get the value associated with a key.
-    /// 
+    ///
     /// # Arguments
     /// * `key` - The key.
     fn get(&self, key: &K) -> Option<&V>;
 
     /// Insert a new entry into the map. If such an entry already existed, the old value
     /// will be returned.
-    /// 
+    ///
     /// # Arguments
     /// * `key` - The key.
     /// * `value` - The new value.
@@ -116,12 +121,12 @@ pub trait MapOps<K, V> {
     fn keys<'a>(&'a self) -> impl Iterator<Item = &'a K>
     where
         K: 'a;
-    
+
     /// If this is true, the keys returned by [`MapOps::keys`] will be in order.
     const ORDERED_KEYS: bool;
 
     /// Build an instance of the map from an iterator of key-value pairs.
-    /// 
+    ///
     /// # Arguments
     /// * `it` - The key value pairs to insert into the map.
     fn from_entries<I>(it: I) -> Self
@@ -131,10 +136,11 @@ pub trait MapOps<K, V> {
 
 /// Extension to [`MapOps`] that allows entries of the map to be inspected with a borrowed form
 /// of the key.
-pub trait MapOpsWithEntry<K, V, BK: ?Sized>: MapOps<K, V> + for<'a> Index<&'a BK, Output = V> {
-    
+pub trait MapOpsWithEntry<K, V, BK: ?Sized>:
+    MapOps<K, V> + for<'a> Index<&'a BK, Output = V>
+{
     /// Compute a value based on an entry of the map.
-    /// 
+    ///
     /// # Arguments
     /// * `key` - Borrowed form of the key.
     /// * `f` - A function to apply to a borrow of the value associated with the key.
@@ -142,6 +148,12 @@ pub trait MapOpsWithEntry<K, V, BK: ?Sized>: MapOps<K, V> + for<'a> Index<&'a BK
     where
         V: Borrow<BV>,
         F: FnOnce(Option<&BV>) -> R;
+}
+
+impl<K, V, S> MapBacking for HashMap<K, V, S> {
+    type KeyType = K;
+
+    type ValueType = V;
 }
 
 impl<K, V, S> MapOps<K, V> for HashMap<K, V, S>
@@ -180,6 +192,12 @@ where
     }
 
     const ORDERED_KEYS: bool = false;
+}
+
+impl<K, V> MapBacking for BTreeMap<K, V> {
+    type KeyType = K;
+
+    type ValueType = V;
 }
 
 impl<K, V> MapOps<K, V> for BTreeMap<K, V>
