@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::hash::Hash;
 use std::{collections::HashMap, sync::Arc};
 
@@ -2275,4 +2275,297 @@ fn on_delete_handler() {
         }
         ow => panic!("Events not as expected: {:?}", ow),
     }
+}
+
+#[derive(AgentLaneModel)]
+#[agent(root(crate))]
+struct OrderedMapsAgent {
+    lane: MapLane<i32, u64, BTreeMap<i32, u64>>,
+    store: MapStore<i32, u64, BTreeMap<i32, u64>>,
+}
+
+const OV1: u64 = 8374749;
+const OV2: u64 = 128374747;
+
+impl OrderedMapsAgent {
+    fn with_data() -> Self {
+        let content = init_ordered();
+        OrderedMapsAgent {
+            lane: MapLane::new(0, content.clone()),
+            store: MapStore::new(1, content),
+        }
+    }
+}
+
+fn init_ordered() -> BTreeMap<i32, u64> {
+    let mut content = BTreeMap::new();
+    content.insert(K1, OV1);
+    content.insert(K2, OV2);
+    content
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum OrderedMapEvent {
+    Clear(BTreeMap<i32, u64>),
+    Remove(BTreeMap<i32, u64>, i32, u64),
+    Update(BTreeMap<i32, u64>, i32, Option<u64>),
+}
+
+#[derive(Default, Debug, Clone)]
+struct OrderedMapLifecycle {
+    events: Arc<Mutex<Vec<OrderedMapEvent>>>,
+}
+
+impl OrderedMapLifecycle {
+    fn push(&self, event: OrderedMapEvent) {
+        self.events.lock().push(event)
+    }
+
+    fn take(&self) -> Vec<OrderedMapEvent> {
+        let mut guard = self.events.lock();
+        std::mem::take(&mut *guard)
+    }
+}
+
+#[test]
+fn on_update_handler_lane_ordered() {
+    #[derive(Default, Clone)]
+    struct TestLifecycle(OrderedMapLifecycle);
+
+    #[lifecycle(OrderedMapsAgent, agent_root(crate))]
+    impl TestLifecycle {
+        #[on_update(lane)]
+        fn my_on_update(
+            &self,
+            context: HandlerContext<OrderedMapsAgent>,
+            map: &BTreeMap<i32, u64>,
+            key: i32,
+            prev: Option<u64>,
+            _new_value: &u64,
+        ) -> impl EventHandler<OrderedMapsAgent> + '_ {
+            let map_state = map.clone();
+            context.effect(move || {
+                self.0.push(OrderedMapEvent::Update(map_state, key, prev));
+            })
+        }
+    }
+
+    let agent = OrderedMapsAgent::default();
+    let template = TestLifecycle::default();
+
+    let lifecycle = template.clone().into_lifecycle();
+
+    let v = 657383;
+    agent.lane.update(K2, v);
+    let handler = lifecycle
+        .item_event(&agent, "lane")
+        .expect("Expected handler for lane.");
+    run_handler(&agent, handler);
+
+    let events = template.0.take();
+
+    let mut expected_map = BTreeMap::new();
+    expected_map.insert(K2, v);
+    assert_eq!(
+        events,
+        vec![OrderedMapEvent::Update(expected_map, K2, None)]
+    );
+}
+
+#[test]
+fn on_update_handler_store_ordered() {
+    #[derive(Default, Clone)]
+    struct TestLifecycle(OrderedMapLifecycle);
+
+    #[lifecycle(OrderedMapsAgent, agent_root(crate))]
+    impl TestLifecycle {
+        #[on_update(store)]
+        fn my_on_update(
+            &self,
+            context: HandlerContext<OrderedMapsAgent>,
+            map: &BTreeMap<i32, u64>,
+            key: i32,
+            prev: Option<u64>,
+            _new_value: &u64,
+        ) -> impl EventHandler<OrderedMapsAgent> + '_ {
+            let map_state = map.clone();
+            context.effect(move || {
+                self.0.push(OrderedMapEvent::Update(map_state, key, prev));
+            })
+        }
+    }
+
+    let agent = OrderedMapsAgent::default();
+    let template = TestLifecycle::default();
+
+    let lifecycle = template.clone().into_lifecycle();
+
+    let v = 93747;
+    agent.store.update(K2, v);
+    let handler = lifecycle
+        .item_event(&agent, "store")
+        .expect("Expected handler for lane.");
+    run_handler(&agent, handler);
+
+    let events = template.0.take();
+
+    let mut expected_map = BTreeMap::new();
+    expected_map.insert(K2, v);
+    assert_eq!(
+        events,
+        vec![OrderedMapEvent::Update(expected_map, K2, None)]
+    );
+}
+
+#[test]
+fn on_remove_handler_lane_ordered() {
+    #[derive(Default, Clone)]
+    struct TestLifecycle(OrderedMapLifecycle);
+
+    #[lifecycle(OrderedMapsAgent, agent_root(crate))]
+    impl TestLifecycle {
+        #[on_remove(lane)]
+        fn my_on_remove(
+            &self,
+            context: HandlerContext<OrderedMapsAgent>,
+            map: &BTreeMap<i32, u64>,
+            key: i32,
+            prev: u64,
+        ) -> impl EventHandler<OrderedMapsAgent> + '_ {
+            let map_state = map.clone();
+            context.effect(move || {
+                self.0.push(OrderedMapEvent::Remove(map_state, key, prev));
+            })
+        }
+    }
+
+    let agent = OrderedMapsAgent::with_data();
+    let template = TestLifecycle::default();
+
+    let lifecycle = template.clone().into_lifecycle();
+
+    agent.lane.remove(&K2);
+    let handler = lifecycle
+        .item_event(&agent, "lane")
+        .expect("Expected handler for lane.");
+    run_handler(&agent, handler);
+
+    let events = template.0.take();
+
+    let mut expected_map = BTreeMap::new();
+    expected_map.insert(K1, OV1);
+    assert_eq!(events, vec![OrderedMapEvent::Remove(expected_map, K2, OV2)]);
+}
+
+#[test]
+fn on_remove_handler_store_ordered() {
+    #[derive(Default, Clone)]
+    struct TestLifecycle(OrderedMapLifecycle);
+
+    #[lifecycle(OrderedMapsAgent, agent_root(crate))]
+    impl TestLifecycle {
+        #[on_remove(store)]
+        fn my_on_remove(
+            &self,
+            context: HandlerContext<OrderedMapsAgent>,
+            map: &BTreeMap<i32, u64>,
+            key: i32,
+            prev: u64,
+        ) -> impl EventHandler<OrderedMapsAgent> + '_ {
+            let map_state = map.clone();
+            context.effect(move || {
+                self.0.push(OrderedMapEvent::Remove(map_state, key, prev));
+            })
+        }
+    }
+
+    let agent = OrderedMapsAgent::with_data();
+    let template = TestLifecycle::default();
+
+    let lifecycle = template.clone().into_lifecycle();
+
+    agent.store.remove(&K2);
+    let handler = lifecycle
+        .item_event(&agent, "store")
+        .expect("Expected handler for lane.");
+    run_handler(&agent, handler);
+
+    let events = template.0.take();
+
+    let mut expected_map = BTreeMap::new();
+    expected_map.insert(K1, OV1);
+    expected_map.insert(K1, OV1);
+    assert_eq!(events, vec![OrderedMapEvent::Remove(expected_map, K2, OV2)]);
+}
+
+#[test]
+fn on_clear_handler_lane_ordered() {
+    #[derive(Default, Clone)]
+    struct TestLifecycle(OrderedMapLifecycle);
+
+    #[lifecycle(OrderedMapsAgent, agent_root(crate))]
+    impl TestLifecycle {
+        #[on_clear(lane)]
+        fn my_on_clear(
+            &self,
+            context: HandlerContext<OrderedMapsAgent>,
+            map: BTreeMap<i32, u64>,
+        ) -> impl EventHandler<OrderedMapsAgent> + '_ {
+            context.effect(move || {
+                self.0.push(OrderedMapEvent::Clear(map));
+            })
+        }
+    }
+
+    let agent = OrderedMapsAgent::with_data();
+    let template = TestLifecycle::default();
+
+    let lifecycle = template.clone().into_lifecycle();
+
+    agent.lane.clear();
+    let handler = lifecycle
+        .item_event(&agent, "lane")
+        .expect("Expected handler for lane.");
+    run_handler(&agent, handler);
+
+    let events = template.0.take();
+
+    let expected_map = init_ordered();
+    assert_eq!(events, vec![OrderedMapEvent::Clear(expected_map)]);
+}
+
+#[test]
+fn on_clear_handler_store_ordered() {
+    #[derive(Default, Clone)]
+    struct TestLifecycle(OrderedMapLifecycle);
+
+    #[lifecycle(OrderedMapsAgent, agent_root(crate))]
+    impl TestLifecycle {
+        #[on_clear(store)]
+        fn my_on_clear(
+            &self,
+            context: HandlerContext<OrderedMapsAgent>,
+            map: BTreeMap<i32, u64>,
+        ) -> impl EventHandler<OrderedMapsAgent> + '_ {
+            context.effect(move || {
+                self.0.push(OrderedMapEvent::Clear(map));
+            })
+        }
+    }
+
+    let agent = OrderedMapsAgent::with_data();
+    let template = TestLifecycle::default();
+
+    let lifecycle = template.clone().into_lifecycle();
+
+    agent.store.clear();
+    let handler = lifecycle
+        .item_event(&agent, "store")
+        .expect("Expected handler for lane.");
+    run_handler(&agent, handler);
+
+    let events = template.0.take();
+
+    let expected_map = init_ordered();
+    assert_eq!(events, vec![OrderedMapEvent::Clear(expected_map)]);
 }
