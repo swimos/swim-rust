@@ -660,9 +660,9 @@ where
                 let lane = (projection)(context);
                 let name = context.item_name(lane.id());
                 f.debug_struct("AfterClosed")
+                    .field("state", &"Cleanup")
                     .field("id", &lane.id())
                     .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
-                    .field("state", &"Cleanup")
                     .field("address", address)
                     .field("response", response)
                     .finish()
@@ -672,7 +672,10 @@ where
                 .field("state", &"Restarting")
                 .field("handler", &Described::new(context, handler))
                 .finish(),
-            AfterClosed::Done => f.debug_tuple("AfterClosed").field(&"<<CONSUMED>>").finish(),
+            AfterClosed::Done => f
+                .debug_struct("AfterClosed")
+                .field("state", &"Done")
+                .finish(),
         }
     }
 }
