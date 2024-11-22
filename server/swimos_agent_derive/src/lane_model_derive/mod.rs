@@ -569,7 +569,7 @@ impl<'a> WarpLaneHandlerMatch<'a> {
                 quote!(#root::lanes::value::decode_and_set::<#agent_name, #ty>(body, |agent: &#agent_name| &agent.#name))
             }
             WarpLaneSpec::Map(k, v) => {
-                quote!(#root::lanes::map::decode_and_apply::<#agent_name, #k, #v, ::std::collections::HashMap<#k, #v>>(body, |agent: &#agent_name| &agent.#name))
+                quote!(#root::lanes::map::decode_and_apply::<#agent_name, #k, #v, _>(body, |agent: &#agent_name| &agent.#name))
             }
             WarpLaneSpec::Demand(_)
             | WarpLaneSpec::DemandMap(_, _)
