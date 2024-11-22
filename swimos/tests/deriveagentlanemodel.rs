@@ -844,3 +844,23 @@ fn agent_level_transient_flag() {
         transient_store(3, "fourth", StoreKind::Value),
     ]);
 }
+
+#[test]
+fn map_lane_explicit_backing() {
+    #[derive(AgentLaneModel)]
+    struct MapLaneExplicit {
+        lane: MapLane<i32, i32, HashMap<i32, i32>>,
+    }
+
+    check_agent::<MapLaneExplicit>(vec![persistent_lane(0, "lane", WarpLaneKind::Map)]);
+}
+
+#[test]
+fn map_store_explicit_backing() {
+    #[derive(AgentLaneModel)]
+    struct MapStoreExplicit {
+        store: MapStore<i32, i32, HashMap<i32, i32>>,
+    }
+
+    check_agent::<MapStoreExplicit>(vec![persistent_store(0, "store", StoreKind::Map)]);
+}
