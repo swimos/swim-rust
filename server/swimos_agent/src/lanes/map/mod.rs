@@ -43,7 +43,9 @@ use crate::{
         HandlerTrans, Modification, StepResult,
     },
     item::{AgentItem, InspectableMapLikeItem, MapItem, MapLikeItem, MutableMapLikeItem},
-    map_storage::{MapOps, MapOpsWithEntry, MapStoreInner, TransformEntryResult},
+    map_storage::{
+        drop_or_take, DropOrTake, MapOps, MapOpsWithEntry, MapStoreInner, TransformEntryResult,
+    },
     meta::AgentMetadata,
 };
 
@@ -1433,12 +1435,6 @@ where
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-enum DropOrTake {
-    Drop,
-    Take,
-}
-
 enum DropOrTakeState<C, K, V, M> {
     Init,
     Removing(MapLaneRemoveMultiple<C, K, V, M>),
@@ -1465,32 +1461,6 @@ impl<C, K, V, M> MapLaneDropOrTake<C, K, V, M> {
             number,
             state: DropOrTakeState::Init,
         }
-    }
-}
-
-fn drop_or_take<K, V, M>(map: &M, kind: DropOrTake, number: usize) -> VecDeque<K>
-where
-    K: StructuralWritable + Clone + Eq + Hash,
-    M: MapOps<K, V>,
-{
-    if M::ORDERED_KEYS {
-        to_deque(kind, number, map.keys())
-    } else {
-        let mut keys_with_recon = map.keys().map(|k| (k.structure(), k)).collect::<Vec<_>>();
-        keys_with_recon.sort_by(|(k1, _), (k2, _)| k1.cmp(k2));
-        let it = keys_with_recon.into_iter().map(|(_, k)| k);
-        to_deque(kind, number, it)
-    }
-}
-
-fn to_deque<'a, I, K>(kind: DropOrTake, number: usize, it: I) -> VecDeque<K>
-where
-    K: Clone + 'a,
-    I: Iterator<Item = &'a K>,
-{
-    match kind {
-        DropOrTake::Drop => it.take(number).cloned().collect(),
-        DropOrTake::Take => it.skip(number).cloned().collect(),
     }
 }
 

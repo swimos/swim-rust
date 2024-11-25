@@ -14,12 +14,13 @@
 
 use std::{
     borrow::Borrow,
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, HashMap, VecDeque},
     hash::{BuildHasher, Hash},
     ops::Index,
 };
 
 use swimos_agent_protocol::MapOperation;
+use swimos_form::write::StructuralWritable;
 
 use crate::lanes::map::MapLaneEvent;
 
@@ -381,5 +382,37 @@ impl<K, V, Q, M> MapStoreInner<K, V, Q, M> {
     {
         let MapStoreInner { content, .. } = self;
         MapOpsWithEntry::with_item(content, key, f)
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum DropOrTake {
+    Drop,
+    Take,
+}
+
+pub fn drop_or_take<K, V, M>(map: &M, kind: DropOrTake, number: usize) -> VecDeque<K>
+where
+    K: StructuralWritable + Clone + Eq + Hash,
+    M: MapOps<K, V>,
+{
+    if M::ORDERED_KEYS {
+        to_deque(kind, number, map.keys())
+    } else {
+        let mut keys_with_recon = map.keys().map(|k| (k.structure(), k)).collect::<Vec<_>>();
+        keys_with_recon.sort_by(|(k1, _), (k2, _)| k1.cmp(k2));
+        let it = keys_with_recon.into_iter().map(|(_, k)| k);
+        to_deque(kind, number, it)
+    }
+}
+
+fn to_deque<'a, I, K>(kind: DropOrTake, number: usize, it: I) -> VecDeque<K>
+where
+    K: Clone + 'a,
+    I: Iterator<Item = &'a K>,
+{
+    match kind {
+        DropOrTake::Drop => it.take(number).cloned().collect(),
+        DropOrTake::Take => it.skip(number).cloned().collect(),
     }
 }

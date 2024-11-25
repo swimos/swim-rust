@@ -245,7 +245,7 @@ where
 impl<K, V, LC, Context> HandlerAction<Context> for OpenMapDownlinkAction<K, V, LC>
 where
     Context: 'static,
-    K: Form + Hash + Eq + Ord + Clone + Send + Sync + 'static,
+    K: Form + Hash + Eq + Clone + Send + Sync + 'static,
     V: Form + Send + Sync + 'static,
     LC: MapDownlinkLifecycle<K, V, Context> + Send + 'static,
     K::Rec: Send,

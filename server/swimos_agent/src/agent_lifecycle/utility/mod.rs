@@ -472,7 +472,7 @@ impl<Agent: AgentDescription + 'static> HandlerContext<Agent> {
     ) -> impl HandlerAction<Agent, Completion = ()> + Send + 'static
     where
         L: Any + Clone + Eq + Hash + Send + 'static,
-        K: Any + Form + Clone + Eq + Hash + Send + Ord + 'static,
+        K: Any + Form + Clone + Eq + Hash + Ord + Send + 'static,
         V: Form + Send + 'static,
         K::Rec: Send,
         V::BodyRec: Send,
@@ -802,7 +802,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
         config: MapDownlinkConfig,
     ) -> impl HandlerAction<Agent, Completion = MapDownlinkHandle<K, V>> + Send + 'static
     where
-        K: Form + Hash + Eq + Ord + Clone + Send + Sync + 'static,
+        K: Form + Hash + Eq + Clone + Send + Sync + 'static,
         V: Form + Send + Sync + 'static,
         LC: MapDownlinkLifecycle<K, V, Agent> + Send + 'static,
         K::Rec: Send,
@@ -887,7 +887,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
         config: MapDownlinkConfig,
     ) -> StatelessMapDownlinkBuilder<Agent, K, V>
     where
-        K: Form + Hash + Eq + Ord + Clone + Send + Sync + 'static,
+        K: Form + Hash + Eq + Clone + Send + Sync + 'static,
         K::Rec: Send,
         V: Form + Send + Sync + 'static,
         V::Rec: Send,
@@ -1048,7 +1048,7 @@ impl<Agent, L, K, V> JoinMapContext<Agent, L, K, V>
 where
     Agent: 'static,
     L: Any + Clone + Eq + Hash + Send + 'static,
-    K: Any + Form + Clone + Eq + Hash + Ord + Send + 'static,
+    K: Any + Form + Clone + Eq + Hash + Send + 'static,
     V: Form + Send + 'static,
     K::Rec: Send,
     V::BodyRec: Send,
