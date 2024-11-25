@@ -133,6 +133,9 @@ pub trait MapOps<K, V>: MapBacking<KeyType = K, ValueType = V> {
     fn from_entries<I>(it: I) -> Self
     where
         I: IntoIterator<Item = (K, V)>;
+
+    /// Get the size of the map.
+    fn len(&self) -> usize;
 }
 
 /// Extension to [`MapOps`] that allows entries of the map to be inspected with a borrowed form
@@ -193,6 +196,10 @@ where
     }
 
     const ORDERED_KEYS: bool = false;
+
+    fn len(&self) -> usize {
+        HashMap::len(self)
+    }
 }
 
 impl<K, V> MapBacking for BTreeMap<K, V> {
@@ -236,6 +243,10 @@ where
     }
 
     const ORDERED_KEYS: bool = true;
+
+    fn len(&self) -> usize {
+        BTreeMap::len(self)
+    }
 }
 
 impl<K, V, BK> MapOpsWithEntry<K, V, BK> for HashMap<K, V>

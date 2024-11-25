@@ -49,7 +49,7 @@ use tracing::{debug, error, info, trace};
 use crate::{
     agent_model::downlink::DownlinkChannelFactory,
     event_handler::LocalBoxEventHandler,
-    map_storage::{drop_or_take, DropOrTake},
+    map_storage::{drop_or_take, DropOrTake, MapOpsWithEntry},
 };
 use crate::{
     agent_model::downlink::{
@@ -96,14 +96,17 @@ impl<K, V, M: Default> Default for MapDlState<K, V, M> {
 /// Operations that need to be supported by the state store of a map downlink. The intention
 /// of this trait is to abstract over a self contained store a store contained within the field
 /// of an agent. In both cases, the store itself will a [`RefCell`] containing a [`MapDlState`].
-impl<K, V> MapDlState<K, V> {
-    fn clear(&self) -> HashMap<K, V> {
+impl<K, V, M> MapDlState<K, V, M>
+where
+    M: Default + MapOpsWithEntry<K, V, K>,
+{
+    fn clear(&self) -> M {
         self.0.replace(MapDlStateInner::default()).map
     }
     // Perform an operation in a context with access to the state.
     fn with<F, T>(&self, f: F) -> T
     where
-        F: FnOnce(&mut MapDlStateInner<K, V>) -> T,
+        F: FnOnce(&mut MapDlStateInner<K, V, M>) -> T,
     {
         f(&mut *self.0.borrow_mut())
     }
@@ -116,7 +119,7 @@ impl<K, V> MapDlState<K, V> {
     ) -> Option<LocalBoxEventHandler<'a, Context>>
     where
         K: Eq + Hash + Clone,
-        LC: MapDownlinkLifecycle<K, V, Context>,
+        LC: MapDownlinkLifecycle<K, V, M, Context>,
     {
         self.with(move |MapDlStateInner { map, .. }| {
             let old = map.insert(key.clone(), value);
@@ -136,7 +139,7 @@ impl<K, V> MapDlState<K, V> {
     ) -> Option<LocalBoxEventHandler<'a, Context>>
     where
         K: Eq + Hash,
-        LC: MapDownlinkLifecycle<K, V, Context>,
+        LC: MapDownlinkLifecycle<K, V, M, Context>,
     {
         self.with(move |MapDlStateInner { map, .. }| {
             map.remove(&key).and_then(move |old| {
@@ -152,7 +155,7 @@ impl<K, V> MapDlState<K, V> {
     ) -> Option<LocalBoxEventHandler<'a, Context>>
     where
         K: StructuralWritable + Eq + Hash + Clone,
-        LC: MapDownlinkLifecycle<K, V, Context>,
+        LC: MapDownlinkLifecycle<K, V, M, Context>,
     {
         self.with(move |MapDlStateInner { map, .. }| {
             if n >= map.len() {
@@ -191,7 +194,7 @@ impl<K, V> MapDlState<K, V> {
     ) -> Option<LocalBoxEventHandler<'a, Context>>
     where
         K: StructuralWritable + Eq + Hash + Clone,
-        LC: MapDownlinkLifecycle<K, V, Context>,
+        LC: MapDownlinkLifecycle<K, V, M, Context>,
     {
         self.with(move |MapDlStateInner { map, .. }| {
             let to_drop = map.len().saturating_sub(n);
@@ -223,9 +226,9 @@ impl<K, V> MapDlState<K, V> {
     }
 }
 
-pub struct MapDownlinkFactory<K, V, LC> {
+pub struct MapDownlinkFactory<K, V, M, LC> {
     address: Address<Text>,
-    state: MapDlState<K, V>,
+    state: MapDlState<K, V, M>,
     lifecycle: LC,
     config: MapDownlinkConfig,
     dl_state: Arc<AtomicU8>,
@@ -233,10 +236,11 @@ pub struct MapDownlinkFactory<K, V, LC> {
     op_rx: mpsc::UnboundedReceiver<MapOperation<K, V>>,
 }
 
-impl<K, V, LC> MapDownlinkFactory<K, V, LC>
+impl<K, V, M, LC> MapDownlinkFactory<K, V, M, LC>
 where
     K: Hash + Eq + Clone + Form + Send + 'static,
     V: Form + Send + 'static,
+    M: Default,
     K::Rec: Send,
     V::Rec: Send,
 {
@@ -263,13 +267,14 @@ where
     }
 }
 
-impl<K, V, LC, Context> DownlinkChannelFactory<Context> for MapDownlinkFactory<K, V, LC>
+impl<K, V, M, LC, Context> DownlinkChannelFactory<Context> for MapDownlinkFactory<K, V, M, LC>
 where
     K: Hash + Eq + Clone + Form + Send + 'static,
     V: Form + Send + 'static,
     K::Rec: Send,
     V::Rec: Send,
-    LC: MapDownlinkLifecycle<K, V, Context> + 'static,
+    M: Default + MapOpsWithEntry<K, V, K> + Send + 'static,
+    LC: MapDownlinkLifecycle<K, V, M, Context> + 'static,
 {
     fn create(
         self,
@@ -319,11 +324,11 @@ type Writes<K, V> = OutputWriter<MapWriteStream<K, V>>;
 
 /// An implementation of [`DownlinkChannel`] to allow a map downlink to be driven by an agent
 /// task.
-pub struct HostedMapDownlink<K: RecognizerReadable, V: RecognizerReadable, LC> {
+pub struct HostedMapDownlink<K: RecognizerReadable, V: RecognizerReadable, M, LC> {
     address: Address<Text>,
     receiver: Option<FramedRead<ByteReader, MapNotificationDecoder<K, V>>>,
     write_stream: Writes<K, V>,
-    state: MapDlState<K, V>,
+    state: MapDlState<K, V, M>,
     next: Option<Result<DownlinkNotification<MapMessage<K, V>>, FrameIoError>>,
     lifecycle: LC,
     config: MapDownlinkConfig,
@@ -337,7 +342,7 @@ impl<K: StructuralWritable, V: StructuralWritable> MapWriteStream<K, V> {
     }
 }
 
-impl<K, V, LC> HostedMapDownlink<K, V, LC>
+impl<K, V, M, LC> HostedMapDownlink<K, V, M, LC>
 where
     K: Hash + Eq + Clone + Form + Send + 'static,
     V: Form + Send + 'static,
@@ -429,13 +434,14 @@ where
     }
 }
 
-impl<K, V, LC, Context> DownlinkChannel<Context> for HostedMapDownlink<K, V, LC>
+impl<K, V, M, LC, Context> DownlinkChannel<Context> for HostedMapDownlink<K, V, M, LC>
 where
     K: Hash + Eq + Clone + Form + Send + 'static,
     V: Form + Send + 'static,
     K::Rec: Send,
     V::Rec: Send,
-    LC: MapDownlinkLifecycle<K, V, Context> + 'static,
+    M: Default + MapOpsWithEntry<K, V, K> + Send,
+    LC: MapDownlinkLifecycle<K, V, M, Context> + 'static,
 {
     fn kind(&self) -> DownlinkKind {
         DownlinkKind::Map

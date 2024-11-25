@@ -58,6 +58,7 @@ use crate::lanes::join_map::JoinMapAddDownlink;
 use crate::lanes::join_value::{JoinValueAddDownlink, JoinValueLane};
 use crate::lanes::supply::{Supply, SupplyLane};
 use crate::lanes::{DemandMapLane, JoinMapLane, OpenLane};
+use crate::map_storage::MapOpsWithEntry;
 
 pub use self::downlink_builder::event::{
     StatefulEventDownlinkBuilder, StatelessEventDownlinkBuilder,
@@ -793,7 +794,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
     /// * `lane` - The lane to downlink from.
     /// * `config` - Configuration parameters for the downlink.
     /// * `lifecycle` - Lifecycle events for the downlink.
-    pub fn open_map_downlink<K, V, LC>(
+    pub fn open_map_downlink<K, V, M, LC>(
         &self,
         host: Option<&str>,
         node: &str,
@@ -804,7 +805,8 @@ impl<Agent: 'static> HandlerContext<Agent> {
     where
         K: Form + Hash + Eq + Clone + Send + Sync + 'static,
         V: Form + Send + Sync + 'static,
-        LC: MapDownlinkLifecycle<K, V, Agent> + Send + 'static,
+        M: Default + MapOpsWithEntry<K, V, K> + Send + 'static,
+        LC: MapDownlinkLifecycle<K, V, M, Agent> + Send + 'static,
         K::Rec: Send,
         V::Rec: Send,
     {
@@ -885,7 +887,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
         node: &str,
         lane: &str,
         config: MapDownlinkConfig,
-    ) -> StatelessMapDownlinkBuilder<Agent, K, V>
+    ) -> StatelessMapDownlinkBuilder<Agent, K, V, HashMap<K, V>>
     where
         K: Form + Hash + Eq + Clone + Send + Sync + 'static,
         K::Rec: Send,
