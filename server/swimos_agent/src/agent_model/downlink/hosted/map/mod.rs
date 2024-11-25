@@ -15,6 +15,7 @@
 use std::{
     cell::RefCell,
     collections::{BTreeSet, HashMap},
+    marker::PhantomData,
     pin::{pin, Pin},
     sync::{atomic::AtomicU8, Arc},
     task::{Context, Poll},
@@ -62,14 +63,16 @@ use super::{DlState, DlStateObserver, DlStateTracker, OutputWriter, RestartableO
 mod tests;
 
 #[derive(Debug)]
-struct MapDlStateInner<K, V> {
-    map: HashMap<K, V>,
+struct MapDlStateInner<K, V, M = HashMap<K, V>> {
+    _value_type: PhantomData<V>,
+    map: M,
     order: Option<BTreeSet<K>>,
 }
 
-impl<K, V> Default for MapDlStateInner<K, V> {
+impl<K, V, M: Default> Default for MapDlStateInner<K, V, M> {
     fn default() -> Self {
         Self {
+            _value_type: PhantomData,
             map: Default::default(),
             order: Default::default(),
         }
@@ -80,9 +83,9 @@ impl<K, V> Default for MapDlStateInner<K, V> {
 /// accesses). To support the (infrequently used) take and drop operations, it will generate a
 /// separate ordered set of the keys which will then be kept up to date with the map.
 #[derive(Debug)]
-struct MapDlState<K, V>(RefCell<MapDlStateInner<K, V>>);
+struct MapDlState<K, V, M = HashMap<K, V>>(RefCell<MapDlStateInner<K, V, M>>);
 
-impl<K, V> Default for MapDlState<K, V> {
+impl<K, V, M: Default> Default for MapDlState<K, V, M> {
     fn default() -> Self {
         Self(Default::default())
     }
@@ -113,7 +116,7 @@ impl<K, V> MapDlState<K, V> {
         K: Eq + Hash + Clone + Ord,
         LC: MapDownlinkLifecycle<K, V, Context>,
     {
-        self.with(move |MapDlStateInner { map, order }| {
+        self.with(move |MapDlStateInner { map, order, .. }| {
             let old = map.insert(key.clone(), value);
             match order {
                 Some(ord) if old.is_some() => {
@@ -139,7 +142,7 @@ impl<K, V> MapDlState<K, V> {
         K: Eq + Hash + Ord,
         LC: MapDownlinkLifecycle<K, V, Context>,
     {
-        self.with(move |MapDlStateInner { map, order }| {
+        self.with(move |MapDlStateInner { map, order, .. }| {
             map.remove(&key).and_then(move |old| {
                 if let Some(ord) = order {
                     ord.remove(&key);
@@ -158,7 +161,7 @@ impl<K, V> MapDlState<K, V> {
         K: Eq + Hash + Ord + Clone,
         LC: MapDownlinkLifecycle<K, V, Context>,
     {
-        self.with(move |MapDlStateInner { map, order }| {
+        self.with(move |MapDlStateInner { map, order, .. }| {
             if n >= map.len() {
                 *order = None;
                 let old = std::mem::take(map);
@@ -203,7 +206,7 @@ impl<K, V> MapDlState<K, V> {
         K: Eq + Hash + Ord + Clone,
         LC: MapDownlinkLifecycle<K, V, Context>,
     {
-        self.with(move |MapDlStateInner { map, order }| {
+        self.with(move |MapDlStateInner { map, order, .. }| {
             let to_drop = map.len().saturating_sub(n);
             if to_drop > 0 {
                 let ord = order.get_or_insert_with(|| map.keys().cloned().collect());
