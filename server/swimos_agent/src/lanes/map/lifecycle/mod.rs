@@ -33,6 +33,7 @@ pub mod on_update;
 /// # Type Parameters
 /// * `K` - The type of the map keys.
 /// * `V` - The type of the map values.
+/// * `M` - The map type underlying the lane (i.e. [`std::collections::HashMap<K, V>`]).
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
 pub trait MapLaneLifecycle<K, V, M, Context>:
     OnUpdate<K, V, M, Context> + OnRemove<K, V, M, Context> + OnClear<M, Context>
@@ -67,7 +68,7 @@ type LifecycleType<Context, Shared, K, V, M> = fn(Context, Shared, K, V, M);
 /// * `Shared` - The shared state to which the lifecycle has access.
 /// * `K` - The key type of the map.
 /// * `V` - The value type of the map.
-/// * `M` - The map type (for example `HashMap<K, V>`).
+/// * `M` - The map type underlying the lane (i.e. [`std::collections::HashMap<K, V>`]).
 /// * `FUpd` - The `on_update` event handler.
 /// * `FRem` - The `on_remove` event handler.
 /// * `FClr` - The `on_clear` event handler.

@@ -209,9 +209,10 @@ async fn open_map_downlink() {
     let meta = make_meta(&uri, &route_params);
     let mut join_lane_init = HashMap::new();
     let mut command_buffer = BytesMut::new();
-    let lifecycle = StatefulMapDownlinkLifecycle::<TestAgent, _, i32, Text>::new(());
+    let lifecycle =
+        StatefulMapDownlinkLifecycle::<TestAgent, _, i32, Text, HashMap<i32, Text>>::new(());
 
-    let handler = OpenMapDownlinkAction::<i32, Text, _>::new(
+    let handler = OpenMapDownlinkAction::<i32, Text, HashMap<i32, Text>, _>::new(
         Address::text(Some(HOST), NODE, LANE),
         lifecycle,
         MapDownlinkConfig::default(),

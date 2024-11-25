@@ -33,6 +33,7 @@ use tokio::sync::mpsc;
 use tracing::error;
 
 use crate::event_handler::LocalBoxEventHandler;
+use crate::map_storage::MapOpsWithEntry;
 use crate::{
     config::{MapDownlinkConfig, SimpleDownlinkConfig},
     downlink_lifecycle::{EventDownlinkLifecycle, MapDownlinkLifecycle, ValueDownlinkLifecycle},
@@ -64,12 +65,12 @@ pub struct OpenEventDownlinkAction<T, LC> {
     map_events: bool,
 }
 
-type KvInvariant<K, V> = fn(K, V) -> (K, V);
+type KvInvariant<K, V, M> = fn(K, V) -> M;
 
 /// [`HandlerAction`] that attempts to open a map downlink to a remote lane and results in
 /// a handle to the downlink.
-pub struct OpenMapDownlinkAction<K, V, LC> {
-    _type: PhantomData<KvInvariant<K, V>>,
+pub struct OpenMapDownlinkAction<K, V, M, LC> {
+    _type: PhantomData<KvInvariant<K, V, M>>,
     inner: Option<Inner<LC>>,
     config: MapDownlinkConfig,
 }
@@ -106,7 +107,7 @@ impl<T, LC> OpenEventDownlinkAction<T, LC> {
     }
 }
 
-impl<K, V, LC> OpenMapDownlinkAction<K, V, LC> {
+impl<K, V, M, LC> OpenMapDownlinkAction<K, V, M, LC> {
     pub fn new(address: Address<Text>, lifecycle: LC, config: MapDownlinkConfig) -> Self {
         OpenMapDownlinkAction {
             _type: PhantomData,
@@ -242,14 +243,15 @@ where
     }
 }
 
-impl<K, V, LC, Context> HandlerAction<Context> for OpenMapDownlinkAction<K, V, LC>
+impl<K, V, M, LC, Context> HandlerAction<Context> for OpenMapDownlinkAction<K, V, M, LC>
 where
     Context: 'static,
-    K: Form + Hash + Eq + Ord + Clone + Send + Sync + 'static,
+    K: Form + Hash + Eq + Clone + Send + Sync + 'static,
     V: Form + Send + Sync + 'static,
-    LC: MapDownlinkLifecycle<K, V, Context> + Send + 'static,
+    LC: MapDownlinkLifecycle<K, V, M, Context> + Send + 'static,
     K::Rec: Send,
     V::Rec: Send,
+    M: Default + MapOpsWithEntry<K, V, K> + Send + 'static,
 {
     type Completion = MapDownlinkHandle<K, V>;
 
