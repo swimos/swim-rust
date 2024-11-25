@@ -44,6 +44,7 @@ mod on_update;
 /// # Type Parameters
 /// * `K` - The type of the keys of the downlink.
 /// * `V` - The type of the values of the downlink.
+/// * `M` - The map type underlying the downlink (i.e. [`std::collections::HashMap<K, V>`]).
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
 pub trait MapDownlinkLifecycle<K, V, M, Context>:
     OnLinked<Context>
@@ -73,6 +74,7 @@ impl<LC, K, V, M, Context> MapDownlinkLifecycle<K, V, M, Context> for LC where
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
 /// * `K` - The type of the keys for the map.
 /// * `V` - The type of the values for the map.
+/// * `M` - The map type underlying the downlink (i.e. [`std::collections::HashMap<K, V>`]).
 pub trait StatelessMapLifecycle<Context, K, V, M>: MapDownlinkLifecycle<K, V, M, Context> {
     type WithOnLinked<H>: StatelessMapLifecycle<Context, K, V, M>
     where
@@ -146,6 +148,7 @@ pub trait StatelessMapLifecycle<Context, K, V, M>: MapDownlinkLifecycle<K, V, M,
 /// * `Shared` - The type of the shared state.
 /// * `K` - The type of the keys for the map.
 /// * `V` - The type of the values for the map.
+/// * `M` - The map type underlying the downlink (i.e. [`std::collections::HashMap<K, V>`]).
 pub trait StatefulMapLifecycle<Context, Shared, K, V, M>:
     MapDownlinkLifecycle<K, V, M, Context>
 {
@@ -214,6 +217,7 @@ pub trait StatefulMapLifecycle<Context, Shared, K, V, M>:
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
 /// * `K` - The type of the keys of the downlink.
 /// * `V` - The type of the values of the downlink.
+/// * `M` - The map type underlying the downlink (i.e. [`std::collections::HashMap<K, V>`]).
 /// * `FLinked` - The type of the 'on_linked' handler.
 /// * `FSynced` - The type of the 'on_synced' handler.
 /// * `FUnlinked` - The type of the 'on_unlinked' handler.
@@ -267,6 +271,7 @@ impl<Context, K, V, M> Default for StatelessMapDownlinkLifecycle<Context, K, V, 
 /// * `State` - The type of the shared state.
 /// * `K` - The type of the keys of the downlink.
 /// * `V` - The type of the values of the downlink.
+/// * `M` - The map type underlying the downlink (i.e. [`std::collections::HashMap<K, V>`]).
 /// * `FLinked` - The type of the 'on_linked' handler.
 /// * `FSynced` - The type of the 'on_synced' handler.
 /// * `FUnlinked` - The type of the 'on_unlinked' handler.

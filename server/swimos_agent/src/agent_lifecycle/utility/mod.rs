@@ -897,6 +897,30 @@ impl<Agent: 'static> HandlerContext<Agent> {
         StatelessMapDownlinkBuilder::new(Address::text(host, node, lane), config)
     }
 
+    /// Create a builder to construct a request to open a map downlink, using the specified map type
+    /// as the backing representation of the downlink.
+    /// # Arguments
+    /// * `host` - The remote host at which the agent resides (a local agent if not specified).
+    /// * `node` - The node URI of the agent.
+    /// * `lane` - The lane to downlink from.
+    /// * `config` - Configuration parameters for the downlink.
+    pub fn map_downlink_builder_for<K, V, M>(
+        &self,
+        host: Option<&str>,
+        node: &str,
+        lane: &str,
+        config: MapDownlinkConfig,
+    ) -> StatelessMapDownlinkBuilder<Agent, K, V, M>
+    where
+        M: MapOpsWithEntry<K, V, K>,
+        K: Form + Hash + Eq + Clone + Send + Sync + 'static,
+        K::Rec: Send,
+        V: Form + Send + Sync + 'static,
+        V::Rec: Send,
+    {
+        StatelessMapDownlinkBuilder::new(Address::text(host, node, lane), config)
+    }
+
     /// Causes the agent to stop. If this is encountered during the `on_start` event of an agent it will
     /// fail to start at all. Otherwise, execution of the event handler will terminate and the agent will
     /// begin to shutdown. The 'on_stop' handler will still be run. If a stop is requested in
