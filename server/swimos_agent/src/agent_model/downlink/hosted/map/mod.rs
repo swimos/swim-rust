@@ -203,7 +203,7 @@ where
                 if let Some(lifecycle) = lifecycle {
                     let mut removed = Vec::with_capacity(to_drop);
 
-                    for k in to_remove.into_iter().rev() {
+                    for k in to_remove.into_iter() {
                         if let Some(v) = map.remove(&k) {
                             removed.push(lifecycle.on_remove(k, map, v));
                         }
