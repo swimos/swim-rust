@@ -12,12 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::fmt::Formatter;
 use std::hash::Hash;
 
 use swimos_api::address::Address;
+use swimos_form::Form;
 use swimos_model::Text;
 
 use crate::agent_model::AgentDescription;
+use crate::event_handler::Described;
 use crate::lanes::join_value::Link;
 use crate::{
     downlink_lifecycle::{OnConsumeEvent, OnFailed, OnLinked, OnSynced, OnUnlinked},
@@ -30,6 +33,7 @@ use crate::{
     meta::AgentMetadata,
 };
 
+use super::JoinValueAddDownlink;
 use super::{
     lifecycle::{
         on_failed::OnJoinValueFailed, on_linked::OnJoinValueLinked, on_synced::OnJoinValueSynced,
@@ -124,11 +128,13 @@ where
 
 impl<K, V, LC, Context> OnUnlinked<Context> for JoinValueDownlink<K, V, LC, Context>
 where
-    Context: AgentDescription,
-    K: Clone + Hash + Eq + Send,
+    Context: AgentDescription + 'static,
+    K: Clone + Hash + Eq + Send + 'static,
+    V: Form + Send + 'static,
+    V::Rec: Send,
     LC: OnJoinValueUnlinked<K, Context>,
 {
-    type OnUnlinkedHandler<'a> = AndThen<LC::OnJoinValueUnlinkedHandler<'a>, AfterClosed<K, V, Context>, AfterClosedTrans<K, V, Context>>
+    type OnUnlinkedHandler<'a> = AndThen<LC::OnJoinValueUnlinkedHandler<'a>, AfterClosed<'a, K, V, Context>, AfterClosedTrans<'a, K, V, Context>>
     where
         Self: 'a;
 
@@ -142,17 +148,19 @@ where
         let remote = lane.borrow_parts();
         lifecycle
             .on_unlinked(key.clone(), remote)
-            .and_then(AfterClosedTrans::new(*projection, key.clone()))
+            .and_then(AfterClosedTrans::new(*projection, lane, key.clone()))
     }
 }
 
 impl<K, V, LC, Context> OnFailed<Context> for JoinValueDownlink<K, V, LC, Context>
 where
-    Context: AgentDescription,
-    K: Clone + Hash + Eq + Send,
+    Context: AgentDescription + 'static,
+    K: Clone + Hash + Eq + Send + 'static,
+    V: Form + Send + 'static,
+    V::Rec: Send,
     LC: OnJoinValueFailed<K, Context>,
 {
-    type OnFailedHandler<'a> = AndThen<LC::OnJoinValueFailedHandler<'a>, AfterClosed<K, V, Context>, AfterClosedTrans<K, V, Context>>
+    type OnFailedHandler<'a> = AndThen<LC::OnJoinValueFailedHandler<'a>, AfterClosed<'a, K, V, Context>, AfterClosedTrans<'a, K, V, Context>>
     where
         Self: 'a;
 
@@ -166,7 +174,7 @@ where
         let remote = lane.borrow_parts();
         lifecycle
             .on_failed(key.clone(), remote)
-            .and_then(AfterClosedTrans::new(*projection, key.clone()))
+            .and_then(AfterClosedTrans::new(*projection, lane, key.clone()))
     }
 }
 
@@ -247,11 +255,7 @@ where
         }
     }
 
-    fn describe(
-        &self,
-        context: &Context,
-        f: &mut std::fmt::Formatter<'_>,
-    ) -> Result<(), std::fmt::Error> {
+    fn describe(&self, context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         let AlterKeyState {
             projection,
             state,
@@ -269,99 +273,153 @@ where
 }
 
 /// An event handler that cleans up after a downlink unlinks or fails.
-pub struct AfterClosed<K, V, Context> {
-    projection: fn(&Context) -> &JoinValueLane<K, V>,
-    key: K,
-    response: Option<LinkClosedResponse>,
+#[derive(Default)]
+pub enum AfterClosed<'a, K, V, Context> {
+    Cleanup {
+        projection: fn(&Context) -> &JoinValueLane<K, V>,
+        address: &'a Address<Text>,
+        key: K,
+        response: LinkClosedResponse,
+    },
+    Restarting(JoinValueAddDownlink<Context, K, V>),
+    #[default]
+    Done,
 }
 
-impl<K, V, Context> AfterClosed<K, V, Context> {
+impl<'a, K, V, Context> AfterClosed<'a, K, V, Context> {
     pub fn new(
         projection: fn(&Context) -> &JoinValueLane<K, V>,
+        address: &'a Address<Text>,
         key: K,
         response: LinkClosedResponse,
     ) -> Self {
-        AfterClosed {
+        AfterClosed::Cleanup {
             projection,
+            address,
             key,
-            response: Some(response),
+            response,
         }
     }
 }
 
-impl<K, V, Context> HandlerAction<Context> for AfterClosed<K, V, Context>
+impl<'a, K, V, Context> HandlerAction<Context> for AfterClosed<'a, K, V, Context>
 where
-    Context: AgentDescription,
-    K: Hash + Eq + Clone,
+    Context: AgentDescription + 'static,
+    K: Hash + Eq + Clone + Send + 'static,
+    V: Form + Send + 'static,
+    V::Rec: Send,
 {
     type Completion = ();
 
     fn step(
         &mut self,
-        _action_context: &mut ActionContext<Context>,
-        _meta: AgentMetadata,
+        action_context: &mut ActionContext<Context>,
+        meta: AgentMetadata,
         context: &Context,
     ) -> StepResult<Self::Completion> {
-        let AfterClosed {
-            projection,
-            key,
-            response,
-        } = self;
-        let lane = projection(context);
-        let mut guard = lane.keys.borrow_mut();
-        guard.remove(key);
-        drop(guard);
-        match response.take() {
-            Some(LinkClosedResponse::Abandon) => StepResult::done(()),
-            Some(LinkClosedResponse::Delete) => {
-                lane.inner.remove(key);
-                StepResult::Complete {
-                    modified_item: Some(Modification::of(lane.id())),
-                    result: (),
+        loop {
+            match std::mem::take(self) {
+                AfterClosed::Cleanup {
+                    projection,
+                    address,
+                    key,
+                    response,
+                } => {
+                    let lane = projection(context);
+                    let mut guard = lane.keys.borrow_mut();
+                    guard.remove(&key);
+                    drop(guard);
+                    match response {
+                        LinkClosedResponse::Abandon => break StepResult::done(()),
+                        LinkClosedResponse::Delete => {
+                            lane.inner.remove(&key);
+                            break StepResult::Complete {
+                                modified_item: Some(Modification::of(lane.id())),
+                                result: (),
+                            };
+                        }
+                        LinkClosedResponse::Retry => {
+                            *self = AfterClosed::Restarting(JoinValueAddDownlink::new(
+                                projection,
+                                key,
+                                address.clone(),
+                            ))
+                        }
+                    }
                 }
+                AfterClosed::Restarting(mut handler) => {
+                    let result = handler.step(action_context, meta, context);
+                    if result.is_cont() {
+                        *self = AfterClosed::Restarting(handler);
+                    }
+                    break result;
+                }
+                AfterClosed::Done => break StepResult::after_done(),
             }
-            Some(LinkClosedResponse::Retry) => todo!(),
-            _ => StepResult::after_done(),
         }
     }
 
-    fn describe(
-        &self,
-        context: &Context,
-        f: &mut std::fmt::Formatter<'_>,
-    ) -> Result<(), std::fmt::Error> {
-        let AfterClosed {
-            projection,
-            response,
-            ..
-        } = self;
-        let lane = (projection)(context);
-        let name = context.item_name(lane.id());
-        f.debug_struct("AfterClosed")
-            .field("id", &lane.id())
-            .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
-            .field("consumed", &response.is_none())
-            .finish()
+    fn describe(&self, context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        match self {
+            AfterClosed::Cleanup {
+                projection,
+                address,
+                response,
+                ..
+            } => {
+                let lane = (projection)(context);
+                let name = context.item_name(lane.id());
+                f.debug_struct("AfterClosed")
+                    .field("state", &"Cleanup")
+                    .field("id", &lane.id())
+                    .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
+                    .field("address", address)
+                    .field("response", response)
+                    .finish()
+            }
+            AfterClosed::Restarting(handler) => f
+                .debug_struct("AfterClosed")
+                .field("state", &"Restarting")
+                .field("handler", &Described::new(context, handler))
+                .finish(),
+            AfterClosed::Done => f
+                .debug_struct("AfterClosed")
+                .field("state", &"Done")
+                .finish(),
+        }
     }
 }
 
-pub struct AfterClosedTrans<K, V, Context> {
+pub struct AfterClosedTrans<'a, K, V, Context> {
     projection: fn(&Context) -> &JoinValueLane<K, V>,
+    address: &'a Address<Text>,
     key: K,
 }
 
-impl<K, V, Context> AfterClosedTrans<K, V, Context> {
-    pub fn new(projection: fn(&Context) -> &JoinValueLane<K, V>, key: K) -> Self {
-        AfterClosedTrans { projection, key }
+impl<'a, K, V, Context> AfterClosedTrans<'a, K, V, Context> {
+    pub fn new(
+        projection: fn(&Context) -> &JoinValueLane<K, V>,
+        address: &'a Address<Text>,
+        key: K,
+    ) -> Self {
+        AfterClosedTrans {
+            projection,
+            address,
+            key,
+        }
     }
 }
 
-impl<K, V, Context> HandlerTrans<LinkClosedResponse> for AfterClosedTrans<K, V, Context> {
-    type Out = AfterClosed<K, V, Context>;
+impl<'a, K, V, Context> HandlerTrans<LinkClosedResponse> for AfterClosedTrans<'a, K, V, Context> {
+    type Out = AfterClosed<'a, K, V, Context>;
 
     fn transform(self, input: LinkClosedResponse) -> Self::Out {
-        let AfterClosedTrans { projection, key } = self;
-        AfterClosed::new(projection, key, input)
+        let AfterClosedTrans {
+            projection,
+            address,
+            key,
+        } = self;
+        AfterClosed::new(projection, address, key, input)
     }
 }
 
@@ -411,11 +469,7 @@ where
         }
     }
 
-    fn describe(
-        &self,
-        context: &C,
-        f: &mut std::fmt::Formatter<'_>,
-    ) -> Result<(), std::fmt::Error> {
+    fn describe(&self, context: &C, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         let JoinValueLaneUpdate {
             projection,
             key_value,

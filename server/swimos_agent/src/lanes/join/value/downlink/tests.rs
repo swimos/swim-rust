@@ -12,7 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::any::{Any, TypeId};
 use std::borrow::Cow;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use std::{cell::RefCell, collections::HashMap};
 
 use bytes::BytesMut;
@@ -22,8 +25,11 @@ use swimos_model::Text;
 use swimos_utilities::routing::RouteUri;
 
 use crate::agent_model::AgentDescription;
-use crate::event_handler::LocalBoxHandlerAction;
+use crate::event_handler::{
+    BoxJoinLaneInit, DowncastError, JoinLaneInitializer, LocalBoxHandlerAction,
+};
 use crate::lanes::join_value::Link;
+use crate::lanes::JoinLaneKind;
 use crate::{
     agent_lifecycle::HandlerContext,
     downlink_lifecycle::{OnConsumeEvent, OnFailed, OnLinked, OnSynced, OnUnlinked},
@@ -236,14 +242,30 @@ fn make_meta<'a>(
     AgentMetadata::new(uri, route_params, &CONFIG)
 }
 
-fn run_handler<H>(mut handler: H, meta: AgentMetadata<'_>, agent: &TestAgent) -> Vec<Modification>
+fn run_handler<H>(handler: H, meta: AgentMetadata<'_>, agent: &TestAgent) -> Vec<Modification>
+where
+    H: EventHandler<TestAgent>,
+{
+    run_handler_with_init(handler, meta, agent, None)
+}
+
+fn run_handler_with_init<H>(
+    mut handler: H,
+    meta: AgentMetadata<'_>,
+    agent: &TestAgent,
+    init: Option<TestInit>,
+) -> Vec<Modification>
 where
     H: EventHandler<TestAgent>,
 {
     let mut modifications = vec![];
+    let mut initializers: HashMap<u64, BoxJoinLaneInit<'static, TestAgent>> = HashMap::new();
+    if let Some(init) = init {
+        initializers.insert(ID, Box::new(init));
+    }
     loop {
         match handler.step(
-            &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+            &mut dummy_context(&mut initializers, &mut BytesMut::new()),
             meta,
             agent,
         ) {
@@ -402,6 +424,93 @@ fn run_on_unlinked_delete() {
     assert!(value.is_none());
 }
 
+#[derive(Debug, Clone)]
+struct TestInit {
+    expected_key: i32,
+    executed: Arc<AtomicUsize>,
+}
+
+impl TestInit {
+    fn new(expected_key: i32) -> Self {
+        TestInit {
+            expected_key,
+            executed: Default::default(),
+        }
+    }
+
+    fn exec_count(&self) -> usize {
+        self.executed.load(Ordering::SeqCst)
+    }
+}
+
+impl JoinLaneInitializer<TestAgent> for TestInit {
+    fn try_create_action(
+        &self,
+        link_key: Box<dyn Any + Send>,
+        key_type: TypeId,
+        value_type: TypeId,
+        address: Address<Text>,
+    ) -> Result<Box<dyn EventHandler<TestAgent> + Send + 'static>, DowncastError> {
+        let TestInit {
+            expected_key,
+            executed,
+        } = self;
+        assert_eq!(key_type, TypeId::of::<i32>());
+        assert_eq!(value_type, TypeId::of::<String>());
+        let key = *link_key.downcast::<i32>().expect("Expected i32 key.");
+        assert_eq!(key, *expected_key);
+        assert_eq!(address, make_address());
+        let exec_cpy = executed.clone();
+        let handler_context: HandlerContext<TestAgent> = Default::default();
+        let handler = handler_context.effect(move || {
+            exec_cpy.fetch_add(1, Ordering::SeqCst);
+        });
+        Ok(Box::new(handler))
+    }
+
+    fn kind(&self) -> JoinLaneKind {
+        JoinLaneKind::Value
+    }
+}
+
+#[test]
+fn run_on_unlinked_retry() {
+    let uri = make_uri();
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+    let agent = TestAgent::default();
+    set_state_for(
+        &agent.lane,
+        4,
+        DownlinkStatus::Linked,
+        Some("a".to_string()),
+    );
+    let lifecycle = TestLifecycle::new(LinkClosedResponse::Retry);
+    let downlink_lifecycle = JoinValueDownlink::new(TestAgent::LANE, 4, make_address(), lifecycle);
+
+    let init = TestInit::new(4);
+
+    let on_unlinked = downlink_lifecycle.on_unlinked();
+    let modifications = run_handler_with_init(on_unlinked, meta, &agent, Some(init.clone()));
+
+    assert!(modifications.is_empty());
+
+    let events = downlink_lifecycle.lifecycle.take();
+    if let [Event::Unlinked { key, remote }] = events.as_slice() {
+        assert_eq!(*key, 4);
+        assert_eq!(remote, &make_address());
+    } else {
+        panic!("Events incorrect: {:?}", events);
+    }
+    let state = state_for(&agent.lane, 4);
+    assert!(state.is_none());
+
+    let value = agent.lane.get(&4, |v| v.cloned());
+    assert_eq!(value, Some("a".to_string()));
+
+    assert_eq!(init.exec_count(), 1);
+}
+
 #[test]
 fn run_on_failed_abandon() {
     let uri = make_uri();
@@ -471,6 +580,42 @@ fn run_on_failed_delete() {
 
     let value = agent.lane.get(&4, |v| v.cloned());
     assert!(value.is_none());
+}
+
+#[test]
+fn run_on_failed_retry() {
+    let uri = make_uri();
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+    let agent = TestAgent::default();
+    set_state_for(
+        &agent.lane,
+        4,
+        DownlinkStatus::Linked,
+        Some("a".to_string()),
+    );
+    let lifecycle = TestLifecycle::new(LinkClosedResponse::Retry);
+    let downlink_lifecycle = JoinValueDownlink::new(TestAgent::LANE, 4, make_address(), lifecycle);
+
+    let on_failed = downlink_lifecycle.on_failed();
+
+    let init = TestInit::new(4);
+
+    assert!(run_handler_with_init(on_failed, meta, &agent, Some(init.clone())).is_empty());
+    let events = downlink_lifecycle.lifecycle.take();
+    if let [Event::Failed { key, remote }] = events.as_slice() {
+        assert_eq!(*key, 4);
+        assert_eq!(remote, &make_address());
+    } else {
+        panic!("Events incorrect: {:?}", events);
+    }
+    let state = state_for(&agent.lane, 4);
+    assert!(state.is_none());
+
+    let value = agent.lane.get(&4, |v| v.cloned());
+    assert_eq!(value, Some("a".to_string()));
+
+    assert_eq!(init.exec_count(), 1);
 }
 
 #[test]
