@@ -630,9 +630,15 @@ impl<K, V> DecodeMapMessage<K, V> {
     }
 }
 
-//TODO: The decoders should be shifted elsewhere so they don't need constantly recreating.
-fn try_decode<T: RecognizerReadable>(mut buffer: BytesMut) -> Result<T, EventHandlerError> {
+fn try_decode<T: RecognizerReadable>(buffer: BytesMut) -> Result<T, EventHandlerError> {
     let mut decoder = RecognizerDecoder::new(T::make_recognizer());
+    try_with_decoder(&mut decoder, buffer)
+}
+
+fn try_with_decoder<T: RecognizerReadable>(
+    decoder: &mut RecognizerDecoder<T::Rec>,
+    mut buffer: BytesMut,
+) -> Result<T, EventHandlerError> {
     match decoder.decode_eof(&mut buffer) {
         Ok(Some(value)) => Ok(value),
         Ok(_) => Err(EventHandlerError::IncompleteCommand),
@@ -702,6 +708,72 @@ where
             .field("value_type", &type_name::<V>())
             .field("content", &content)
             .finish()
+    }
+}
+
+pub struct DecodeMapMessageRef<'a, K: RecognizerReadable, V: RecognizerReadable> {
+    key_decoder: &'a mut RecognizerDecoder<K::Rec>,
+    value_decoder: &'a mut RecognizerDecoder<V::Rec>,
+    message: Option<MapMessage<BytesMut, BytesMut>>,
+}
+
+impl<'a, K: RecognizerReadable, V: RecognizerReadable> DecodeMapMessageRef<'a, K, V> {
+    pub fn new(
+        key_decoder: &'a mut RecognizerDecoder<K::Rec>,
+        value_decoder: &'a mut RecognizerDecoder<V::Rec>,
+        message: MapMessage<BytesMut, BytesMut>,
+    ) -> Self {
+        DecodeMapMessageRef {
+            key_decoder,
+            value_decoder,
+            message: Some(message),
+        }
+    }
+}
+
+impl<'a, K: RecognizerReadable, V: RecognizerReadable, Context> HandlerAction<Context>
+    for DecodeMapMessageRef<'a, K, V>
+{
+    type Completion = MapMessage<K, V>;
+
+    fn step(
+        &mut self,
+        _action_context: &mut ActionContext<Context>,
+        _meta: AgentMetadata,
+        _context: &Context,
+    ) -> StepResult<Self::Completion> {
+        let DecodeMapMessageRef {
+            key_decoder,
+            value_decoder,
+            message,
+        } = self;
+        if let Some(message) = message.take() {
+            match message {
+                MapMessage::Update { key, value } => {
+                    key_decoder.reset();
+                    value_decoder.reset();
+                    match try_with_decoder::<K>(key_decoder, key).and_then(|k| {
+                        try_with_decoder::<V>(value_decoder, value)
+                            .map(|v| (MapMessage::Update { key: k, value: v }))
+                    }) {
+                        Ok(msg) => StepResult::done(msg),
+                        Err(e) => StepResult::Fail(e),
+                    }
+                }
+                MapMessage::Remove { key } => {
+                    key_decoder.reset();
+                    match try_with_decoder::<K>(key_decoder, key) {
+                        Ok(k) => StepResult::done(MapMessage::Remove { key: k }),
+                        Err(e) => StepResult::Fail(e),
+                    }
+                }
+                MapMessage::Clear => StepResult::done(MapMessage::Clear),
+                MapMessage::Take(n) => StepResult::done(MapMessage::Take(n)),
+                MapMessage::Drop(n) => StepResult::done(MapMessage::Drop(n)),
+            }
+        } else {
+            StepResult::after_done()
+        }
     }
 }
 

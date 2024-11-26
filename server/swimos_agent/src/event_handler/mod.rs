@@ -1340,6 +1340,43 @@ impl<Context, T: RecognizerReadable> HandlerAction<Context> for Decode<T> {
     }
 }
 
+pub struct DecodeRef<'a, T: RecognizerReadable> {
+    decoder: Option<&'a mut RecognizerDecoder<T::Rec>>,
+    buffer: &'a mut BytesMut,
+}
+
+impl<'a, T: RecognizerReadable> DecodeRef<'a, T> {
+    pub fn new(decoder: &'a mut RecognizerDecoder<T::Rec>, buffer: &'a mut BytesMut) -> Self {
+        DecodeRef {
+            decoder: Some(decoder),
+            buffer,
+        }
+    }
+}
+
+impl<'a, T: RecognizerReadable, Context> HandlerAction<Context> for DecodeRef<'a, T> {
+    type Completion = T;
+
+    fn step(
+        &mut self,
+        _action_context: &mut ActionContext<Context>,
+        _meta: AgentMetadata,
+        _context: &Context,
+    ) -> StepResult<Self::Completion> {
+        let DecodeRef { decoder, buffer } = self;
+        if let Some(decoder) = decoder.take() {
+            decoder.reset();
+            match decoder.decode_eof(buffer) {
+                Ok(Some(value)) => StepResult::done(value),
+                Ok(_) => StepResult::Fail(EventHandlerError::IncompleteCommand),
+                Err(e) => StepResult::Fail(EventHandlerError::BadCommand(e)),
+            }
+        } else {
+            StepResult::after_done()
+        }
+    }
+}
+
 impl<Context, H1, H2> HandlerAction<Context> for Either<H1, H2>
 where
     H1: HandlerAction<Context>,
