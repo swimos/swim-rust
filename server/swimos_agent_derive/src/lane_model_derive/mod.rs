@@ -214,13 +214,23 @@ impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
 
             #[automatically_derived]
             impl #root::agent_model::AgentSpec for #agent_type {
-                type ValCommandHandler = #value_handler;
+                type ValCommandHandler<'a> = #value_handler
+                where
+                    Self: 'a;
 
-                type MapCommandHandler = #map_handler;
+                type MapCommandHandler<'a> = #map_handler
+                where
+                    Self: 'a;
 
                 type OnSyncHandler = #sync_handler;
 
                 type HttpRequestHandler = #http_handler;
+
+                type Deserializers = ();
+
+                fn initializer_deserializers(&self) -> Self::Deserializers {
+
+                }
 
                 fn item_specs() -> ::std::collections::HashMap<&'static str, #root::agent_model::ItemSpec> {
                     let mut lanes = ::std::collections::HashMap::new();
@@ -228,18 +238,19 @@ impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
                     lanes
                 }
 
-                fn on_value_command(&self, lane: &str, body: #root::reexport::bytes::BytesMut) -> ::core::option::Option<Self::ValCommandHandler> {
+                fn on_value_command<'a>(&self, deserializers: &'a mut Self::Deserializers, lane: &str, body: #root::reexport::bytes::BytesMut) -> ::core::option::Option<Self::ValCommandHandler<'a>> {
                     match lane {
                         #(#value_match_blocks,)*
                         _ => ::core::option::Option::None,
                     }
                 }
 
-                fn on_map_command(
+                fn on_map_command<'a>(
                     &self,
+                    deserializers: &'a mut Self::Deserializers,
                     lane: &str,
                     body: #root::model::MapMessage<#root::reexport::bytes::BytesMut, #root::reexport::bytes::BytesMut>,
-                ) -> ::core::option::Option<Self::MapCommandHandler> {
+                ) -> ::core::option::Option<Self::MapCommandHandler<'a>> {
                     match lane {
                         #(#map_match_blocks,)*
                         _ => ::core::option::Option::None,

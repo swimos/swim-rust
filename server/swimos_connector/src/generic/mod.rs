@@ -43,7 +43,9 @@ use swimos_api::{
     agent::{HttpLaneRequest, WarpLaneKind},
     error::DynamicRegistrationError,
 };
+use swimos_form::read::RecognizerReadable;
 use swimos_model::Value;
+use swimos_recon::parser::RecognizerDecoder;
 use tracing::{error, info};
 
 type GenericValueLane = ValueLane<Value>;
@@ -174,20 +176,47 @@ impl AgentDescription for ConnectorAgent {
     }
 }
 
-impl AgentSpec for ConnectorAgent {
-    type ValCommandHandler = ValueHandler;
+pub struct ConnectorAgentDeserializers {
+    value: RecognizerDecoder<<Value as RecognizerReadable>::Rec>,
+}
 
-    type MapCommandHandler = MapHandler;
+impl Default for ConnectorAgentDeserializers {
+    fn default() -> Self {
+        Self {
+            value: RecognizerDecoder::new(Value::make_recognizer()),
+        }
+    }
+}
+
+impl AgentSpec for ConnectorAgent {
+    type ValCommandHandler<'a> = ValueHandler
+    where
+        Self: 'a;
+
+    type MapCommandHandler<'a> = MapHandler
+    where
+        Self: 'a;
 
     type OnSyncHandler = Coprod!(ValueSync, MapSync);
 
     type HttpRequestHandler = UnitHandler;
 
+    type Deserializers = ConnectorAgentDeserializers;
+
+    fn initializer_deserializers(&self) -> Self::Deserializers {
+        ConnectorAgentDeserializers::default()
+    }
+
     fn item_specs() -> HashMap<&'static str, ItemSpec> {
         HashMap::new()
     }
 
-    fn on_value_command(&self, lane: &str, body: BytesMut) -> Option<Self::ValCommandHandler> {
+    fn on_value_command<'a>(
+        &self,
+        deserializers: &'a mut ConnectorAgentDeserializers,
+        lane: &str,
+        body: BytesMut,
+    ) -> Option<Self::ValCommandHandler<'a>> {
         if self.value_lanes.borrow().contains_key(lane) {
             Some(decode_and_select_set(
                 body,
@@ -212,11 +241,12 @@ impl AgentSpec for ConnectorAgent {
         None
     }
 
-    fn on_map_command(
+    fn on_map_command<'a>(
         &self,
+        deserializers: &'a mut ConnectorAgentDeserializers,
         lane: &str,
         body: MapMessage<BytesMut, BytesMut>,
-    ) -> Option<Self::MapCommandHandler> {
+    ) -> Option<Self::MapCommandHandler<'a>> {
         if self.map_lanes.borrow().contains_key(lane) {
             Some(decode_and_select_apply(
                 body,

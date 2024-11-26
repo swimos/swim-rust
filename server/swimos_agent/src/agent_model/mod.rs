@@ -204,16 +204,24 @@ pub trait AgentDescription {
 /// although it will not provided any lifecycle events for the agent or its lanes.
 pub trait AgentSpec: AgentDescription + Sized + Send {
     /// The type of handler to run when a command is received for a value lane.
-    type ValCommandHandler: HandlerAction<Self, Completion = ()> + Send + 'static;
+    type ValCommandHandler<'a>: HandlerAction<Self, Completion = ()> + Send + 'static
+    where
+        Self: 'a;
 
     /// The type of handler to run when a command is received for a map lane.
-    type MapCommandHandler: HandlerAction<Self, Completion = ()> + Send + 'static;
+    type MapCommandHandler<'a>: HandlerAction<Self, Completion = ()> + Send + 'static
+    where
+        Self: 'a;
 
     /// The type of handler to run when a request is received to sync with a lane.
     type OnSyncHandler: HandlerAction<Self, Completion = ()> + Send + 'static;
 
     /// The type of the handler to run when an HTTP request is received for a lane.
     type HttpRequestHandler: HandlerAction<Self, Completion = ()> + Send + 'static;
+
+    type Deserializers: Send + 'static;
+
+    fn initializer_deserializers(&self) -> Self::Deserializers;
 
     /// The names and flags of all items (lanes and stores) in the agent.
     fn item_specs() -> HashMap<&'static str, ItemSpec>;
@@ -225,7 +233,12 @@ pub trait AgentSpec: AgentDescription + Sized + Send {
     /// # Arguments
     /// * `lane` - The name of the lane.
     /// * `body` - The content of the command.
-    fn on_value_command(&self, lane: &str, body: BytesMut) -> Option<Self::ValCommandHandler>;
+    fn on_value_command<'a>(
+        &self,
+        deserializers: &'a mut Self::Deserializers,
+        lane: &str,
+        body: BytesMut,
+    ) -> Option<Self::ValCommandHandler<'a>>;
 
     /// Create an initializer that will consume the state of a value-like item, as reported by the runtime.
     ///
@@ -249,11 +262,12 @@ pub trait AgentSpec: AgentDescription + Sized + Send {
     /// # Arguments
     /// * `lane` - The name of the lane.
     /// * `body` - The content of the command.
-    fn on_map_command(
+    fn on_map_command<'a>(
         &self,
+        deserializers: &'a mut Self::Deserializers,
         lane: &str,
         body: MapMessage<BytesMut, BytesMut>,
-    ) -> Option<Self::MapCommandHandler>;
+    ) -> Option<Self::MapCommandHandler<'a>>;
 
     /// Create a handler that will update the state of an agent when a request is made to
     /// sync with a lane. There will be no handler if the lane does not exist.
@@ -1217,6 +1231,7 @@ where
             let add_commander = |address: Address<Text>| cmd_ids.borrow_mut().get_request(&address);
             let add_link = (add_downlink, add_commander);
             let add_lane = NoDynLanes;
+            let mut deserializers = item_model.initializer_deserializers();
 
             // Calling run_handler is very verbose so is pulled out into this macro to make the code easier to read.
             macro_rules! exec_handler {
@@ -1399,7 +1414,8 @@ where
                     match request {
                         LaneRequest::Command(body) => {
                             trace!(name = %name, "Received a command for a value-like lane.");
-                            if let Some(handler) = item_model.on_value_command(name.as_str(), body)
+                            if let Some(handler) =
+                                item_model.on_value_command(&mut deserializers, name.as_str(), body)
                             {
                                 let result = run_handler(
                                     &mut ActionContext::new(
@@ -1453,7 +1469,9 @@ where
                     match request {
                         LaneRequest::Command(body) => {
                             trace!(name = %name, "Received a command for a map-like lane.");
-                            if let Some(handler) = item_model.on_map_command(name.as_str(), body) {
+                            if let Some(handler) =
+                                item_model.on_map_command(&mut deserializers, name.as_str(), body)
+                            {
                                 let result = run_handler(
                                     &mut ActionContext::new(
                                         &suspended,

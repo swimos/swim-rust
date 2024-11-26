@@ -285,9 +285,10 @@ fn with_map_lane(agent: &ConnectorAgent, f: impl FnOnce(&GenericMapLane)) {
 #[test]
 fn value_lane_command() {
     let agent = ConnectorAgent::default();
+    let mut deserializers = agent.initializer_deserializers();
     let (val_id, _) = init(&agent);
     let handler = agent
-        .on_value_command("value_lane", to_buffer(Value::from(45)))
+        .on_value_command(&mut deserializers, "value_lane", to_buffer(Value::from(45)))
         .expect("No handler.");
     let ids = run_handler(&agent, handler);
     assert_eq!(ids, [val_id].into_iter().collect());
@@ -331,9 +332,11 @@ fn value_lane_sync() {
 #[test]
 fn map_lane_command() {
     let agent = ConnectorAgent::default();
+    let mut deserializers = agent.initializer_deserializers();
     let (_, map_id) = init(&agent);
     let handler = agent
         .on_map_command(
+            &mut deserializers,
             "map_lane",
             MapMessage::Update {
                 key: to_buffer(Value::text("a")),
