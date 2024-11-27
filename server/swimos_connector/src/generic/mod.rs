@@ -174,6 +174,7 @@ impl AgentDescription for ConnectorAgent {
     }
 }
 
+/// A single deserializer for [`Value`] objects, shared between all lanes of a [`ConnectorAgent`].
 #[derive(Default)]
 pub struct GenericDeserializer {
     value_deser: ReconDecoder<Value>,
