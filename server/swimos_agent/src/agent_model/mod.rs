@@ -219,8 +219,11 @@ pub trait AgentSpec: AgentDescription + Sized + Send {
     /// The type of the handler to run when an HTTP request is received for a lane.
     type HttpRequestHandler: HandlerAction<Self, Completion = ()> + Send + 'static;
 
+    /// A store of persistent deserializers that may be used by [`AgentSpec::on_value_command`]
+    /// and [`AgentSpec::on_map_command`].
     type Deserializers: Send + 'static;
 
+    /// Create th store of deserializers that can be reused any number of times.
     fn initialize_deserializers(&self) -> Self::Deserializers;
 
     /// The names and flags of all items (lanes and stores) in the agent.
@@ -231,6 +234,7 @@ pub trait AgentSpec: AgentDescription + Sized + Send {
     /// accept commands.
     ///
     /// # Arguments
+    /// * `deserializers` - The store of persistent deserializers for the agent.
     /// * `lane` - The name of the lane.
     /// * `body` - The content of the command.
     fn on_value_command<'a>(
@@ -260,6 +264,7 @@ pub trait AgentSpec: AgentDescription + Sized + Send {
     /// for a map lane. There will be no handler if the lane does not exist or does not
     /// accept commands.
     /// # Arguments
+    /// * `deserializers` - The store of persistent deserializers for the agent.
     /// * `lane` - The name of the lane.
     /// * `body` - The content of the command.
     fn on_map_command<'a>(
