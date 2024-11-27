@@ -38,16 +38,14 @@ use swimos_agent::{
         value::{decode_ref_and_select_set, DecodeRefAndSelectSet, ValueLaneSelectSync},
         LaneItem, MapLane, Selector, SelectorFn, ValueLane,
     },
-    AgentItem, AgentMetadata,
+    AgentItem, AgentMetadata, ReconDecoder,
 };
 use swimos_agent_protocol::MapMessage;
 use swimos_api::{
     agent::{HttpLaneRequest, WarpLaneKind},
     error::DynamicRegistrationError,
 };
-use swimos_form::read::RecognizerReadable;
 use swimos_model::Value;
-use swimos_recon::parser::RecognizerDecoder;
 use tracing::{error, info};
 
 type GenericValueLane = ValueLane<Value>;
@@ -178,16 +176,9 @@ impl AgentDescription for ConnectorAgent {
     }
 }
 
+#[derive(Default)]
 pub struct GenericDeserializer {
-    value_deser: RecognizerDecoder<<Value as RecognizerReadable>::Rec>,
-}
-
-impl Default for GenericDeserializer {
-    fn default() -> Self {
-        Self {
-            value_deser: RecognizerDecoder::new(Value::make_recognizer()),
-        }
-    }
+    value_deser: ReconDecoder<Value>,
 }
 
 impl AgentSpec for ConnectorAgent {

@@ -26,7 +26,6 @@ use std::{
 };
 use swimos_agent_protocol::{encoding::lane::MapLaneResponseEncoder, MapMessage};
 use swimos_form::{read::RecognizerReadable, write::StructuralWritable, Form};
-use swimos_recon::parser::RecognizerDecoder;
 use tokio_util::codec::{Decoder, Encoder};
 use uuid::Uuid;
 
@@ -47,6 +46,7 @@ use crate::{
         drop_or_take, DropOrTake, MapOps, MapOpsWithEntry, MapStoreInner, TransformEntryResult,
     },
     meta::AgentMetadata,
+    ReconDecoder,
 };
 
 use super::{queues::WriteQueues, Selector, SelectorFn};
@@ -631,12 +631,12 @@ impl<K, V> DecodeMapMessage<K, V> {
 }
 
 fn try_decode<T: RecognizerReadable>(buffer: BytesMut) -> Result<T, EventHandlerError> {
-    let mut decoder = RecognizerDecoder::new(T::make_recognizer());
+    let mut decoder = ReconDecoder::<T>::default();
     try_with_decoder(&mut decoder, buffer)
 }
 
 fn try_with_decoder<T: RecognizerReadable>(
-    decoder: &mut RecognizerDecoder<T::Rec>,
+    decoder: &mut ReconDecoder<T>,
     mut buffer: BytesMut,
 ) -> Result<T, EventHandlerError> {
     match decoder.decode_eof(&mut buffer) {
@@ -712,15 +712,15 @@ where
 }
 
 pub struct DecodeMapMessageRef<'a, K: RecognizerReadable, V: RecognizerReadable> {
-    key_decoder: &'a mut RecognizerDecoder<K::Rec>,
-    value_decoder: &'a mut RecognizerDecoder<V::Rec>,
+    key_decoder: &'a mut ReconDecoder<K>,
+    value_decoder: &'a mut ReconDecoder<V>,
     message: Option<MapMessage<BytesMut, BytesMut>>,
 }
 
 impl<'a, K: RecognizerReadable, V: RecognizerReadable> DecodeMapMessageRef<'a, K, V> {
     pub fn new(
-        key_decoder: &'a mut RecognizerDecoder<K::Rec>,
-        value_decoder: &'a mut RecognizerDecoder<V::Rec>,
+        key_decoder: &'a mut ReconDecoder<K>,
+        value_decoder: &'a mut ReconDecoder<V>,
         message: MapMessage<BytesMut, BytesMut>,
     ) -> Self {
         DecodeMapMessageRef {
@@ -778,15 +778,12 @@ impl<'a, K: RecognizerReadable, V: RecognizerReadable, Context> HandlerAction<Co
 }
 
 pub struct DecodeMapMessageSharedRef<'a, T: RecognizerReadable> {
-    decoder: &'a mut RecognizerDecoder<T::Rec>,
+    decoder: &'a mut ReconDecoder<T>,
     message: Option<MapMessage<BytesMut, BytesMut>>,
 }
 
 impl<'a, T: RecognizerReadable> DecodeMapMessageSharedRef<'a, T> {
-    pub fn new(
-        decoder: &'a mut RecognizerDecoder<T::Rec>,
-        message: MapMessage<BytesMut, BytesMut>,
-    ) -> Self {
+    pub fn new(decoder: &'a mut ReconDecoder<T>, message: MapMessage<BytesMut, BytesMut>) -> Self {
         DecodeMapMessageSharedRef {
             decoder,
             message: Some(message),
@@ -1296,8 +1293,8 @@ where
 
 /// Create an event handler that will decode an incoming map message and apply the value into a map lane.
 pub fn decode_ref_and_select_apply<'a, C, K, V, M, F>(
-    key_decoder: &'a mut RecognizerDecoder<K::Rec>,
-    value_decoder: &'a mut RecognizerDecoder<V::Rec>,
+    key_decoder: &'a mut ReconDecoder<K>,
+    value_decoder: &'a mut ReconDecoder<V>,
     message: MapMessage<BytesMut, BytesMut>,
     projection: F,
 ) -> DecodeRefAndSelectApply<'a, C, K, V, F>
@@ -1314,7 +1311,7 @@ where
 
 /// Create an event handler that will decode an incoming map message and apply the value into a map lane.
 pub fn decode_shared_ref_and_select_apply<C, T, M, F>(
-    decoder: &mut RecognizerDecoder<T::Rec>,
+    decoder: &mut ReconDecoder<T>,
     message: MapMessage<BytesMut, BytesMut>,
     projection: F,
 ) -> DecodeSharedRefAndSelectApply<'_, C, T, F>

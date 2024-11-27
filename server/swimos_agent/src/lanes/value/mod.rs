@@ -30,7 +30,6 @@ use bytes::BytesMut;
 use static_assertions::assert_impl_all;
 use swimos_agent_protocol::{encoding::lane::ValueLaneResponseEncoder, LaneResponse};
 use swimos_form::{read::RecognizerReadable, write::StructuralWritable};
-use swimos_recon::parser::RecognizerDecoder;
 use tokio_util::codec::Encoder;
 use uuid::Uuid;
 
@@ -43,6 +42,7 @@ use crate::{
     item::{AgentItem, MutableValueLikeItem, ValueItem, ValueLikeItem},
     meta::AgentMetadata,
     stores::value::ValueStore,
+    ReconDecoder,
 };
 
 use super::{LaneItem, ProjTransform, Selector, SelectorFn};
@@ -405,7 +405,7 @@ pub fn decode_and_set<C: AgentDescription, T: RecognizerReadable>(
 
 /// Create an event handler that will decode an incoming command and set the value into a value lane.
 pub fn decode_ref_and_set<'a, C: AgentDescription, T: RecognizerReadable>(
-    decoder: &'a mut RecognizerDecoder<T::Rec>,
+    decoder: &'a mut ReconDecoder<T>,
     buffer: BytesMut,
     projection: fn(&C) -> &ValueLane<T>,
 ) -> DecodeRefAndSet<'a, C, T> {
@@ -718,7 +718,7 @@ where
 
 /// Create an event handler that will decode an incoming command and set the value into a value lane.
 pub fn decode_ref_and_select_set<C, T, F>(
-    decoder: &mut RecognizerDecoder<T::Rec>,
+    decoder: &mut ReconDecoder<T>,
     buffer: BytesMut,
     projection: F,
 ) -> DecodeRefAndSelectSet<'_, C, T, F>

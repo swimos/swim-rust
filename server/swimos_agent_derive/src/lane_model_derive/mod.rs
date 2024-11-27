@@ -140,6 +140,14 @@ impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
             no_handler
         };
 
+        let deser_types = warp_lane_models
+            .iter()
+            .map(|model| DecoderType(model.clone()).into_tokens(root));
+        let deser_tup_type = quote!((#(#deser_types),*));
+        let deser_inits =
+            (0..warp_lane_models.len()).map(|_| quote!(::core::default::Default::default()));
+        let deser_init_statement = quote!((#(#deser_inits),*));
+
         let item_specs = item_models
             .iter()
             .map(|model| LaneSpecInsert(model.ordinal, model.model.clone()))
@@ -213,6 +221,7 @@ impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
             }
 
             #[automatically_derived]
+            #[allow(clippy::unused_unit)]
             impl #root::agent_model::AgentSpec for #agent_type {
                 type ValCommandHandler<'a> = #value_handler
                 where
@@ -226,10 +235,10 @@ impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
 
                 type HttpRequestHandler = #http_handler;
 
-                type Deserializers = ();
+                type Deserializers = #deser_tup_type;
 
                 fn initializer_deserializers(&self) -> Self::Deserializers {
-
+                    #deser_init_statement
                 }
 
                 fn item_specs() -> ::std::collections::HashMap<&'static str, #root::agent_model::ItemSpec> {
@@ -466,6 +475,8 @@ struct SyncHandlerType<'a>(OrdinalWarpLaneModel<'a>);
 
 struct HttpHandlerType<'a>(OrdinalHttpLaneModel<'a>);
 
+struct DecoderType<'a>(OrdinalWarpLaneModel<'a>);
+
 impl<'a> HandlerType<'a> {
     fn into_tokens(self, root: &syn::Path) -> impl ToTokens {
         let HandlerType(OrdinalWarpLaneModel {
@@ -553,6 +564,34 @@ impl<'a> HttpHandlerType<'a> {
             codec,
         } = kind;
         quote!(#root::lanes::http::HttpLaneAccept<#agent_name, #get, #post, #put, #codec>)
+    }
+}
+
+impl<'a> DecoderType<'a> {
+    fn into_tokens(self, root: &syn::Path) -> impl ToTokens {
+        let DecoderType(OrdinalWarpLaneModel {
+            model: WarpLaneModel { kind, .. },
+            ..
+        }) = self;
+
+        match kind {
+            WarpLaneSpec::Command(t) => {
+                quote!(#root::ReconDecoder<#t>)
+            }
+            WarpLaneSpec::Value(t) => {
+                quote!(#root::ReconDecoder<#t>)
+            }
+            WarpLaneSpec::Map(k, v, _) => {
+                quote!((#root::ReconDecoder<#k>, #root::ReconDecoder<#v>))
+            }
+            WarpLaneSpec::Demand(_)
+            | WarpLaneSpec::DemandMap(_, _)
+            | WarpLaneSpec::JoinValue(_, _)
+            | WarpLaneSpec::JoinMap(_, _, _)
+            | WarpLaneSpec::Supply(_) => {
+                quote!(())
+            }
+        }
     }
 }
 

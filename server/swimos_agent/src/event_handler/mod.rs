@@ -45,6 +45,7 @@ use crate::{
     },
     lanes::JoinLaneKind,
     meta::AgentMetadata,
+    ReconDecoder,
 };
 
 use bitflags::bitflags;
@@ -1341,12 +1342,12 @@ impl<Context, T: RecognizerReadable> HandlerAction<Context> for Decode<T> {
 }
 
 pub struct DecodeRef<'a, T: RecognizerReadable> {
-    decoder: Option<&'a mut RecognizerDecoder<T::Rec>>,
+    decoder: Option<&'a mut ReconDecoder<T>>,
     buffer: BytesMut,
 }
 
 impl<'a, T: RecognizerReadable> DecodeRef<'a, T> {
-    pub fn new(decoder: &'a mut RecognizerDecoder<T::Rec>, buffer: BytesMut) -> Self {
+    pub fn new(decoder: &'a mut ReconDecoder<T>, buffer: BytesMut) -> Self {
         DecodeRef {
             decoder: Some(decoder),
             buffer,
