@@ -494,16 +494,16 @@ impl<'a> HandlerType<'a> {
 
         match kind {
             WarpLaneSpec::Command(t) => {
-                quote!(#root::lanes::command::DecodeRefAndCommand<'a, #agent_name, #t>)
+                quote!(#root::lanes::command::DecodeAndCommand<'a, #agent_name, #t>)
             }
             WarpLaneSpec::Value(t) => {
-                quote!(#root::lanes::value::DecodeRefAndSet<'a, #agent_name, #t>)
+                quote!(#root::lanes::value::DecodeAndSet<'a, #agent_name, #t>)
             }
             WarpLaneSpec::Map(k, v, m) => {
                 if let Some(map_t) = m {
-                    quote!(#root::lanes::map::DecodeRefAndApply<'a, #agent_name, #k, #v, #map_t>)
+                    quote!(#root::lanes::map::DecodeAndApply<'a, #agent_name, #k, #v, #map_t>)
                 } else {
-                    quote!(#root::lanes::map::DecodeRefAndApply<'a, #agent_name, #k, #v>)
+                    quote!(#root::lanes::map::DecodeAndApply<'a, #agent_name, #k, #v>)
                 }
             }
             WarpLaneSpec::Demand(_)
@@ -633,16 +633,16 @@ impl<'a> WarpLaneHandlerMatch<'a> {
         let coprod_con = coproduct_constructor(root, handler_base, group_ordinal);
         let lane_handler_expr = match kind {
             WarpLaneSpec::Command(ty) => {
-                quote!(#root::lanes::command::decode_ref_and_command::<#agent_name, #ty>(&mut deserializers.#index, body, |agent: &#agent_name| &agent.#name))
+                quote!(#root::lanes::command::decode_and_command::<#agent_name, #ty>(&mut deserializers.#index, body, |agent: &#agent_name| &agent.#name))
             }
             WarpLaneSpec::Value(ty) => {
-                quote!(#root::lanes::value::decode_ref_and_set::<#agent_name, #ty>(&mut deserializers.#index, body, |agent: &#agent_name| &agent.#name))
+                quote!(#root::lanes::value::decode_and_set::<#agent_name, #ty>(&mut deserializers.#index, body, |agent: &#agent_name| &agent.#name))
             }
             WarpLaneSpec::Map(k, v, m) => {
                 if let Some(map_t) = m {
-                    quote!(#root::lanes::map::decode_ref_and_apply::<#agent_name, #k, #v, #map_t>(&mut deserializers.#index, body, |agent: &#agent_name| &agent.#name))
+                    quote!(#root::lanes::map::decode_and_apply::<#agent_name, #k, #v, #map_t>(&mut deserializers.#index, body, |agent: &#agent_name| &agent.#name))
                 } else {
-                    quote!(#root::lanes::map::decode_ref_and_apply::<#agent_name, #k, #v, _>(&mut deserializers.#index, body, |agent: &#agent_name| &agent.#name))
+                    quote!(#root::lanes::map::decode_and_apply::<#agent_name, #k, #v, _>(&mut deserializers.#index, body, |agent: &#agent_name| &agent.#name))
                 }
             }
             WarpLaneSpec::Demand(_)

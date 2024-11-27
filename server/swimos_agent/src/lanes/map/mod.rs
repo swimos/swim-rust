@@ -616,26 +616,7 @@ impl<C, K, V, M> HandlerTrans<MapMessage<K, V>> for ProjTransform<C, MapLane<K, 
     }
 }
 
-pub struct DecodeMapMessage<K, V> {
-    _target_type: PhantomData<fn() -> MapMessage<K, V>>,
-    message: Option<MapMessage<BytesMut, BytesMut>>,
-}
-
-impl<K, V> DecodeMapMessage<K, V> {
-    pub fn new(message: MapMessage<BytesMut, BytesMut>) -> Self {
-        DecodeMapMessage {
-            _target_type: Default::default(),
-            message: Some(message),
-        }
-    }
-}
-
-fn try_decode<T: RecognizerReadable>(buffer: BytesMut) -> Result<T, EventHandlerError> {
-    let mut decoder = ReconDecoder::<T>::default();
-    try_with_decoder(&mut decoder, buffer)
-}
-
-fn try_with_decoder<T: RecognizerReadable>(
+fn try_decode<T: RecognizerReadable>(
     decoder: &mut ReconDecoder<T>,
     mut buffer: BytesMut,
 ) -> Result<T, EventHandlerError> {
@@ -646,11 +627,28 @@ fn try_with_decoder<T: RecognizerReadable>(
     }
 }
 
-impl<K, V, Context> HandlerAction<Context> for DecodeMapMessage<K, V>
-where
-    Context: AgentDescription,
-    K: RecognizerReadable,
-    V: RecognizerReadable,
+pub struct DecodeMapMessage<'a, K: RecognizerReadable, V: RecognizerReadable> {
+    key_decoder: &'a mut ReconDecoder<K>,
+    value_decoder: &'a mut ReconDecoder<V>,
+    message: Option<MapMessage<BytesMut, BytesMut>>,
+}
+
+impl<'a, K: RecognizerReadable, V: RecognizerReadable> DecodeMapMessage<'a, K, V> {
+    pub fn new(
+        key_decoder: &'a mut ReconDecoder<K>,
+        value_decoder: &'a mut ReconDecoder<V>,
+        message: MapMessage<BytesMut, BytesMut>,
+    ) -> Self {
+        DecodeMapMessage {
+            key_decoder,
+            value_decoder,
+            message: Some(message),
+        }
+    }
+}
+
+impl<'a, K: RecognizerReadable, V: RecognizerReadable, Context> HandlerAction<Context>
+    for DecodeMapMessage<'a, K, V>
 {
     type Completion = MapMessage<K, V>;
 
@@ -660,21 +658,31 @@ where
         _meta: AgentMetadata,
         _context: &Context,
     ) -> StepResult<Self::Completion> {
-        let DecodeMapMessage { message, .. } = self;
+        let DecodeMapMessage {
+            key_decoder,
+            value_decoder,
+            message,
+        } = self;
         if let Some(message) = message.take() {
             match message {
                 MapMessage::Update { key, value } => {
-                    match try_decode::<K>(key).and_then(|k| {
-                        try_decode::<V>(value).map(|v| (MapMessage::Update { key: k, value: v }))
+                    key_decoder.reset();
+                    value_decoder.reset();
+                    match try_decode::<K>(key_decoder, key).and_then(|k| {
+                        try_decode::<V>(value_decoder, value)
+                            .map(|v| (MapMessage::Update { key: k, value: v }))
                     }) {
                         Ok(msg) => StepResult::done(msg),
                         Err(e) => StepResult::Fail(e),
                     }
                 }
-                MapMessage::Remove { key } => match try_decode::<K>(key) {
-                    Ok(k) => StepResult::done(MapMessage::Remove { key: k }),
-                    Err(e) => StepResult::Fail(e),
-                },
+                MapMessage::Remove { key } => {
+                    key_decoder.reset();
+                    match try_decode::<K>(key_decoder, key) {
+                        Ok(k) => StepResult::done(MapMessage::Remove { key: k }),
+                        Err(e) => StepResult::Fail(e),
+                    }
+                }
                 MapMessage::Clear => StepResult::done(MapMessage::Clear),
                 MapMessage::Take(n) => StepResult::done(MapMessage::Take(n)),
                 MapMessage::Drop(n) => StepResult::done(MapMessage::Drop(n)),
@@ -703,7 +711,7 @@ where
             MapMessage::Take(n) => MapMessage::Take(*n),
             MapMessage::Drop(n) => MapMessage::Drop(*n),
         });
-        f.debug_struct("Decode")
+        f.debug_struct("DecodeMapMessage")
             .field("key_type", &type_name::<K>())
             .field("value_type", &type_name::<V>())
             .field("content", &content)
@@ -711,89 +719,21 @@ where
     }
 }
 
-pub struct DecodeMapMessageRef<'a, K: RecognizerReadable, V: RecognizerReadable> {
-    key_decoder: &'a mut ReconDecoder<K>,
-    value_decoder: &'a mut ReconDecoder<V>,
-    message: Option<MapMessage<BytesMut, BytesMut>>,
-}
-
-impl<'a, K: RecognizerReadable, V: RecognizerReadable> DecodeMapMessageRef<'a, K, V> {
-    pub fn new(
-        key_decoder: &'a mut ReconDecoder<K>,
-        value_decoder: &'a mut ReconDecoder<V>,
-        message: MapMessage<BytesMut, BytesMut>,
-    ) -> Self {
-        DecodeMapMessageRef {
-            key_decoder,
-            value_decoder,
-            message: Some(message),
-        }
-    }
-}
-
-impl<'a, K: RecognizerReadable, V: RecognizerReadable, Context> HandlerAction<Context>
-    for DecodeMapMessageRef<'a, K, V>
-{
-    type Completion = MapMessage<K, V>;
-
-    fn step(
-        &mut self,
-        _action_context: &mut ActionContext<Context>,
-        _meta: AgentMetadata,
-        _context: &Context,
-    ) -> StepResult<Self::Completion> {
-        let DecodeMapMessageRef {
-            key_decoder,
-            value_decoder,
-            message,
-        } = self;
-        if let Some(message) = message.take() {
-            match message {
-                MapMessage::Update { key, value } => {
-                    key_decoder.reset();
-                    value_decoder.reset();
-                    match try_with_decoder::<K>(key_decoder, key).and_then(|k| {
-                        try_with_decoder::<V>(value_decoder, value)
-                            .map(|v| (MapMessage::Update { key: k, value: v }))
-                    }) {
-                        Ok(msg) => StepResult::done(msg),
-                        Err(e) => StepResult::Fail(e),
-                    }
-                }
-                MapMessage::Remove { key } => {
-                    key_decoder.reset();
-                    match try_with_decoder::<K>(key_decoder, key) {
-                        Ok(k) => StepResult::done(MapMessage::Remove { key: k }),
-                        Err(e) => StepResult::Fail(e),
-                    }
-                }
-                MapMessage::Clear => StepResult::done(MapMessage::Clear),
-                MapMessage::Take(n) => StepResult::done(MapMessage::Take(n)),
-                MapMessage::Drop(n) => StepResult::done(MapMessage::Drop(n)),
-            }
-        } else {
-            StepResult::after_done()
-        }
-    }
-}
-
-pub struct DecodeMapMessageSharedRef<'a, T: RecognizerReadable> {
+pub struct DecodeMapMessageShared<'a, T: RecognizerReadable> {
     decoder: &'a mut ReconDecoder<T>,
     message: Option<MapMessage<BytesMut, BytesMut>>,
 }
 
-impl<'a, T: RecognizerReadable> DecodeMapMessageSharedRef<'a, T> {
+impl<'a, T: RecognizerReadable> DecodeMapMessageShared<'a, T> {
     pub fn new(decoder: &'a mut ReconDecoder<T>, message: MapMessage<BytesMut, BytesMut>) -> Self {
-        DecodeMapMessageSharedRef {
+        DecodeMapMessageShared {
             decoder,
             message: Some(message),
         }
     }
 }
 
-impl<'a, T: RecognizerReadable, Context> HandlerAction<Context>
-    for DecodeMapMessageSharedRef<'a, T>
-{
+impl<'a, T: RecognizerReadable, Context> HandlerAction<Context> for DecodeMapMessageShared<'a, T> {
     type Completion = MapMessage<T, T>;
 
     fn step(
@@ -802,14 +742,14 @@ impl<'a, T: RecognizerReadable, Context> HandlerAction<Context>
         _meta: AgentMetadata,
         _context: &Context,
     ) -> StepResult<Self::Completion> {
-        let DecodeMapMessageSharedRef { decoder, message } = self;
+        let DecodeMapMessageShared { decoder, message } = self;
         if let Some(message) = message.take() {
             match message {
                 MapMessage::Update { key, value } => {
                     decoder.reset();
-                    match try_with_decoder::<T>(decoder, key).and_then(|k| {
+                    match try_decode::<T>(decoder, key).and_then(|k| {
                         decoder.reset();
-                        try_with_decoder::<T>(decoder, value)
+                        try_decode::<T>(decoder, value)
                             .map(|v| (MapMessage::Update { key: k, value: v }))
                     }) {
                         Ok(msg) => StepResult::done(msg),
@@ -818,7 +758,7 @@ impl<'a, T: RecognizerReadable, Context> HandlerAction<Context>
                 }
                 MapMessage::Remove { key } => {
                     decoder.reset();
-                    match try_with_decoder::<T>(decoder, key) {
+                    match try_decode::<T>(decoder, key) {
                         Ok(k) => StepResult::done(MapMessage::Remove { key: k }),
                         Err(e) => StepResult::Fail(e),
                     }
@@ -831,37 +771,46 @@ impl<'a, T: RecognizerReadable, Context> HandlerAction<Context>
             StepResult::after_done()
         }
     }
+
+    fn describe(&self, _context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        let DecodeMapMessageShared { message, .. } = self;
+        let content = message.as_ref().map(|msg| match msg {
+            MapMessage::Update { key, value } => {
+                let key_str = std::str::from_utf8(key.as_ref()).unwrap_or("<<BAD UTF8>>");
+                let value_str = std::str::from_utf8(value.as_ref()).unwrap_or("<<BAD UTF8>>");
+                MapMessage::Update {
+                    key: key_str,
+                    value: value_str,
+                }
+            }
+            MapMessage::Remove { key } => {
+                let key_str = std::str::from_utf8(key.as_ref()).unwrap_or("<<BAD UTF8>>");
+                MapMessage::Remove { key: key_str }
+            }
+            MapMessage::Clear => MapMessage::Clear,
+            MapMessage::Take(n) => MapMessage::Take(*n),
+            MapMessage::Drop(n) => MapMessage::Drop(*n),
+        });
+        f.debug_struct("DecodeMapMessageShared")
+            .field("key_type", &type_name::<T>())
+            .field("value_type", &type_name::<T>())
+            .field("content", &content)
+            .finish()
+    }
 }
 
-pub type DecodeAndApply<C, K, V, M = HashMap<K, V>> =
-    AndThen<DecodeMapMessage<K, V>, MapLaneHandler<C, K, V, M>, ProjTransform<C, MapLane<K, V, M>>>;
-pub type DecodeRefAndApply<'a, C, K, V, M = HashMap<K, V>> = AndThen<
-    DecodeMapMessageRef<'a, K, V>,
+pub type DecodeAndApply<'a, C, K, V, M = HashMap<K, V>> = AndThen<
+    DecodeMapMessage<'a, K, V>,
     MapLaneHandler<C, K, V, M>,
     ProjTransform<C, MapLane<K, V, M>>,
 >;
 
 /// Create an event handler that will decode an incoming map message and apply the value into a map lane.
-pub fn decode_and_apply<C, K, V, M>(
-    message: MapMessage<BytesMut, BytesMut>,
-    projection: fn(&C) -> &MapLane<K, V, M>,
-) -> DecodeAndApply<C, K, V, M>
-where
-    C: AgentDescription,
-    K: Form + Clone + Eq + Hash,
-    V: RecognizerReadable,
-    M: MapOps<K, V>,
-{
-    let decode: DecodeMapMessage<K, V> = DecodeMapMessage::new(message);
-    decode.and_then(ProjTransform::new(projection))
-}
-
-/// Create an event handler that will decode an incoming map message and apply the value into a map lane.
-pub fn decode_ref_and_apply<'a, C, K, V, M>(
+pub fn decode_and_apply<'a, C, K, V, M>(
     decoders: &'a mut (ReconDecoder<K>, ReconDecoder<V>),
     message: MapMessage<BytesMut, BytesMut>,
     projection: fn(&C) -> &MapLane<K, V, M>,
-) -> DecodeRefAndApply<'a, C, K, V, M>
+) -> DecodeAndApply<'a, C, K, V, M>
 where
     C: AgentDescription,
     K: Form + Clone + Eq + Hash,
@@ -869,8 +818,8 @@ where
     M: MapOps<K, V>,
 {
     let (key_decoder, value_decoder) = decoders;
-    let decode: DecodeMapMessageRef<'a, K, V> =
-        DecodeMapMessageRef::new(key_decoder, value_decoder, message);
+    let decode: DecodeMapMessage<'a, K, V> =
+        DecodeMapMessage::new(key_decoder, value_decoder, message);
     decode.and_then(ProjTransform::new(projection))
 }
 
@@ -1292,59 +1241,42 @@ where
     }
 }
 
-pub type DecodeAndSelectApply<C, K, V, F> =
-    DecodeWithAndSelectApply<DecodeMapMessage<K, V>, C, K, V, F>;
-pub type DecodeRefAndSelectApply<'a, C, K, V, F> =
-    DecodeWithAndSelectApply<DecodeMapMessageRef<'a, K, V>, C, K, V, F>;
-pub type DecodeSharedRefAndSelectApply<'a, C, T, F> =
-    DecodeWithAndSelectApply<DecodeMapMessageSharedRef<'a, T>, C, T, T, F>;
+pub type DecodeAndSelectApply<'a, C, K, V, F> =
+    DecodeWithAndSelectApply<DecodeMapMessage<'a, K, V>, C, K, V, F>;
+pub type DecodeSharedAndSelectApply<'a, C, T, F> =
+    DecodeWithAndSelectApply<DecodeMapMessageShared<'a, T>, C, T, T, F>;
 
 /// Create an event handler that will decode an incoming map message and apply the value into a map lane.
-pub fn decode_and_select_apply<C, K, V, M, F>(
-    message: MapMessage<BytesMut, BytesMut>,
-    projection: F,
-) -> DecodeAndSelectApply<C, K, V, F>
-where
-    K: Clone + Eq + Hash + RecognizerReadable,
-    V: RecognizerReadable,
-    F: SelectorFn<C, Target = MapLane<K, V, M>>,
-    M: MapOps<K, V>,
-{
-    let decode: DecodeMapMessage<K, V> = DecodeMapMessage::new(message);
-    DecodeAndSelectApply::Decoding(decode, projection)
-}
-
-/// Create an event handler that will decode an incoming map message and apply the value into a map lane.
-pub fn decode_ref_and_select_apply<'a, C, K, V, M, F>(
+pub fn decode_and_select_apply<'a, C, K, V, M, F>(
     key_decoder: &'a mut ReconDecoder<K>,
     value_decoder: &'a mut ReconDecoder<V>,
     message: MapMessage<BytesMut, BytesMut>,
     projection: F,
-) -> DecodeRefAndSelectApply<'a, C, K, V, F>
+) -> DecodeAndSelectApply<'a, C, K, V, F>
 where
     K: Clone + Eq + Hash + RecognizerReadable,
     V: RecognizerReadable,
     F: SelectorFn<C, Target = MapLane<K, V, M>>,
     M: MapOps<K, V>,
 {
-    let decode: DecodeMapMessageRef<K, V> =
-        DecodeMapMessageRef::new(key_decoder, value_decoder, message);
-    DecodeRefAndSelectApply::Decoding(decode, projection)
+    let decode: DecodeMapMessage<K, V> = DecodeMapMessage::new(key_decoder, value_decoder, message);
+    DecodeAndSelectApply::Decoding(decode, projection)
 }
 
 /// Create an event handler that will decode an incoming map message and apply the value into a map lane.
-pub fn decode_shared_ref_and_select_apply<C, T, M, F>(
+/// Specialized for the case where the key and value types are the same and the decoder can be shared.
+pub fn decode_shared_and_select_apply<C, T, M, F>(
     decoder: &mut ReconDecoder<T>,
     message: MapMessage<BytesMut, BytesMut>,
     projection: F,
-) -> DecodeSharedRefAndSelectApply<'_, C, T, F>
+) -> DecodeSharedAndSelectApply<'_, C, T, F>
 where
     T: Clone + Eq + Hash + RecognizerReadable,
     F: SelectorFn<C, Target = MapLane<T, T, M>>,
     M: MapOps<T, T>,
 {
-    let decode: DecodeMapMessageSharedRef<T> = DecodeMapMessageSharedRef::new(decoder, message);
-    DecodeSharedRefAndSelectApply::Decoding(decode, projection)
+    let decode: DecodeMapMessageShared<T> = DecodeMapMessageShared::new(decoder, message);
+    DecodeSharedAndSelectApply::Decoding(decode, projection)
 }
 
 #[derive(Default)]

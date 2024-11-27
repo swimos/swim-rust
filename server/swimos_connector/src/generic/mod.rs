@@ -32,10 +32,8 @@ use swimos_agent::{
     },
     event_handler::{ActionContext, HandlerAction, StepResult, UnitHandler},
     lanes::{
-        map::{
-            decode_shared_ref_and_select_apply, DecodeSharedRefAndSelectApply, MapLaneSelectSync,
-        },
-        value::{decode_ref_and_select_set, DecodeRefAndSelectSet, ValueLaneSelectSync},
+        map::{decode_shared_and_select_apply, DecodeSharedAndSelectApply, MapLaneSelectSync},
+        value::{decode_and_select_set, DecodeAndSelectSet, ValueLaneSelectSync},
         LaneItem, MapLane, Selector, SelectorFn, ValueLane,
     },
     AgentItem, AgentMetadata, ReconDecoder,
@@ -64,8 +62,8 @@ pub struct ConnectorAgent {
     flags: Cell<u64>,
 }
 
-type ValueHandler<'a> = DecodeRefAndSelectSet<'a, ConnectorAgent, Value, ValueLaneSelectorFn>;
-type MapHandler<'a> = DecodeSharedRefAndSelectApply<'a, ConnectorAgent, Value, MapLaneSelectorFn>;
+type ValueHandler<'a> = DecodeAndSelectSet<'a, ConnectorAgent, Value, ValueLaneSelectorFn>;
+type MapHandler<'a> = DecodeSharedAndSelectApply<'a, ConnectorAgent, Value, MapLaneSelectorFn>;
 type ValueSync = ValueLaneSelectSync<ConnectorAgent, Value, ValueLaneSelectorFn>;
 type MapSync = MapLaneSelectSync<ConnectorAgent, Value, Value, MapLaneSelectorFn>;
 
@@ -212,7 +210,7 @@ impl AgentSpec for ConnectorAgent {
     ) -> Option<Self::ValCommandHandler<'a>> {
         let GenericDeserializer { value_deser } = deserializers;
         if self.value_lanes.borrow().contains_key(lane) {
-            Some(decode_ref_and_select_set(
+            Some(decode_and_select_set(
                 value_deser,
                 body,
                 ValueLaneSelectorFn::new(lane.to_string()),
@@ -244,7 +242,7 @@ impl AgentSpec for ConnectorAgent {
     ) -> Option<Self::MapCommandHandler<'a>> {
         let GenericDeserializer { value_deser } = deserializers;
         if self.map_lanes.borrow().contains_key(lane) {
-            Some(decode_shared_ref_and_select_apply(
+            Some(decode_shared_and_select_apply(
                 value_deser,
                 body,
                 MapLaneSelectorFn::new(lane.to_string()),

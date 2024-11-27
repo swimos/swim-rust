@@ -36,7 +36,7 @@ use uuid::Uuid;
 use crate::{
     agent_model::{AgentDescription, WriteResult},
     event_handler::{
-        ActionContext, AndThen, Decode, DecodeRef, Described, EventHandlerError, HandlerAction,
+        ActionContext, AndThen, Decode, Described, EventHandlerError, HandlerAction,
         HandlerActionExt, HandlerTrans, Modification, StepResult,
     },
     item::{AgentItem, MutableValueLikeItem, ValueItem, ValueLikeItem},
@@ -388,28 +388,16 @@ impl<C, T> HandlerTrans<T> for ProjTransform<C, ValueLane<T>> {
     }
 }
 
-pub type DecodeAndSet<C, T> =
-    AndThen<Decode<T>, ValueLaneSet<C, T>, ProjTransform<C, ValueLane<T>>>;
-
-pub type DecodeRefAndSet<'a, C, T> =
-    AndThen<DecodeRef<'a, T>, ValueLaneSet<C, T>, ProjTransform<C, ValueLane<T>>>;
+pub type DecodeAndSet<'a, C, T> =
+    AndThen<Decode<'a, T>, ValueLaneSet<C, T>, ProjTransform<C, ValueLane<T>>>;
 
 /// Create an event handler that will decode an incoming command and set the value into a value lane.
-pub fn decode_and_set<C: AgentDescription, T: RecognizerReadable>(
-    buffer: BytesMut,
-    projection: fn(&C) -> &ValueLane<T>,
-) -> DecodeAndSet<C, T> {
-    let decode: Decode<T> = Decode::new(buffer);
-    decode.and_then(ProjTransform::new(projection))
-}
-
-/// Create an event handler that will decode an incoming command and set the value into a value lane.
-pub fn decode_ref_and_set<'a, C: AgentDescription, T: RecognizerReadable>(
+pub fn decode_and_set<'a, C: AgentDescription, T: RecognizerReadable>(
     decoder: &'a mut ReconDecoder<T>,
     buffer: BytesMut,
     projection: fn(&C) -> &ValueLane<T>,
-) -> DecodeRefAndSet<'a, C, T> {
-    let decode: DecodeRef<'a, T> = DecodeRef::new(decoder, buffer);
+) -> DecodeAndSet<'a, C, T> {
+    let decode: Decode<'a, T> = Decode::new(decoder, buffer);
     decode.and_then(ProjTransform::new(projection))
 }
 
@@ -549,14 +537,14 @@ where
 
 #[derive(Default)]
 #[doc(hidden)]
-pub enum DecodeAndSelectSet<C, T, F> {
-    Decoding(Decode<T>, F),
+pub enum DecodeAndSelectSet<'a, C, T: RecognizerReadable, F> {
+    Decoding(Decode<'a, T>, F),
     Selecting(ValueLaneSelectSet<C, T, F>),
     #[default]
     Done,
 }
 
-impl<C, T, F> HandlerAction<C> for DecodeAndSelectSet<C, T, F>
+impl<'a, C, T, F> HandlerAction<C> for DecodeAndSelectSet<'a, C, T, F>
 where
     C: AgentDescription,
     T: RecognizerReadable,
@@ -607,95 +595,17 @@ where
     ) -> Result<(), std::fmt::Error> {
         match self {
             DecodeAndSelectSet::Decoding(decode, proj) => f
-                .debug_struct("DecodeAndSelectSet")
+                .debug_struct("DecodeRefAndSelectSet")
                 .field("state", &"Decoding")
                 .field("decoder", &Described::new(context, decode))
                 .field("lane_name", &proj.name())
                 .finish(),
             DecodeAndSelectSet::Selecting(selector) => f
-                .debug_struct("DecodeAndSelectSet")
+                .debug_struct("DecodeRefAndSelectSet")
                 .field("state", &"Selecting")
                 .field("selector", &Described::new(context, selector))
                 .finish(),
             DecodeAndSelectSet::Done => f
-                .debug_tuple("DecodeAndSelectSet")
-                .field(&"<<CONSUMED>>")
-                .finish(),
-        }
-    }
-}
-
-#[derive(Default)]
-#[doc(hidden)]
-pub enum DecodeRefAndSelectSet<'a, C, T: RecognizerReadable, F> {
-    Decoding(DecodeRef<'a, T>, F),
-    Selecting(ValueLaneSelectSet<C, T, F>),
-    #[default]
-    Done,
-}
-
-impl<'a, C, T, F> HandlerAction<C> for DecodeRefAndSelectSet<'a, C, T, F>
-where
-    C: AgentDescription,
-    T: RecognizerReadable,
-    F: SelectorFn<C, Target = ValueLane<T>>,
-{
-    type Completion = ();
-
-    fn step(
-        &mut self,
-        action_context: &mut ActionContext<C>,
-        meta: AgentMetadata,
-        context: &C,
-    ) -> StepResult<Self::Completion> {
-        match std::mem::take(self) {
-            DecodeRefAndSelectSet::Decoding(mut decoding, selector) => {
-                match decoding.step(action_context, meta, context) {
-                    StepResult::Continue { modified_item } => {
-                        *self = DecodeRefAndSelectSet::Decoding(decoding, selector);
-                        StepResult::Continue { modified_item }
-                    }
-                    StepResult::Fail(err) => StepResult::Fail(err),
-                    StepResult::Complete {
-                        modified_item,
-                        result,
-                    } => {
-                        *self = DecodeRefAndSelectSet::Selecting(ValueLaneSelectSet::new(
-                            selector, result,
-                        ));
-                        StepResult::Continue { modified_item }
-                    }
-                }
-            }
-            DecodeRefAndSelectSet::Selecting(mut selector) => {
-                let result = selector.step(action_context, meta, context);
-                if !result.is_cont() {
-                    *self = DecodeRefAndSelectSet::Done;
-                }
-                result
-            }
-            DecodeRefAndSelectSet::Done => StepResult::after_done(),
-        }
-    }
-
-    fn describe(
-        &self,
-        context: &C,
-        f: &mut std::fmt::Formatter<'_>,
-    ) -> Result<(), std::fmt::Error> {
-        match self {
-            DecodeRefAndSelectSet::Decoding(decode, proj) => f
-                .debug_struct("DecodeRefAndSelectSet")
-                .field("state", &"Decoding")
-                .field("decoder", &Described::new(context, decode))
-                .field("lane_name", &proj.name())
-                .finish(),
-            DecodeRefAndSelectSet::Selecting(selector) => f
-                .debug_struct("DecodeRefAndSelectSet")
-                .field("state", &"Selecting")
-                .field("selector", &Described::new(context, selector))
-                .finish(),
-            DecodeRefAndSelectSet::Done => f
                 .debug_tuple("DecodeRefAndSelectSet")
                 .field(&"<<CONSUMED>>")
                 .finish(),
@@ -705,29 +615,16 @@ where
 
 /// Create an event handler that will decode an incoming command and set the value into a value lane.
 pub fn decode_and_select_set<C, T, F>(
-    buffer: BytesMut,
-    projection: F,
-) -> DecodeAndSelectSet<C, T, F>
-where
-    T: RecognizerReadable,
-    F: SelectorFn<C, Target = ValueLane<T>>,
-{
-    let decode: Decode<T> = Decode::new(buffer);
-    DecodeAndSelectSet::Decoding(decode, projection)
-}
-
-/// Create an event handler that will decode an incoming command and set the value into a value lane.
-pub fn decode_ref_and_select_set<C, T, F>(
     decoder: &mut ReconDecoder<T>,
     buffer: BytesMut,
     projection: F,
-) -> DecodeRefAndSelectSet<'_, C, T, F>
+) -> DecodeAndSelectSet<'_, C, T, F>
 where
     T: RecognizerReadable,
     F: SelectorFn<C, Target = ValueLane<T>>,
 {
-    let decode: DecodeRef<T> = DecodeRef::new(decoder, buffer);
-    DecodeRefAndSelectSet::Decoding(decode, projection)
+    let decode: Decode<T> = Decode::new(decoder, buffer);
+    DecodeAndSelectSet::Decoding(decode, projection)
 }
 
 ///  An [event handler](crate::event_handler::EventHandler)`] that will request a sync from the lane.
