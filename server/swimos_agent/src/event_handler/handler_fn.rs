@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::HashMap;
-
 use crate::{
     agent_lifecycle::HandlerContext,
     lanes::http::{lifecycle::HttpRequestContext, Response, UnitResponse},
@@ -199,23 +197,23 @@ where
     }
 }
 
-pub trait MapRemoveFn<'a, Context, Shared, K, V> {
+pub trait MapRemoveFn<'a, Context, Shared, K, V, M> {
     type Handler: EventHandler<Context> + 'a;
 
     fn make_handler(
         &'a self,
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
-        map: &HashMap<K, V>,
+        map: &M,
         key: K,
         prev_value: V,
     ) -> Self::Handler;
 }
 
-impl<'a, Context, Shared, K, V, F, H> MapRemoveFn<'a, Context, Shared, K, V> for F
+impl<'a, Context, Shared, K, V, M, F, H> MapRemoveFn<'a, Context, Shared, K, V, M> for F
 where
     H: EventHandler<Context> + 'a,
-    F: Fn(&'a Shared, HandlerContext<Context>, &HashMap<K, V>, K, V) -> H + 'a,
+    F: Fn(&'a Shared, HandlerContext<Context>, &M, K, V) -> H + 'a,
     Shared: 'a,
 {
     type Handler = H;
@@ -224,7 +222,7 @@ where
         &'a self,
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
-        map: &HashMap<K, V>,
+        map: &M,
         key: K,
         prev_value: V,
     ) -> Self::Handler {
@@ -232,24 +230,24 @@ where
     }
 }
 
-pub trait MapUpdateFn<'a, Context, Shared, K, V> {
+pub trait MapUpdateFn<'a, Context, Shared, K, V, M> {
     type Handler: EventHandler<Context> + 'a;
 
     fn make_handler(
         &'a self,
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
-        map: &HashMap<K, V>,
+        map: &M,
         key: K,
         prev_value: Option<V>,
         new_value: &V,
     ) -> Self::Handler;
 }
 
-impl<'a, Context, Shared, K, V, F, H> MapUpdateFn<'a, Context, Shared, K, V> for F
+impl<'a, Context, Shared, K, V, M, F, H> MapUpdateFn<'a, Context, Shared, K, V, M> for F
 where
     H: EventHandler<Context> + 'a,
-    F: Fn(&'a Shared, HandlerContext<Context>, &HashMap<K, V>, K, Option<V>, &V) -> H + 'a,
+    F: Fn(&'a Shared, HandlerContext<Context>, &M, K, Option<V>, &V) -> H + 'a,
     Shared: 'a,
 {
     type Handler = H;
@@ -258,7 +256,7 @@ where
         &'a self,
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
-        map: &HashMap<K, V>,
+        map: &M,
         key: K,
         prev_value: Option<V>,
         new_value: &V,
@@ -267,25 +265,25 @@ where
     }
 }
 
-pub trait MapUpdateBorrowFn<'a, Context, Shared, K, V, B: ?Sized> {
+pub trait MapUpdateBorrowFn<'a, Context, Shared, K, V, M, B: ?Sized> {
     type Handler: EventHandler<Context> + 'a;
 
     fn make_handler(
         &'a self,
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
-        map: &HashMap<K, V>,
+        map: &M,
         key: K,
         prev_value: Option<V>,
         new_value: &B,
     ) -> Self::Handler;
 }
 
-impl<'a, Context, Shared, K, V, B, F, H> MapUpdateBorrowFn<'a, Context, Shared, K, V, B> for F
+impl<'a, Context, Shared, K, V, M, B, F, H> MapUpdateBorrowFn<'a, Context, Shared, K, V, M, B> for F
 where
     B: ?Sized,
     H: EventHandler<Context> + 'a,
-    F: Fn(&'a Shared, HandlerContext<Context>, &HashMap<K, V>, K, Option<V>, &B) -> H + 'a,
+    F: Fn(&'a Shared, HandlerContext<Context>, &M, K, Option<V>, &B) -> H + 'a,
     Shared: 'a,
 {
     type Handler = H;
@@ -294,7 +292,7 @@ where
         &'a self,
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
-        map: &HashMap<K, V>,
+        map: &M,
         key: K,
         prev_value: Option<V>,
         new_value: &B,

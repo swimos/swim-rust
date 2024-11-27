@@ -20,7 +20,7 @@ use swimos_model::Text;
 use swimos_utilities::routing::RouteUri;
 
 use crate::{
-    agent_lifecycle::item_event::{tests::run_handler, HLeaf, ItemEvent, MapBranch, MapLeaf},
+    agent_lifecycle::item_event::{tests::run_handler, HLeaf, ItemEvent},
     event_handler::{ActionContext, HandlerAction, StepResult},
     lanes::map::{
         lifecycle::{on_clear::OnClear, on_remove::OnRemove, on_update::OnUpdate},
@@ -28,6 +28,12 @@ use crate::{
     },
     meta::AgentMetadata,
 };
+
+use super::MapLikeBranch;
+
+type MapLeaf<Context, K, V, M, LC> = MapBranch<Context, K, V, M, LC, HLeaf, HLeaf>;
+type MapBranch<Context, K, V, M, LC, L, R> =
+    MapLikeBranch<Context, K, V, M, MapLane<K, V, M>, LC, L, R>;
 
 struct TestAgent {
     first: MapLane<i32, i32>,
@@ -248,7 +254,7 @@ impl<K, V> FakeLifecycle<K, V> {
     }
 }
 
-impl<K, V> OnUpdate<K, V, TestAgent> for FakeLifecycle<K, V>
+impl<K, V> OnUpdate<K, V, HashMap<K, V>, TestAgent> for FakeLifecycle<K, V>
 where
     K: Clone + Send + 'static,
     V: Clone + Send + 'static,
@@ -268,7 +274,7 @@ where
     }
 }
 
-impl<K, V> OnRemove<K, V, TestAgent> for FakeLifecycle<K, V>
+impl<K, V> OnRemove<K, V, HashMap<K, V>, TestAgent> for FakeLifecycle<K, V>
 where
     K: Clone + Send + 'static,
     V: Clone + Send + 'static,
@@ -287,7 +293,7 @@ where
     }
 }
 
-impl<K, V> OnClear<K, V, TestAgent> for FakeLifecycle<K, V>
+impl<K, V> OnClear<HashMap<K, V>, TestAgent> for FakeLifecycle<K, V>
 where
     K: Clone + Send + 'static,
     V: Clone + Send + 'static,

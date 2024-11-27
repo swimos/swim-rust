@@ -18,7 +18,7 @@ use std::hash::Hash;
 use swimos_agent_protocol::MapOperation;
 use swimos_agent_protocol::StoreResponse;
 
-use crate::map_storage::MapEventQueue;
+use crate::map_storage::{MapEventQueue, MapOps};
 
 /// Keeps track of what changes to the state of the map need to be reported as events.
 #[derive(Debug)]
@@ -119,9 +119,14 @@ where
     type Output<'a> = StoreResponse<MapOperation<K, &'a V>>
     where
         Self: 'a,
+        K: 'a,
         V: 'a;
 
-    fn pop<'a>(&mut self, content: &'a HashMap<K, V>) -> Option<Self::Output<'a>> {
+    fn pop<'a, M>(&mut self, content: &'a M) -> Option<Self::Output<'a>>
+    where
+        K: 'a,
+        M: MapOps<K, V>,
+    {
         loop {
             let action = EventQueue::pop(self)?;
             if let Some(op) = to_operation(content, action) {
@@ -133,9 +138,9 @@ where
 
 pub type Action<K> = MapOperation<K, ()>;
 
-pub fn to_operation<K, V>(content: &HashMap<K, V>, action: Action<K>) -> Option<MapOperation<K, &V>>
+pub fn to_operation<K, V, M>(content: &M, action: Action<K>) -> Option<MapOperation<K, &V>>
 where
-    K: Eq + Hash + Clone,
+    M: MapOps<K, V>,
 {
     match action {
         MapOperation::Update { key, .. } => content

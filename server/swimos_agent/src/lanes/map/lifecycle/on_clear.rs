@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::HashMap;
-
 use swimos_utilities::handlers::{FnHandler, NoHandler};
 
 use crate::{
@@ -22,19 +20,19 @@ use crate::{
 };
 
 /// Lifecycle event for the `on_clear` event of a map lane.
-pub trait OnClear<K, V, Context>: Send {
+pub trait OnClear<M, Context>: Send {
     type OnClearHandler<'a>: EventHandler<Context> + 'a
     where
         Self: 'a;
 
     /// # Arguments
     /// * `before` - The contents of the map before it was cleared.
-    fn on_clear(&self, before: HashMap<K, V>) -> Self::OnClearHandler<'_>;
+    fn on_clear(&self, before: M) -> Self::OnClearHandler<'_>;
 }
 
 /// Lifecycle event for the `on_clear` event of a map lane where the event handler
 /// has shared state with other handlers for the same agent.
-pub trait OnClearShared<K, V, Context, Shared>: Send {
+pub trait OnClearShared<M, Context, Shared>: Send {
     type OnClearHandler<'a>: EventHandler<Context> + 'a
     where
         Self: 'a,
@@ -48,21 +46,21 @@ pub trait OnClearShared<K, V, Context, Shared>: Send {
         &'a self,
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
-        before: HashMap<K, V>,
+        before: M,
     ) -> Self::OnClearHandler<'a>;
 }
 
-impl<K, V, Context> OnClear<K, V, Context> for NoHandler {
+impl<M, Context> OnClear<M, Context> for NoHandler {
     type OnClearHandler<'a> = UnitHandler
     where
         Self: 'a;
 
-    fn on_clear(&self, _before: HashMap<K, V>) -> Self::OnClearHandler<'_> {
+    fn on_clear(&self, _before: M) -> Self::OnClearHandler<'_> {
         UnitHandler::default()
     }
 }
 
-impl<K, V, Context, Shared> OnClearShared<K, V, Context, Shared> for NoHandler {
+impl<M, Context, Shared> OnClearShared<M, Context, Shared> for NoHandler {
     type OnClearHandler<'a> = UnitHandler
     where
         Self: 'a,
@@ -72,32 +70,32 @@ impl<K, V, Context, Shared> OnClearShared<K, V, Context, Shared> for NoHandler {
         &'a self,
         _shared: &'a Shared,
         _handler_context: HandlerContext<Context>,
-        _before: HashMap<K, V>,
+        _before: M,
     ) -> Self::OnClearHandler<'a> {
         UnitHandler::default()
     }
 }
 
-impl<K, V, Context, F, H> OnClear<K, V, Context> for FnHandler<F>
+impl<M, Context, F, H> OnClear<M, Context> for FnHandler<F>
 where
-    F: Fn(HashMap<K, V>) -> H + Send,
+    F: Fn(M) -> H + Send,
     H: EventHandler<Context> + 'static,
 {
     type OnClearHandler<'a> = H
     where
         Self: 'a;
 
-    fn on_clear(&self, before: HashMap<K, V>) -> Self::OnClearHandler<'_> {
+    fn on_clear(&self, before: M) -> Self::OnClearHandler<'_> {
         let FnHandler(f) = self;
         f(before)
     }
 }
 
-impl<K, V, Context, Shared, F> OnClearShared<K, V, Context, Shared> for FnHandler<F>
+impl<M, Context, Shared, F> OnClearShared<M, Context, Shared> for FnHandler<F>
 where
-    F: for<'a> TakeFn<'a, Context, Shared, HashMap<K, V>> + Send,
+    F: for<'a> TakeFn<'a, Context, Shared, M> + Send,
 {
-    type OnClearHandler<'a> = <F as TakeFn<'a, Context, Shared, HashMap<K, V>>>::Handler
+    type OnClearHandler<'a> = <F as TakeFn<'a, Context, Shared, M>>::Handler
     where
         Self: 'a,
         Shared: 'a;
@@ -106,7 +104,7 @@ where
         &'a self,
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
-        before: HashMap<K, V>,
+        before: M,
     ) -> Self::OnClearHandler<'a> {
         let FnHandler(f) = self;
         f.make_handler(shared, handler_context, before)

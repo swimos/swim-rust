@@ -192,9 +192,9 @@ where
 
 impl<K, V, Context, Shared, F> OnDownlinkUpdateShared<K, V, Context, Shared> for FnHandler<F>
 where
-    F: for<'a> MapUpdateFn<'a, Context, Shared, K, V> + Send,
+    F: for<'a> MapUpdateFn<'a, Context, Shared, K, V, HashMap<K, V>> + Send,
 {
-    type OnUpdateHandler<'a> = <F as MapUpdateFn<'a, Context, Shared, K, V>>::Handler
+    type OnUpdateHandler<'a> = <F as MapUpdateFn<'a, Context, Shared, K, V, HashMap<K, V>>>::Handler
     where
         Self: 'a,
         Shared: 'a;
@@ -218,9 +218,9 @@ impl<B, K, V, Context, Shared, F> OnDownlinkUpdateShared<K, V, Context, Shared>
 where
     B: ?Sized,
     V: Borrow<B>,
-    F: for<'a> MapUpdateBorrowFn<'a, Context, Shared, K, V, B> + Send,
+    F: for<'a> MapUpdateBorrowFn<'a, Context, Shared, K, V, HashMap<K, V>, B> + Send,
 {
-    type OnUpdateHandler<'a> = <F as MapUpdateBorrowFn<'a, Context, Shared, K, V, B>>::Handler
+    type OnUpdateHandler<'a> = <F as MapUpdateBorrowFn<'a, Context, Shared, K, V, HashMap<K, V>, B>>::Handler
     where
         Self: 'a,
         Shared: 'a;

@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::cmp::Ordering;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::marker::PhantomData;
-use std::{cmp::Ordering, collections::HashMap};
 
 use frunk::{Coprod, Coproduct};
 use futures::future::Either;
@@ -30,58 +30,52 @@ use crate::lanes::map::{
         on_update::{OnUpdate, OnUpdateShared},
         MapLaneLifecycle,
     },
-    MapLane, MapLaneEvent,
+    MapLaneEvent,
 };
-use crate::stores::MapStore;
+use crate::map_storage::MapOpsWithEntry;
 
 use super::{HLeaf, HTree, ItemEvent, ItemEventShared};
 
 #[cfg(test)]
 mod tests;
 
-pub type MapLeaf<Context, K, V, LC> = MapBranch<Context, K, V, LC, HLeaf, HLeaf>;
-pub type MapBranch<Context, K, V, LC, L, R> = MapLikeBranch<Context, K, V, MapLane<K, V>, LC, L, R>;
-
-pub type MapStoreLeaf<Context, K, V, LC> = MapStoreBranch<Context, K, V, LC, HLeaf, HLeaf>;
-pub type MapStoreBranch<Context, K, V, LC, L, R> =
-    MapLikeBranch<Context, K, V, MapStore<K, V>, LC, L, R>;
-
-pub type MapLifecycleHandler<'a, Context, K, V, LC> = Coprod!(
-    <LC as OnUpdate<K, V, Context>>::OnUpdateHandler<'a>,
-    <LC as OnRemove<K, V, Context>>::OnRemoveHandler<'a>,
-    <LC as OnClear<K, V, Context>>::OnClearHandler<'a>,
+pub type MapLifecycleHandler<'a, Context, K, V, M, LC> = Coprod!(
+    <LC as OnUpdate<K, V, M, Context>>::OnUpdateHandler<'a>,
+    <LC as OnRemove<K, V, M, Context>>::OnRemoveHandler<'a>,
+    <LC as OnClear<M, Context>>::OnClearHandler<'a>,
 );
 
-pub type MapLifecycleHandlerShared<'a, Context, Shared, K, V, LC> = Coprod!(
-    <LC as OnUpdateShared<K, V, Context, Shared>>::OnUpdateHandler<'a>,
-    <LC as OnRemoveShared<K, V, Context, Shared>>::OnRemoveHandler<'a>,
-    <LC as OnClearShared<K, V, Context, Shared>>::OnClearHandler<'a>,
+pub type MapLifecycleHandlerShared<'a, Context, Shared, K, V, M, LC> = Coprod!(
+    <LC as OnUpdateShared<K, V, M, Context, Shared>>::OnUpdateHandler<'a>,
+    <LC as OnRemoveShared<K, V, M, Context, Shared>>::OnRemoveHandler<'a>,
+    <LC as OnClearShared<M, Context, Shared>>::OnClearHandler<'a>,
 );
 
-type MapBranchHandler<'a, Context, K, V, LC, L, R> = Either<
+type MapBranchHandler<'a, Context, K, V, M, LC, L, R> = Either<
     <L as ItemEvent<Context>>::ItemEventHandler<'a>,
     Either<
-        MapLifecycleHandler<'a, Context, K, V, LC>,
+        MapLifecycleHandler<'a, Context, K, V, M, LC>,
         <R as ItemEvent<Context>>::ItemEventHandler<'a>,
     >,
 >;
 
-type MapBranchHandlerShared<'a, Context, Shared, K, V, LC, L, R> = Either<
+type MapBranchHandlerShared<'a, Context, Shared, K, V, M, LC, L, R> = Either<
     <L as ItemEventShared<Context, Shared>>::ItemEventHandler<'a>,
     Either<
-        MapLifecycleHandlerShared<'a, Context, Shared, K, V, LC>,
+        MapLifecycleHandlerShared<'a, Context, Shared, K, V, M, LC>,
         <R as ItemEventShared<Context, Shared>>::ItemEventHandler<'a>,
     >,
 >;
 
-fn map_handler<'a, Context, K, V, LC>(
-    event: MapLaneEvent<K, V>,
+fn map_handler<'a, Context, K, V, M, LC>(
+    event: MapLaneEvent<K, V, M>,
     lifecycle: &'a LC,
-    map: &HashMap<K, V>,
-) -> MapLifecycleHandler<'a, Context, K, V, LC>
+    map: &M,
+) -> MapLifecycleHandler<'a, Context, K, V, M, LC>
 where
     K: Hash + Eq,
-    LC: MapLaneLifecycle<K, V, Context>,
+    LC: MapLaneLifecycle<K, V, M, Context>,
+    M: MapOpsWithEntry<K, V, K>,
 {
     match event {
         MapLaneEvent::Update(k, old) => {
@@ -97,16 +91,17 @@ where
     }
 }
 
-fn map_handler_shared<'a, Context, Shared, K, V, LC>(
+fn map_handler_shared<'a, Context, Shared, K, V, M, LC>(
     shared: &'a Shared,
     handler_context: HandlerContext<Context>,
-    event: MapLaneEvent<K, V>,
+    event: MapLaneEvent<K, V, M>,
     lifecycle: &'a LC,
-    map: &HashMap<K, V>,
-) -> MapLifecycleHandlerShared<'a, Context, Shared, K, V, LC>
+    map: &M,
+) -> MapLifecycleHandlerShared<'a, Context, Shared, K, V, M, LC>
 where
     K: Hash + Eq,
-    LC: MapLaneLifecycleShared<K, V, Context, Shared>,
+    LC: MapLaneLifecycleShared<K, V, M, Context, Shared>,
+    M: MapOpsWithEntry<K, V, K>,
 {
     match event {
         MapLaneEvent::Update(k, old) => {
@@ -126,10 +121,10 @@ where
     }
 }
 
-type KeyValue<K, V> = fn((K, V)) -> (K, V);
+type MapKeyValue<M, K, V> = fn((&M, K, V)) -> (K, V);
 /// Map lane lifecycle as a branch node of an [`HTree`].
-pub struct MapLikeBranch<Context, K, V, Item, LC, L, R> {
-    _type: PhantomData<KeyValue<K, V>>,
+pub struct MapLikeBranch<Context, K, V, M, Item, LC, L, R> {
+    _type: PhantomData<MapKeyValue<M, K, V>>,
     label: &'static str,
     projection: fn(&Context) -> &Item,
     lifecycle: LC,
@@ -137,8 +132,8 @@ pub struct MapLikeBranch<Context, K, V, Item, LC, L, R> {
     right: R,
 }
 
-impl<Context, K, V, Item, LC: Clone, L: Clone, R: Clone> Clone
-    for MapLikeBranch<Context, K, V, Item, LC, L, R>
+impl<Context, K, V, M, Item, LC: Clone, L: Clone, R: Clone> Clone
+    for MapLikeBranch<Context, K, V, M, Item, LC, L, R>
 {
     fn clone(&self) -> Self {
         Self {
@@ -152,15 +147,15 @@ impl<Context, K, V, Item, LC: Clone, L: Clone, R: Clone> Clone
     }
 }
 
-impl<Context, K, V, Item, LC, L: HTree, R: HTree> HTree
-    for MapLikeBranch<Context, K, V, Item, LC, L, R>
+impl<Context, K, V, M, Item, LC, L: HTree, R: HTree> HTree
+    for MapLikeBranch<Context, K, V, M, Item, LC, L, R>
 {
     fn label(&self) -> Option<&'static str> {
         Some(self.label)
     }
 }
 
-impl<Context, K, V, Item, LC, L, R> Debug for MapLikeBranch<Context, K, V, Item, LC, L, R>
+impl<Context, K, V, M, Item, LC, L, R> Debug for MapLikeBranch<Context, K, V, M, Item, LC, L, R>
 where
     LC: Debug,
     L: Debug,
@@ -177,13 +172,13 @@ where
     }
 }
 
-impl<Context, K, V, Item, LC> MapLikeBranch<Context, K, V, Item, LC, HLeaf, HLeaf> {
+impl<Context, K, V, M, Item, LC> MapLikeBranch<Context, K, V, M, Item, LC, HLeaf, HLeaf> {
     pub fn leaf(label: &'static str, projection: fn(&Context) -> &Item, lifecycle: LC) -> Self {
         MapLikeBranch::new(label, projection, lifecycle, HLeaf, HLeaf)
     }
 }
 
-impl<Context, K, V, Item, LC, L, R> MapLikeBranch<Context, K, V, Item, LC, L, R>
+impl<Context, K, V, M, Item, LC, L, R> MapLikeBranch<Context, K, V, M, Item, LC, L, R>
 where
     L: HTree,
     R: HTree,
@@ -212,16 +207,17 @@ where
     }
 }
 
-impl<Context, K, V, Item, LC, L, R> ItemEvent<Context>
-    for MapLikeBranch<Context, K, V, Item, LC, L, R>
+impl<Context, K, V, M, Item, LC, L, R> ItemEvent<Context>
+    for MapLikeBranch<Context, K, V, M, Item, LC, L, R>
 where
     K: Clone + Eq + Hash,
-    Item: MapItem<K, V>,
-    LC: MapLaneLifecycle<K, V, Context>,
+    Item: MapItem<K, V, M>,
+    LC: MapLaneLifecycle<K, V, M, Context>,
     L: HTree + ItemEvent<Context>,
     R: HTree + ItemEvent<Context>,
+    M: MapOpsWithEntry<K, V, K>,
 {
-    type ItemEventHandler<'a> = MapBranchHandler<'a, Context, K, V, LC, L, R>
+    type ItemEventHandler<'a> = MapBranchHandler<'a, Context, K, V, M, LC, L, R>
     where
         Self: 'a;
 
@@ -253,16 +249,17 @@ where
     }
 }
 
-impl<Context, Shared, K, V, Item, LC, L, R> ItemEventShared<Context, Shared>
-    for MapLikeBranch<Context, K, V, Item, LC, L, R>
+impl<Context, Shared, K, V, M, Item, LC, L, R> ItemEventShared<Context, Shared>
+    for MapLikeBranch<Context, K, V, M, Item, LC, L, R>
 where
     K: Clone + Eq + Hash,
-    Item: MapItem<K, V>,
-    LC: MapLaneLifecycleShared<K, V, Context, Shared>,
+    Item: MapItem<K, V, M>,
+    LC: MapLaneLifecycleShared<K, V, M, Context, Shared>,
     L: HTree + ItemEventShared<Context, Shared>,
     R: HTree + ItemEventShared<Context, Shared>,
+    M: MapOpsWithEntry<K, V, K>,
 {
-    type ItemEventHandler<'a> = MapBranchHandlerShared<'a, Context, Shared, K, V, LC, L, R>
+    type ItemEventHandler<'a> = MapBranchHandlerShared<'a, Context, Shared, K, V, M, LC, L, R>
     where
         Self: 'a,
         Shared: 'a;

@@ -42,10 +42,7 @@ pub use demand_map::{
     DemandMapBranch, DemandMapLeaf, DemandMapLifecycleHandler, DemandMapLifecycleHandlerShared,
 };
 pub use http::{HttpBranch, HttpLeaf};
-pub use map::{
-    MapBranch, MapLeaf, MapLifecycleHandler, MapLifecycleHandlerShared, MapLikeBranch,
-    MapStoreBranch, MapStoreLeaf,
-};
+pub use map::{MapLifecycleHandler, MapLifecycleHandlerShared, MapLikeBranch};
 pub use value::{
     ValueBranch, ValueLeaf, ValueLifecycleHandler, ValueLifecycleHandlerShared, ValueLikeBranch,
     ValueStoreBranch, ValueStoreLeaf,

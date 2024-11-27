@@ -35,19 +35,19 @@ pub trait ValueItem<T>: AgentItem {
     fn init(&self, value: T);
 }
 
-pub trait MapItem<K, V>: AgentItem {
-    fn init(&self, map: HashMap<K, V>);
+pub trait MapItem<K, V, M = HashMap<K, V>>: AgentItem {
+    fn init(&self, map: M);
 
     fn read_with_prev<F, R>(&self, f: F) -> R
     where
-        F: FnOnce(Option<MapLaneEvent<K, V>>, &HashMap<K, V>) -> R;
+        F: FnOnce(Option<MapLaneEvent<K, V, M>>, &M) -> R;
 }
 
-pub trait MapLikeItem<K, V> {
+pub trait MapLikeItem<K, V, M = HashMap<K, V>> {
     type GetHandler<C>: HandlerAction<C, Completion = Option<V>> + Send + 'static
     where
         C: AgentDescription + 'static;
-    type GetMapHandler<C>: HandlerAction<C, Completion = HashMap<K, V>> + Send + 'static
+    type GetMapHandler<C>: HandlerAction<C, Completion = M> + Send + 'static
     where
         C: AgentDescription + 'static;
 
@@ -61,25 +61,21 @@ pub trait MapLikeItem<K, V> {
     ) -> Self::GetMapHandler<C>;
 }
 
-pub trait InspectableMapLikeItem<K, V> {
-    type WithEntryHandler<'a, C, F, B, U>: HandlerAction<C, Completion = U> + Send + 'a
+pub trait InspectableMapLikeItem<K, V: Borrow<B>, B: ?Sized + 'static> {
+    type WithEntryHandler<'a, C, F, U>: HandlerAction<C, Completion = U> + Send + 'a
     where
         Self: 'static,
         C: AgentDescription + 'a,
-        B: ?Sized + 'static,
-        V: Borrow<B>,
         F: FnOnce(Option<&B>) -> U + Send + 'a;
 
-    fn with_entry_handler<'a, C, F, B, U>(
+    fn with_entry_handler<'a, C, F, U>(
         projection: fn(&C) -> &Self,
         key: K,
         f: F,
-    ) -> Self::WithEntryHandler<'a, C, F, B, U>
+    ) -> Self::WithEntryHandler<'a, C, F, U>
     where
         Self: 'static,
         C: AgentDescription + 'a,
-        B: ?Sized + 'static,
-        V: Borrow<B>,
         F: FnOnce(Option<&B>) -> U + Send + 'a;
 }
 

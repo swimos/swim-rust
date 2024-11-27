@@ -170,7 +170,7 @@ impl<'a> LaneLifecycleBuilder<'a> {
                 ..
             }) => {
                 let mut builder: syn::Expr = parse_quote! {
-                    <#root::lanes::map::lifecycle::StatefulMapLaneLifecycle::<#agent_type, #lifecycle_type, _, _> as ::core::default::Default>::default()
+                    <#root::lanes::map::lifecycle::StatefulMapLaneLifecycle::<#agent_type, #lifecycle_type, _, _, _> as ::core::default::Default>::default()
                 };
                 if let Some(handler) = on_update {
                     builder = parse_quote! {

@@ -33,6 +33,7 @@ use tokio_util::codec::{Decoder, FramedRead, FramedWrite};
 
 use crate::item::{MapItem, ValueItem};
 use crate::lanes::{MapLane, ValueLane};
+use crate::map_storage::MapOps;
 use crate::stores::value::ValueStore;
 use crate::stores::MapStore;
 
@@ -163,23 +164,23 @@ impl<Agent, T> ValueStoreInitializer<Agent, T> {
 }
 
 /// [`ItemInitializer`] to construct the state of a map lane.
-pub struct MapLaneInitializer<Agent, K, V> {
-    projection: fn(&Agent) -> &MapLane<K, V>,
+pub struct MapLaneInitializer<Agent, K, V, M = HashMap<K, V>> {
+    projection: fn(&Agent) -> &MapLane<K, V, M>,
 }
 
-impl<Agent, K, V> MapLaneInitializer<Agent, K, V> {
-    pub fn new(projection: fn(&Agent) -> &MapLane<K, V>) -> Self {
+impl<Agent, K, V, M> MapLaneInitializer<Agent, K, V, M> {
+    pub fn new(projection: fn(&Agent) -> &MapLane<K, V, M>) -> Self {
         MapLaneInitializer { projection }
     }
 }
 
 /// [`ItemInitializer`] to construct the state of a map store.
-pub struct MapStoreInitializer<Agent, K, V> {
-    projection: fn(&Agent) -> &MapStore<K, V>,
+pub struct MapStoreInitializer<Agent, K, V, M = HashMap<K, V>> {
+    projection: fn(&Agent) -> &MapStore<K, V, M>,
 }
 
-impl<Agent, K, V> MapStoreInitializer<Agent, K, V> {
-    pub fn new(projection: fn(&Agent) -> &MapStore<K, V>) -> Self {
+impl<Agent, K, V, M> MapStoreInitializer<Agent, K, V, M> {
+    pub fn new(projection: fn(&Agent) -> &MapStore<K, V, M>) -> Self {
         MapStoreInitializer { projection }
     }
 }
@@ -238,7 +239,7 @@ where
     }
 }
 
-async fn map_like_init<Agent, Item, K, V, F>(
+async fn map_like_init<Agent, Item, K, V, M, F>(
     mut stream: BoxStream<'_, Result<MapMessage<BytesMut, BytesMut>, FrameIoError>>,
     projection: F,
 ) -> Result<InitFn<Agent>, FrameIoError>
@@ -246,8 +247,9 @@ where
     Agent: 'static,
     K: Eq + Hash + Ord + Clone + RecognizerReadable + Send + 'static,
     V: RecognizerReadable + Send + 'static,
-    Item: MapItem<K, V> + 'static,
+    Item: MapItem<K, V, M> + 'static,
     F: Fn(&Agent) -> &Item + Send + 'static,
+    M: MapOps<K, V>,
 {
     let mut key_decoder = RecognizerDecoder::new(K::make_recognizer());
     let mut value_decoder = RecognizerDecoder::new(V::make_recognizer());
@@ -293,20 +295,20 @@ where
             }
         }
     }
-    let map_init = map.into_iter().collect::<HashMap<_, _>>();
-    let f = move |agent: &Agent| projection(agent).init(map_init);
+    let f = move |agent: &Agent| projection(agent).init(M::from_entries(map));
     let f_init: InitFn<Agent> = Box::new(f);
     Ok(f_init)
 }
 
-impl<Agent, K, V> ItemInitializer<Agent, MapMessage<BytesMut, BytesMut>>
-    for MapLaneInitializer<Agent, K, V>
+impl<Agent, K, V, M> ItemInitializer<Agent, MapMessage<BytesMut, BytesMut>>
+    for MapLaneInitializer<Agent, K, V, M>
 where
     Agent: 'static,
     K: RecognizerReadable + Hash + Eq + Ord + Clone + Send + 'static,
     K::Rec: Send,
     V: RecognizerReadable + Send + 'static,
     V::Rec: Send,
+    M: MapOps<K, V> + 'static,
 {
     fn initialize(
         self: Box<Self>,
@@ -317,14 +319,15 @@ where
     }
 }
 
-impl<Agent, K, V> ItemInitializer<Agent, MapMessage<BytesMut, BytesMut>>
-    for MapStoreInitializer<Agent, K, V>
+impl<Agent, K, V, M> ItemInitializer<Agent, MapMessage<BytesMut, BytesMut>>
+    for MapStoreInitializer<Agent, K, V, M>
 where
     Agent: 'static,
     K: RecognizerReadable + Hash + Eq + Ord + Clone + Send + 'static,
     K::Rec: Send,
     V: RecognizerReadable + Send + 'static,
     V::Rec: Send,
+    M: MapOps<K, V> + 'static,
 {
     fn initialize(
         self: Box<Self>,
