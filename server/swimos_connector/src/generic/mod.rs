@@ -322,11 +322,11 @@ impl AgentSpec for ConnectorAgent {
 
 struct LaneSelector<'a, L> {
     map: Ref<'a, HashMap<String, L>>,
-    name: String,
+    name: &'a str,
 }
 
 impl<'a, L> LaneSelector<'a, L> {
-    fn new(map: Ref<'a, HashMap<String, L>>, name: String) -> Self {
+    fn new(map: Ref<'a, HashMap<String, L>>, name: &'a str) -> Self {
         LaneSelector { map, name }
     }
 }
@@ -336,11 +336,11 @@ impl<'a, L> Selector for LaneSelector<'a, L> {
 
     fn select(&self) -> Option<&Self::Target> {
         let LaneSelector { map, name } = self;
-        map.get(name.as_str())
+        map.get(*name)
     }
 
     fn name(&self) -> &str {
-        self.name.as_str()
+        self.name
     }
 }
 
@@ -365,10 +365,13 @@ impl SelectorFn<ConnectorAgent> for ValueLaneSelectorFn {
         &self.name
     }
 
-    fn selector(self, context: &ConnectorAgent) -> impl Selector<Target = Self::Target> + '_ {
+    fn selector<'a>(
+        &'a self,
+        context: &'a ConnectorAgent,
+    ) -> impl Selector<Target = Self::Target> + 'a {
         let ConnectorAgent { value_lanes, .. } = context;
         let map = value_lanes.borrow();
-        LaneSelector::new(map, self.name)
+        LaneSelector::new(map, &self.name)
     }
 }
 
@@ -389,10 +392,13 @@ impl MapLaneSelectorFn {
 impl SelectorFn<ConnectorAgent> for MapLaneSelectorFn {
     type Target = GenericMapLane;
 
-    fn selector(self, context: &ConnectorAgent) -> impl Selector<Target = Self::Target> + '_ {
+    fn selector<'a>(
+        &'a self,
+        context: &'a ConnectorAgent,
+    ) -> impl Selector<Target = Self::Target> + 'a {
         let ConnectorAgent { map_lanes, .. } = context;
         let map = map_lanes.borrow();
-        LaneSelector::new(map, self.name)
+        LaneSelector::new(map, &self.name)
     }
 
     fn name(&self) -> &str {
