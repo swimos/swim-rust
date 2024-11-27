@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::iter::once;
+
 use proc_macro2::TokenStream;
 use quote::{quote, ToTokens, TokenStreamExt};
 use swimos_utilities::errors::{Errors, Validation};
@@ -142,10 +144,15 @@ impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
 
         let deser_types = warp_lane_models
             .iter()
-            .map(|model| DecoderType(model.clone()).into_tokens(root));
+            .map(|model| {
+                let tokens = DecoderType(model.clone()).into_tokens(root);
+                let t: syn::Type = parse_quote!(#tokens);
+                t
+            })
+            .chain(once(parse_quote!(())));
         let deser_tup_type = quote!((#(#deser_types),*));
         let deser_inits =
-            (0..warp_lane_models.len()).map(|_| quote!(::core::default::Default::default()));
+            (0..=warp_lane_models.len()).map(|_| quote!(::core::default::Default::default()));
         let deser_init_statement = quote!((#(#deser_inits),*));
 
         let item_specs = item_models
@@ -487,16 +494,16 @@ impl<'a> HandlerType<'a> {
 
         match kind {
             WarpLaneSpec::Command(t) => {
-                quote!(#root::lanes::command::DecodeAndCommand<#agent_name, #t>)
+                quote!(#root::lanes::command::DecodeRefAndCommand<'a, #agent_name, #t>)
             }
             WarpLaneSpec::Value(t) => {
-                quote!(#root::lanes::value::DecodeAndSet<#agent_name, #t>)
+                quote!(#root::lanes::value::DecodeRefAndSet<'a, #agent_name, #t>)
             }
             WarpLaneSpec::Map(k, v, m) => {
                 if let Some(map_t) = m {
-                    quote!(#root::lanes::map::DecodeAndApply<#agent_name, #k, #v, #map_t>)
+                    quote!(#root::lanes::map::DecodeRefAndApply<'a, #agent_name, #k, #v, #map_t>)
                 } else {
-                    quote!(#root::lanes::map::DecodeAndApply<#agent_name, #k, #v>)
+                    quote!(#root::lanes::map::DecodeRefAndApply<'a, #agent_name, #k, #v>)
                 }
             }
             WarpLaneSpec::Demand(_)
@@ -611,26 +618,31 @@ impl<'a> WarpLaneHandlerMatch<'a> {
     fn into_tokens(self, root: &syn::Path) -> impl ToTokens {
         let WarpLaneHandlerMatch {
             group_ordinal,
-            model: OrdinalWarpLaneModel {
-                agent_name, model, ..
-            },
+            model:
+                OrdinalWarpLaneModel {
+                    agent_name,
+                    model,
+                    lane_ordinal,
+                    ..
+                },
         } = self;
+        let index = syn::Index::from(lane_ordinal);
         let name_lit = model.literal();
         let WarpLaneModel { name, kind, .. } = model;
         let handler_base: syn::Expr = parse_quote!(handler);
         let coprod_con = coproduct_constructor(root, handler_base, group_ordinal);
         let lane_handler_expr = match kind {
             WarpLaneSpec::Command(ty) => {
-                quote!(#root::lanes::command::decode_and_command::<#agent_name, #ty>(body, |agent: &#agent_name| &agent.#name))
+                quote!(#root::lanes::command::decode_ref_and_command::<#agent_name, #ty>(&mut deserializers.#index, body, |agent: &#agent_name| &agent.#name))
             }
             WarpLaneSpec::Value(ty) => {
-                quote!(#root::lanes::value::decode_and_set::<#agent_name, #ty>(body, |agent: &#agent_name| &agent.#name))
+                quote!(#root::lanes::value::decode_ref_and_set::<#agent_name, #ty>(&mut deserializers.#index, body, |agent: &#agent_name| &agent.#name))
             }
             WarpLaneSpec::Map(k, v, m) => {
                 if let Some(map_t) = m {
-                    quote!(#root::lanes::map::decode_and_apply::<#agent_name, #k, #v, #map_t>(body, |agent: &#agent_name| &agent.#name))
+                    quote!(#root::lanes::map::decode_ref_and_apply::<#agent_name, #k, #v, #map_t>(&mut deserializers.#index, body, |agent: &#agent_name| &agent.#name))
                 } else {
-                    quote!(#root::lanes::map::decode_and_apply::<#agent_name, #k, #v, _>(body, |agent: &#agent_name| &agent.#name))
+                    quote!(#root::lanes::map::decode_ref_and_apply::<#agent_name, #k, #v, _>(&mut deserializers.#index, body, |agent: &#agent_name| &agent.#name))
                 }
             }
             WarpLaneSpec::Demand(_)

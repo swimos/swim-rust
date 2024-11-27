@@ -835,6 +835,11 @@ impl<'a, T: RecognizerReadable, Context> HandlerAction<Context>
 
 pub type DecodeAndApply<C, K, V, M = HashMap<K, V>> =
     AndThen<DecodeMapMessage<K, V>, MapLaneHandler<C, K, V, M>, ProjTransform<C, MapLane<K, V, M>>>;
+pub type DecodeRefAndApply<'a, C, K, V, M = HashMap<K, V>> = AndThen<
+    DecodeMapMessageRef<'a, K, V>,
+    MapLaneHandler<C, K, V, M>,
+    ProjTransform<C, MapLane<K, V, M>>,
+>;
 
 /// Create an event handler that will decode an incoming map message and apply the value into a map lane.
 pub fn decode_and_apply<C, K, V, M>(
@@ -848,6 +853,24 @@ where
     M: MapOps<K, V>,
 {
     let decode: DecodeMapMessage<K, V> = DecodeMapMessage::new(message);
+    decode.and_then(ProjTransform::new(projection))
+}
+
+/// Create an event handler that will decode an incoming map message and apply the value into a map lane.
+pub fn decode_ref_and_apply<'a, C, K, V, M>(
+    decoders: &'a mut (ReconDecoder<K>, ReconDecoder<V>),
+    message: MapMessage<BytesMut, BytesMut>,
+    projection: fn(&C) -> &MapLane<K, V, M>,
+) -> DecodeRefAndApply<'a, C, K, V, M>
+where
+    C: AgentDescription,
+    K: Form + Clone + Eq + Hash,
+    V: RecognizerReadable,
+    M: MapOps<K, V>,
+{
+    let (key_decoder, value_decoder) = decoders;
+    let decode: DecodeMapMessageRef<'a, K, V> =
+        DecodeMapMessageRef::new(key_decoder, value_decoder, message);
     decode.and_then(ProjTransform::new(projection))
 }
 

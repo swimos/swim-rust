@@ -277,7 +277,7 @@ pub mod lanes {
     #[doc(hidden)]
     pub mod command {
 
-        pub use swimos_agent::lanes::command::{decode_and_command, DecodeAndCommand};
+        pub use swimos_agent::lanes::command::{decode_ref_and_command, DecodeRefAndCommand};
         pub mod lifecycle {
             pub use swimos_agent::lanes::command::lifecycle::StatefulCommandLaneLifecycle;
         }
@@ -303,7 +303,7 @@ pub mod lanes {
 
     #[doc(hidden)]
     pub mod value {
-        pub use swimos_agent::lanes::value::{decode_and_set, DecodeAndSet, ValueLaneSync};
+        pub use swimos_agent::lanes::value::{decode_ref_and_set, DecodeRefAndSet, ValueLaneSync};
         pub mod lifecycle {
             pub use swimos_agent::lanes::value::lifecycle::StatefulValueLaneLifecycle;
         }
@@ -311,7 +311,7 @@ pub mod lanes {
 
     #[doc(hidden)]
     pub mod map {
-        pub use swimos_agent::lanes::map::{decode_and_apply, DecodeAndApply, MapLaneSync};
+        pub use swimos_agent::lanes::map::{decode_ref_and_apply, DecodeRefAndApply, MapLaneSync};
         pub mod lifecycle {
             pub use swimos_agent::lanes::map::lifecycle::StatefulMapLaneLifecycle;
         }
