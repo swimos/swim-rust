@@ -74,6 +74,8 @@ mod test_util;
 #[cfg(test)]
 mod tests;
 
+use std::fmt::Debug;
+
 #[cfg(test)]
 pub use agent_model::AgentSpec;
 
@@ -84,6 +86,9 @@ pub use meta::AgentMetadata;
 
 #[doc(hidden)]
 pub use map_storage::MapBacking;
+use swimos_form::read::RecognizerReadable;
+use swimos_recon::parser::{AsyncParseError, RecognizerDecoder};
+use tokio_util::codec::Decoder;
 
 #[doc(hidden)]
 pub mod model {
@@ -105,5 +110,46 @@ pub mod reexport {
 
     pub mod uuid {
         pub use uuid::Uuid;
+    }
+}
+
+#[doc(hidden)]
+pub struct ReconDecoder<T: RecognizerReadable> {
+    decoder: RecognizerDecoder<T::Rec>,
+}
+
+impl<T: RecognizerReadable> Default for ReconDecoder<T> {
+    fn default() -> Self {
+        Self {
+            decoder: RecognizerDecoder::new(T::make_recognizer()),
+        }
+    }
+}
+
+impl<T> Debug for ReconDecoder<T>
+where
+    T: RecognizerReadable,
+    T::Rec: Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ReconDecoder")
+            .field("decoder", &self.decoder)
+            .finish()
+    }
+}
+
+impl<T: RecognizerReadable> Decoder for ReconDecoder<T> {
+    type Item = T;
+
+    type Error = AsyncParseError;
+
+    fn decode(&mut self, src: &mut bytes::BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        self.decoder.decode(src)
+    }
+}
+
+impl<T: RecognizerReadable> ReconDecoder<T> {
+    pub fn reset(&mut self) {
+        self.decoder.reset();
     }
 }

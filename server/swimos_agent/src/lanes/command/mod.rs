@@ -31,6 +31,7 @@ use crate::{
     },
     item::AgentItem,
     meta::AgentMetadata,
+    ReconDecoder,
 };
 
 use super::{LaneItem, ProjTransform};
@@ -157,15 +158,16 @@ impl<C, T> HandlerTrans<T> for ProjTransform<C, CommandLane<T>> {
     }
 }
 
-pub type DecodeAndCommand<C, T> =
-    AndThen<Decode<T>, DoCommand<C, T>, ProjTransform<C, CommandLane<T>>>;
+pub type DecodeAndCommand<'a, C, T> =
+    AndThen<Decode<'a, T>, DoCommand<C, T>, ProjTransform<C, CommandLane<T>>>;
 
 /// Create an event handler that will decode an incoming command and apply it to a command lane.
 pub fn decode_and_command<C: AgentDescription, T: RecognizerReadable>(
+    decoder: &mut ReconDecoder<T>,
     buffer: BytesMut,
     projection: fn(&C) -> &CommandLane<T>,
 ) -> DecodeAndCommand<C, T> {
-    let decode: Decode<T> = Decode::new(buffer);
+    let decode: Decode<T> = Decode::new(decoder, buffer);
     decode.and_then(ProjTransform::new(projection))
 }
 

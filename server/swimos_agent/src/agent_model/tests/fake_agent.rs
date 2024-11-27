@@ -168,9 +168,13 @@ impl AgentDescription for TestAgent {
 }
 
 impl AgentSpec for TestAgent {
-    type ValCommandHandler = TestHandler;
+    type ValCommandHandler<'a> = TestHandler
+    where
+        Self: 'a;
 
-    type MapCommandHandler = TestHandler;
+    type MapCommandHandler<'a> = TestHandler
+    where
+        Self: 'a;
 
     type OnSyncHandler = TestHandler;
 
@@ -219,7 +223,12 @@ impl AgentSpec for TestAgent {
         lanes
     }
 
-    fn on_value_command(&self, lane: &str, body: BytesMut) -> Option<Self::ValCommandHandler> {
+    fn on_value_command<'a>(
+        &self,
+        _: &'a mut (),
+        lane: &str,
+        body: BytesMut,
+    ) -> Option<Self::ValCommandHandler<'a>> {
         match lane {
             VAL_LANE => Some(
                 TestEvent::Value {
@@ -264,11 +273,12 @@ impl AgentSpec for TestAgent {
         None
     }
 
-    fn on_map_command(
+    fn on_map_command<'a>(
         &self,
+        _: &'a mut (),
         lane: &str,
         body: MapMessage<BytesMut, BytesMut>,
-    ) -> Option<Self::MapCommandHandler> {
+    ) -> Option<Self::MapCommandHandler<'a>> {
         match lane {
             MAP_LANE => Some(
                 TestEvent::Map {
@@ -426,6 +436,10 @@ impl AgentSpec for TestAgent {
             Err(DynamicRegistrationError::DuplicateName(name.to_string()))
         }
     }
+
+    type Deserializers = ();
+
+    fn initialize_deserializers(&self) -> Self::Deserializers {}
 }
 
 impl HandlerAction<TestAgent> for TestHandler {

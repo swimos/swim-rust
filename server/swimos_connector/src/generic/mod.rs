@@ -32,11 +32,11 @@ use swimos_agent::{
     },
     event_handler::{ActionContext, HandlerAction, StepResult, UnitHandler},
     lanes::{
-        map::{decode_and_select_apply, DecodeAndSelectApply, MapLaneSelectSync},
+        map::{decode_shared_and_select_apply, DecodeSharedAndSelectApply, MapLaneSelectSync},
         value::{decode_and_select_set, DecodeAndSelectSet, ValueLaneSelectSync},
         LaneItem, MapLane, Selector, SelectorFn, ValueLane,
     },
-    AgentItem, AgentMetadata,
+    AgentItem, AgentMetadata, ReconDecoder,
 };
 use swimos_agent_protocol::MapMessage;
 use swimos_api::{
@@ -62,8 +62,8 @@ pub struct ConnectorAgent {
     flags: Cell<u64>,
 }
 
-type ValueHandler = DecodeAndSelectSet<ConnectorAgent, Value, ValueLaneSelectorFn>;
-type MapHandler = DecodeAndSelectApply<ConnectorAgent, Value, Value, MapLaneSelectorFn>;
+type ValueHandler<'a> = DecodeAndSelectSet<'a, ConnectorAgent, Value, ValueLaneSelectorFn>;
+type MapHandler<'a> = DecodeSharedAndSelectApply<'a, ConnectorAgent, Value, MapLaneSelectorFn>;
 type ValueSync = ValueLaneSelectSync<ConnectorAgent, Value, ValueLaneSelectorFn>;
 type MapSync = MapLaneSelectSync<ConnectorAgent, Value, Value, MapLaneSelectorFn>;
 
@@ -174,22 +174,45 @@ impl AgentDescription for ConnectorAgent {
     }
 }
 
-impl AgentSpec for ConnectorAgent {
-    type ValCommandHandler = ValueHandler;
+/// A single deserializer for [`Value`] objects, shared between all lanes of a [`ConnectorAgent`].
+#[derive(Default)]
+pub struct GenericDeserializer {
+    value_deser: ReconDecoder<Value>,
+}
 
-    type MapCommandHandler = MapHandler;
+impl AgentSpec for ConnectorAgent {
+    type ValCommandHandler<'a> = ValueHandler<'a>
+    where
+        Self: 'a;
+
+    type MapCommandHandler<'a> = MapHandler<'a>
+    where
+        Self: 'a;
 
     type OnSyncHandler = Coprod!(ValueSync, MapSync);
 
     type HttpRequestHandler = UnitHandler;
 
+    type Deserializers = GenericDeserializer;
+
+    fn initialize_deserializers(&self) -> Self::Deserializers {
+        GenericDeserializer::default()
+    }
+
     fn item_specs() -> HashMap<&'static str, ItemSpec> {
         HashMap::new()
     }
 
-    fn on_value_command(&self, lane: &str, body: BytesMut) -> Option<Self::ValCommandHandler> {
+    fn on_value_command<'a>(
+        &self,
+        deserializers: &'a mut GenericDeserializer,
+        lane: &str,
+        body: BytesMut,
+    ) -> Option<Self::ValCommandHandler<'a>> {
+        let GenericDeserializer { value_deser } = deserializers;
         if self.value_lanes.borrow().contains_key(lane) {
             Some(decode_and_select_set(
+                value_deser,
                 body,
                 ValueLaneSelectorFn::new(lane.to_string()),
             ))
@@ -212,13 +235,16 @@ impl AgentSpec for ConnectorAgent {
         None
     }
 
-    fn on_map_command(
+    fn on_map_command<'a>(
         &self,
+        deserializers: &'a mut GenericDeserializer,
         lane: &str,
         body: MapMessage<BytesMut, BytesMut>,
-    ) -> Option<Self::MapCommandHandler> {
+    ) -> Option<Self::MapCommandHandler<'a>> {
+        let GenericDeserializer { value_deser } = deserializers;
         if self.map_lanes.borrow().contains_key(lane) {
-            Some(decode_and_select_apply(
+            Some(decode_shared_and_select_apply(
+                value_deser,
                 body,
                 MapLaneSelectorFn::new(lane.to_string()),
             ))

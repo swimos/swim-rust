@@ -121,6 +121,7 @@ where
 {
     let agent = A::default();
     let expected = specs.into_iter().collect::<HashMap<_, _>>();
+    let mut deserializers = agent.initialize_deserializers();
 
     assert_eq!(A::item_specs(), expected);
 
@@ -130,17 +131,25 @@ where
         match descriptor {
             ItemDescriptor::WarpLane { kind, .. } => {
                 if kind.map_like() {
-                    assert!(agent.on_map_command(name, MapMessage::Clear).is_some());
+                    assert!(agent
+                        .on_map_command(&mut deserializers, name, MapMessage::Clear)
+                        .is_some());
                     assert!(agent.on_sync(name, SYNC_ID).is_some());
                 } else {
-                    assert!(agent.on_value_command(name, get_i32_buffer(4)).is_some());
+                    assert!(agent
+                        .on_value_command(&mut deserializers, name, get_i32_buffer(4))
+                        .is_some());
                     assert!(agent.on_sync(name, SYNC_ID).is_some());
                 }
             }
             ItemDescriptor::Store { .. } => {
-                assert!(agent.on_map_command(name, MapMessage::Clear).is_none());
+                assert!(agent
+                    .on_map_command(&mut deserializers, name, MapMessage::Clear)
+                    .is_none());
                 assert!(agent.on_sync(name, SYNC_ID).is_none());
-                assert!(agent.on_value_command(name, get_i32_buffer(4)).is_none());
+                assert!(agent
+                    .on_value_command(&mut deserializers, name, get_i32_buffer(4))
+                    .is_none());
                 assert!(agent.on_sync(name, SYNC_ID).is_none());
             }
             ItemDescriptor::Http => {
