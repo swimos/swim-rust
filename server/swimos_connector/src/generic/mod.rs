@@ -194,7 +194,7 @@ impl AgentSpec for ConnectorAgent {
 
     type Deserializers = GenericDeserializer;
 
-    fn initializer_deserializers(&self) -> Self::Deserializers {
+    fn initialize_deserializers(&self) -> Self::Deserializers {
         GenericDeserializer::default()
     }
 

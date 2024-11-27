@@ -285,7 +285,7 @@ fn with_map_lane(agent: &ConnectorAgent, f: impl FnOnce(&GenericMapLane)) {
 #[test]
 fn value_lane_command() {
     let agent = ConnectorAgent::default();
-    let mut deserializers = agent.initializer_deserializers();
+    let mut deserializers = agent.initialize_deserializers();
     let (val_id, _) = init(&agent);
     let handler = agent
         .on_value_command(&mut deserializers, "value_lane", to_buffer(Value::from(45)))
@@ -332,7 +332,7 @@ fn value_lane_sync() {
 #[test]
 fn map_lane_command() {
     let agent = ConnectorAgent::default();
-    let mut deserializers = agent.initializer_deserializers();
+    let mut deserializers = agent.initialize_deserializers();
     let (_, map_id) = init(&agent);
     let handler = agent
         .on_map_command(

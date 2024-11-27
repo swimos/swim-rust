@@ -439,7 +439,7 @@ impl AgentSpec for TestAgent {
 
     type Deserializers = ();
 
-    fn initializer_deserializers(&self) -> Self::Deserializers {}
+    fn initialize_deserializers(&self) -> Self::Deserializers {}
 }
 
 impl HandlerAction<TestAgent> for TestHandler {

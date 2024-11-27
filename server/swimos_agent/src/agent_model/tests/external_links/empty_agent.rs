@@ -51,7 +51,7 @@ impl AgentSpec for EmptyAgent {
 
     type Deserializers = ();
 
-    fn initializer_deserializers(&self) -> Self::Deserializers {}
+    fn initialize_deserializers(&self) -> Self::Deserializers {}
 
     fn item_specs() -> HashMap<&'static str, ItemSpec> {
         HashMap::new()

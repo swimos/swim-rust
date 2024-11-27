@@ -244,7 +244,7 @@ impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
 
                 type Deserializers = #deser_tup_type;
 
-                fn initializer_deserializers(&self) -> Self::Deserializers {
+                fn initialize_deserializers(&self) -> Self::Deserializers {
                     #deser_init_statement
                 }
 

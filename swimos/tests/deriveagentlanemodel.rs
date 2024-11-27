@@ -121,7 +121,7 @@ where
 {
     let agent = A::default();
     let expected = specs.into_iter().collect::<HashMap<_, _>>();
-    let mut deserializers = agent.initializer_deserializers();
+    let mut deserializers = agent.initialize_deserializers();
 
     assert_eq!(A::item_specs(), expected);
 

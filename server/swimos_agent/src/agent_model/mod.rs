@@ -221,7 +221,7 @@ pub trait AgentSpec: AgentDescription + Sized + Send {
 
     type Deserializers: Send + 'static;
 
-    fn initializer_deserializers(&self) -> Self::Deserializers;
+    fn initialize_deserializers(&self) -> Self::Deserializers;
 
     /// The names and flags of all items (lanes and stores) in the agent.
     fn item_specs() -> HashMap<&'static str, ItemSpec>;
@@ -1231,7 +1231,7 @@ where
             let add_commander = |address: Address<Text>| cmd_ids.borrow_mut().get_request(&address);
             let add_link = (add_downlink, add_commander);
             let add_lane = NoDynLanes;
-            let mut deserializers = item_model.initializer_deserializers();
+            let mut deserializers = item_model.initialize_deserializers();
 
             // Calling run_handler is very verbose so is pulled out into this macro to make the code easier to read.
             macro_rules! exec_handler {
