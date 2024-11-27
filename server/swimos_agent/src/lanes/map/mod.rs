@@ -777,6 +777,65 @@ impl<'a, K: RecognizerReadable, V: RecognizerReadable, Context> HandlerAction<Co
     }
 }
 
+pub struct DecodeMapMessageSharedRef<'a, T: RecognizerReadable> {
+    decoder: &'a mut RecognizerDecoder<T::Rec>,
+    message: Option<MapMessage<BytesMut, BytesMut>>,
+}
+
+impl<'a, T: RecognizerReadable> DecodeMapMessageSharedRef<'a, T> {
+    pub fn new(
+        decoder: &'a mut RecognizerDecoder<T::Rec>,
+        message: MapMessage<BytesMut, BytesMut>,
+    ) -> Self {
+        DecodeMapMessageSharedRef {
+            decoder,
+            message: Some(message),
+        }
+    }
+}
+
+impl<'a, T: RecognizerReadable, Context> HandlerAction<Context>
+    for DecodeMapMessageSharedRef<'a, T>
+{
+    type Completion = MapMessage<T, T>;
+
+    fn step(
+        &mut self,
+        _action_context: &mut ActionContext<Context>,
+        _meta: AgentMetadata,
+        _context: &Context,
+    ) -> StepResult<Self::Completion> {
+        let DecodeMapMessageSharedRef { decoder, message } = self;
+        if let Some(message) = message.take() {
+            match message {
+                MapMessage::Update { key, value } => {
+                    decoder.reset();
+                    match try_with_decoder::<T>(decoder, key).and_then(|k| {
+                        decoder.reset();
+                        try_with_decoder::<T>(decoder, value)
+                            .map(|v| (MapMessage::Update { key: k, value: v }))
+                    }) {
+                        Ok(msg) => StepResult::done(msg),
+                        Err(e) => StepResult::Fail(e),
+                    }
+                }
+                MapMessage::Remove { key } => {
+                    decoder.reset();
+                    match try_with_decoder::<T>(decoder, key) {
+                        Ok(k) => StepResult::done(MapMessage::Remove { key: k }),
+                        Err(e) => StepResult::Fail(e),
+                    }
+                }
+                MapMessage::Clear => StepResult::done(MapMessage::Clear),
+                MapMessage::Take(n) => StepResult::done(MapMessage::Take(n)),
+                MapMessage::Drop(n) => StepResult::done(MapMessage::Drop(n)),
+            }
+        } else {
+            StepResult::after_done()
+        }
+    }
+}
+
 pub type DecodeAndApply<C, K, V, M = HashMap<K, V>> =
     AndThen<DecodeMapMessage<K, V>, MapLaneHandler<C, K, V, M>, ProjTransform<C, MapLane<K, V, M>>>;
 
@@ -1213,10 +1272,65 @@ where
     }
 }
 
+pub type DecodeAndSelectApply<C, K, V, F> =
+    DecodeWithAndSelectApply<DecodeMapMessage<K, V>, C, K, V, F>;
+pub type DecodeRefAndSelectApply<'a, C, K, V, F> =
+    DecodeWithAndSelectApply<DecodeMapMessageRef<'a, K, V>, C, K, V, F>;
+pub type DecodeSharedRefAndSelectApply<'a, C, T, F> =
+    DecodeWithAndSelectApply<DecodeMapMessageSharedRef<'a, T>, C, T, T, F>;
+
+/// Create an event handler that will decode an incoming map message and apply the value into a map lane.
+pub fn decode_and_select_apply<C, K, V, M, F>(
+    message: MapMessage<BytesMut, BytesMut>,
+    projection: F,
+) -> DecodeAndSelectApply<C, K, V, F>
+where
+    K: Clone + Eq + Hash + RecognizerReadable,
+    V: RecognizerReadable,
+    F: SelectorFn<C, Target = MapLane<K, V, M>>,
+    M: MapOps<K, V>,
+{
+    let decode: DecodeMapMessage<K, V> = DecodeMapMessage::new(message);
+    DecodeAndSelectApply::Decoding(decode, projection)
+}
+
+/// Create an event handler that will decode an incoming map message and apply the value into a map lane.
+pub fn decode_ref_and_select_apply<'a, C, K, V, M, F>(
+    key_decoder: &'a mut RecognizerDecoder<K::Rec>,
+    value_decoder: &'a mut RecognizerDecoder<V::Rec>,
+    message: MapMessage<BytesMut, BytesMut>,
+    projection: F,
+) -> DecodeRefAndSelectApply<'a, C, K, V, F>
+where
+    K: Clone + Eq + Hash + RecognizerReadable,
+    V: RecognizerReadable,
+    F: SelectorFn<C, Target = MapLane<K, V, M>>,
+    M: MapOps<K, V>,
+{
+    let decode: DecodeMapMessageRef<K, V> =
+        DecodeMapMessageRef::new(key_decoder, value_decoder, message);
+    DecodeRefAndSelectApply::Decoding(decode, projection)
+}
+
+/// Create an event handler that will decode an incoming map message and apply the value into a map lane.
+pub fn decode_shared_ref_and_select_apply<C, T, M, F>(
+    decoder: &mut RecognizerDecoder<T::Rec>,
+    message: MapMessage<BytesMut, BytesMut>,
+    projection: F,
+) -> DecodeSharedRefAndSelectApply<'_, C, T, F>
+where
+    T: Clone + Eq + Hash + RecognizerReadable,
+    F: SelectorFn<C, Target = MapLane<T, T, M>>,
+    M: MapOps<T, T>,
+{
+    let decode: DecodeMapMessageSharedRef<T> = DecodeMapMessageSharedRef::new(decoder, message);
+    DecodeSharedRefAndSelectApply::Decoding(decode, projection)
+}
+
 #[derive(Default)]
 #[doc(hidden)]
-pub enum DecodeAndSelectApply<C, K, V, F> {
-    Decoding(DecodeMapMessage<K, V>, F),
+pub enum DecodeWithAndSelectApply<H, C, K, V, F> {
+    Decoding(H, F),
     Updating(MapLaneSelectUpdate<C, K, V, F>),
     Removing(MapLaneSelectRemove<C, K, V, F>),
     Clearing(MapLaneSelectClear<C, K, V, F>),
@@ -1225,8 +1339,9 @@ pub enum DecodeAndSelectApply<C, K, V, F> {
     Done,
 }
 
-impl<C, K, V, F, M> HandlerAction<C> for DecodeAndSelectApply<C, K, V, F>
+impl<H, C, K, V, F, M> HandlerAction<C> for DecodeWithAndSelectApply<H, C, K, V, F>
 where
+    H: HandlerAction<C, Completion = MapMessage<K, V>>,
     C: AgentDescription,
     K: Form + Clone + Eq + Hash,
     V: RecognizerReadable,
@@ -1242,10 +1357,10 @@ where
         context: &C,
     ) -> StepResult<Self::Completion> {
         match std::mem::take(self) {
-            DecodeAndSelectApply::Decoding(mut decoding, selector) => {
+            DecodeWithAndSelectApply::Decoding(mut decoding, selector) => {
                 match decoding.step(action_context, meta, context) {
                     StepResult::Continue { modified_item } => {
-                        *self = DecodeAndSelectApply::Decoding(decoding, selector);
+                        *self = DecodeWithAndSelectApply::Decoding(decoding, selector);
                         StepResult::Continue { modified_item }
                     }
                     StepResult::Fail(err) => StepResult::Fail(err),
@@ -1255,27 +1370,27 @@ where
                     } => {
                         match result {
                             MapMessage::Update { key, value } => {
-                                *self = DecodeAndSelectApply::Updating(MapLaneSelectUpdate::new(
-                                    selector, key, value,
-                                ));
+                                *self = DecodeWithAndSelectApply::Updating(
+                                    MapLaneSelectUpdate::new(selector, key, value),
+                                );
                             }
                             MapMessage::Remove { key } => {
-                                *self = DecodeAndSelectApply::Removing(MapLaneSelectRemove::new(
-                                    selector, key,
-                                ));
+                                *self = DecodeWithAndSelectApply::Removing(
+                                    MapLaneSelectRemove::new(selector, key),
+                                );
                             }
                             MapMessage::Clear => {
-                                *self = DecodeAndSelectApply::Clearing(MapLaneSelectClear::new(
-                                    selector,
-                                ));
+                                *self = DecodeWithAndSelectApply::Clearing(
+                                    MapLaneSelectClear::new(selector),
+                                );
                             }
                             MapMessage::Drop(n) => {
-                                *self = DecodeAndSelectApply::DroppingOrTaking(
+                                *self = DecodeWithAndSelectApply::DroppingOrTaking(
                                     MapLaneSelectDropOrTake::new(selector, DropOrTake::Drop, n),
                                 );
                             }
                             MapMessage::Take(n) => {
-                                *self = DecodeAndSelectApply::DroppingOrTaking(
+                                *self = DecodeWithAndSelectApply::DroppingOrTaking(
                                     MapLaneSelectDropOrTake::new(selector, DropOrTake::Take, n),
                                 );
                             }
@@ -1284,87 +1399,72 @@ where
                     }
                 }
             }
-            DecodeAndSelectApply::Updating(mut selector) => {
+            DecodeWithAndSelectApply::Updating(mut selector) => {
                 let result = selector.step(action_context, meta, context);
                 if result.is_cont() {
-                    *self = DecodeAndSelectApply::Updating(selector);
+                    *self = DecodeWithAndSelectApply::Updating(selector);
                 }
                 result
             }
-            DecodeAndSelectApply::Removing(mut selector) => {
+            DecodeWithAndSelectApply::Removing(mut selector) => {
                 let result = selector.step(action_context, meta, context);
                 if result.is_cont() {
-                    *self = DecodeAndSelectApply::Removing(selector);
+                    *self = DecodeWithAndSelectApply::Removing(selector);
                 }
                 result
             }
-            DecodeAndSelectApply::Clearing(mut selector) => {
+            DecodeWithAndSelectApply::Clearing(mut selector) => {
                 let result = selector.step(action_context, meta, context);
                 if result.is_cont() {
-                    *self = DecodeAndSelectApply::Clearing(selector);
+                    *self = DecodeWithAndSelectApply::Clearing(selector);
                 }
                 result
             }
-            DecodeAndSelectApply::DroppingOrTaking(mut selector) => {
+            DecodeWithAndSelectApply::DroppingOrTaking(mut selector) => {
                 let result = selector.step(action_context, meta, context);
                 if result.is_cont() {
-                    *self = DecodeAndSelectApply::DroppingOrTaking(selector);
+                    *self = DecodeWithAndSelectApply::DroppingOrTaking(selector);
                 }
                 result
             }
-            DecodeAndSelectApply::Done => StepResult::after_done(),
+            DecodeWithAndSelectApply::Done => StepResult::after_done(),
         }
     }
 
     fn describe(&self, context: &C, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         match self {
-            DecodeAndSelectApply::Decoding(decode_map_message, proj) => f
-                .debug_struct("DecodeAndSelectApply")
+            DecodeWithAndSelectApply::Decoding(decode_map_message, proj) => f
+                .debug_struct("DecodeWithAndSelectApply")
                 .field("state", &"Decoding")
                 .field("decoder", &Described::new(context, decode_map_message))
                 .field("lane_name", &proj.name())
                 .finish(),
-            DecodeAndSelectApply::Updating(selector) => f
-                .debug_struct("DecodeAndSelectApply")
+            DecodeWithAndSelectApply::Updating(selector) => f
+                .debug_struct("DecodeWithAndSelectApply")
                 .field("state", &"Updating")
                 .field("selector", &Described::new(context, selector))
                 .finish(),
-            DecodeAndSelectApply::Removing(selector) => f
-                .debug_struct("DecodeAndSelectApply")
+            DecodeWithAndSelectApply::Removing(selector) => f
+                .debug_struct("DecodeWithAndSelectApply")
                 .field("state", &"Removing")
                 .field("selector", &Described::new(context, selector))
                 .finish(),
-            DecodeAndSelectApply::Clearing(selector) => f
-                .debug_struct("DecodeAndSelectApply")
+            DecodeWithAndSelectApply::Clearing(selector) => f
+                .debug_struct("DecodeWithAndSelectApply")
                 .field("state", &"Clearing")
                 .field("selector", &Described::new(context, selector))
                 .finish(),
-            DecodeAndSelectApply::DroppingOrTaking(selector) => f
-                .debug_struct("DecodeAndSelectApply")
+            DecodeWithAndSelectApply::DroppingOrTaking(selector) => f
+                .debug_struct("DecodeWithAndSelectApply")
                 .field("state", &"DroppingOrTaking")
                 .field("selector", &Described::new(context, selector))
                 .finish(),
-            DecodeAndSelectApply::Done => f
-                .debug_tuple("DecodeAndSelectSet")
+            DecodeWithAndSelectApply::Done => f
+                .debug_tuple("DecodeWithAndSelectApply")
                 .field(&"<<CONSUMED>>")
                 .finish(),
         }
     }
-}
-
-/// Create an event handler that will decode an incoming map message and apply the value into a map lane.
-pub fn decode_and_select_apply<C, K, V, M, F>(
-    message: MapMessage<BytesMut, BytesMut>,
-    projection: F,
-) -> DecodeAndSelectApply<C, K, V, F>
-where
-    K: Clone + Eq + Hash + RecognizerReadable,
-    V: RecognizerReadable,
-    F: SelectorFn<C, Target = MapLane<K, V, M>>,
-    M: MapOps<K, V>,
-{
-    let decode: DecodeMapMessage<K, V> = DecodeMapMessage::new(message);
-    DecodeAndSelectApply::Decoding(decode, projection)
 }
 
 type SelectType<C, K, V> = fn(&C) -> (&K, &V);

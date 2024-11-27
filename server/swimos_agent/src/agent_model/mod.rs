@@ -204,12 +204,12 @@ pub trait AgentDescription {
 /// although it will not provided any lifecycle events for the agent or its lanes.
 pub trait AgentSpec: AgentDescription + Sized + Send {
     /// The type of handler to run when a command is received for a value lane.
-    type ValCommandHandler<'a>: HandlerAction<Self, Completion = ()> + Send + 'static
+    type ValCommandHandler<'a>: HandlerAction<Self, Completion = ()> + Send + 'a
     where
         Self: 'a;
 
     /// The type of handler to run when a command is received for a map lane.
-    type MapCommandHandler<'a>: HandlerAction<Self, Completion = ()> + Send + 'static
+    type MapCommandHandler<'a>: HandlerAction<Self, Completion = ()> + Send + 'a
     where
         Self: 'a;
 

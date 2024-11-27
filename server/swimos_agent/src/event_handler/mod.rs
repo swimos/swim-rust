@@ -1342,11 +1342,11 @@ impl<Context, T: RecognizerReadable> HandlerAction<Context> for Decode<T> {
 
 pub struct DecodeRef<'a, T: RecognizerReadable> {
     decoder: Option<&'a mut RecognizerDecoder<T::Rec>>,
-    buffer: &'a mut BytesMut,
+    buffer: BytesMut,
 }
 
 impl<'a, T: RecognizerReadable> DecodeRef<'a, T> {
-    pub fn new(decoder: &'a mut RecognizerDecoder<T::Rec>, buffer: &'a mut BytesMut) -> Self {
+    pub fn new(decoder: &'a mut RecognizerDecoder<T::Rec>, buffer: BytesMut) -> Self {
         DecodeRef {
             decoder: Some(decoder),
             buffer,
