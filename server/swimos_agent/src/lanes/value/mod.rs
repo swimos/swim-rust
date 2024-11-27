@@ -595,18 +595,18 @@ where
     ) -> Result<(), std::fmt::Error> {
         match self {
             DecodeAndSelectSet::Decoding(decode, proj) => f
-                .debug_struct("DecodeRefAndSelectSet")
+                .debug_struct("DecodeAndSelectSet")
                 .field("state", &"Decoding")
                 .field("decoder", &Described::new(context, decode))
                 .field("lane_name", &proj.name())
                 .finish(),
             DecodeAndSelectSet::Selecting(selector) => f
-                .debug_struct("DecodeRefAndSelectSet")
+                .debug_struct("DecodeAndSelectSet")
                 .field("state", &"Selecting")
                 .field("selector", &Described::new(context, selector))
                 .finish(),
             DecodeAndSelectSet::Done => f
-                .debug_tuple("DecodeRefAndSelectSet")
+                .debug_tuple("DecodeAndSelectSet")
                 .field(&"<<CONSUMED>>")
                 .finish(),
         }
