@@ -47,12 +47,14 @@ use crate::stores::{MapStore, ValueStore};
 use crate::test_context::{NO_DOWNLINKS, NO_DYN_LANES};
 use parking_lot::Mutex;
 use swimos_agent_derive::{lifecycle, AgentLaneModel};
+use swimos_api::address::Address;
 use swimos_api::agent::DownlinkKind;
 use swimos_api::error::{DownlinkRuntimeError, OpenStoreError};
 use swimos_api::{
     agent::{AgentConfig, HttpLaneRequest, HttpResponseReceiver, StoreKind, WarpLaneKind},
     http::{Header, HttpRequest, HttpResponse, Method, StandardHeaderName, StatusCode, Version},
 };
+use swimos_form::Form;
 use swimos_model::Text;
 use swimos_recon::print_recon_compact;
 use swimos_utilities::routing::RouteUri;
@@ -1576,9 +1578,12 @@ fn remove_join_value<K, V>(
     key: K,
     projection: fn(&TestAgent) -> &JoinValueLane<K, V>,
 ) where
-    K: Clone + Eq + Hash,
+    K: Clone + Eq + Hash + Send + 'static,
+    V: Form + Send + 'static,
+    V::Rec: Send,
 {
-    let handler = AfterClosed::new(projection, key, LinkClosedResponse::Delete);
+    let addr = Address::text(None, "/node", "lane");
+    let handler = AfterClosed::new(projection, &addr, key, LinkClosedResponse::Delete);
     let id = projection(agent).id();
     run_handler_mod(agent, handler, Some(Modification::of(id)));
 }
