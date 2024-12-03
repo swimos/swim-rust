@@ -218,6 +218,20 @@ where
             .field("cued", &key.is_none())
             .finish()
     }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        true
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, context: &Context, mut hasher: &mut dyn std::hash::Hasher) {
+        use std::{any::TypeId, hash::Hash};
+
+        let lane = (self.projection)(context);
+        TypeId::of::<CueKey<(), (), ()>>().hash(&mut hasher);
+        hasher.write_u64(lane.id());
+    }
 }
 
 pub struct DemandMapLaneSync<Context, K, V> {
@@ -565,6 +579,32 @@ where
                 .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
                 .field("state", &"Done")
                 .finish(),
+        }
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        match &self.inner {
+            DemandMapInner::GettingKeys(h) => h.has_identity(),
+            DemandMapInner::CueingKey(_, h, _) => h.has_identity(),
+            DemandMapInner::Complete(_) => true,
+            _ => false,
+        }
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, context: &Context, mut hasher: &mut dyn std::hash::Hasher) {
+        use std::{any::TypeId, hash::Hash};
+
+        match &self.inner {
+            DemandMapInner::GettingKeys(h) => h.identity_hash(context, hasher),
+            DemandMapInner::CueingKey(_, h, _) => h.identity_hash(context, hasher),
+            DemandMapInner::Complete(_) => {
+                let lane = (self.projection)(context);
+                TypeId::of::<CueKey<(), (), ()>>().hash(&mut hasher);
+                hasher.write_u64(lane.id());
+            }
+            _ => {}
         }
     }
 }
