@@ -607,6 +607,26 @@ where
             }
         }
     }
+
+    fn has_identity(&self) -> bool {
+        match &self.inner {
+            HttpLifecycleHandlerInner::Get(_, h) => h.has_identity(),
+            HttpLifecycleHandlerInner::Head(_, h) => h.has_identity(),
+            HttpLifecycleHandlerInner::Post(h) => h.has_identity(),
+            HttpLifecycleHandlerInner::Put(h) => h.has_identity(),
+            HttpLifecycleHandlerInner::Delete(h) => h.has_identity(),
+        }
+    }
+
+    fn identity_hash(&self, context: &Context, hasher: &mut dyn std::hash::Hasher) {
+        match &self.inner {
+            HttpLifecycleHandlerInner::Get(_, h) => h.identity_hash(context, hasher),
+            HttpLifecycleHandlerInner::Head(_, h) => h.identity_hash(context, hasher),
+            HttpLifecycleHandlerInner::Post(h) => h.identity_hash(context, hasher),
+            HttpLifecycleHandlerInner::Put(h) => h.identity_hash(context, hasher),
+            HttpLifecycleHandlerInner::Delete(h) => h.identity_hash(context, hasher),
+        }
+    }
 }
 
 fn not_supported() -> RawHttpLaneResponse {
@@ -892,6 +912,26 @@ where
                     .field("handler", &Described::new(context, handler))
                     .finish(),
             }
+        }
+    }
+
+    fn has_identity(&self) -> bool {
+        match &self.inner {
+            HttpLifecycleHandlerSharedInner::Get(_, h) => h.has_identity(),
+            HttpLifecycleHandlerSharedInner::Head(_, h) => h.has_identity(),
+            HttpLifecycleHandlerSharedInner::Post(h) => h.has_identity(),
+            HttpLifecycleHandlerSharedInner::Put(h) => h.has_identity(),
+            HttpLifecycleHandlerSharedInner::Delete(h) => h.has_identity(),
+        }
+    }
+
+    fn identity_hash(&self, context: &Context, hasher: &mut dyn std::hash::Hasher) {
+        match &self.inner {
+            HttpLifecycleHandlerSharedInner::Get(_, h) => h.identity_hash(context, hasher),
+            HttpLifecycleHandlerSharedInner::Head(_, h) => h.identity_hash(context, hasher),
+            HttpLifecycleHandlerSharedInner::Post(h) => h.identity_hash(context, hasher),
+            HttpLifecycleHandlerSharedInner::Put(h) => h.identity_hash(context, hasher),
+            HttpLifecycleHandlerSharedInner::Delete(h) => h.identity_hash(context, hasher),
         }
     }
 }
