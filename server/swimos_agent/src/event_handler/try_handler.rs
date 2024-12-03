@@ -17,6 +17,8 @@ use std::any::type_name;
 use crate::{event_handler::Described, AgentMetadata};
 
 use super::{ActionContext, EventHandlerError, HandlerAction, StepResult};
+#[cfg(feature = "diverge-check")]
+use std::hash::Hasher;
 
 /// An alternative view of a [`HandlerAction`] that produces a [`Result`]. This trait is a
 /// convenience that makes type inference easier for combinators that rely on
@@ -128,6 +130,16 @@ where
             .field(&Described::new(context, handler))
             .finish()
     }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        self.0.has_identity()
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, hasher: &mut dyn Hasher) {
+        self.0.identity_hash(hasher);
+    }
 }
 
 /// Type that is returned by the `and_then_ok` method on the [`TryHandlerActionExt`] trait.
@@ -237,6 +249,24 @@ where
                 .field("error_type", &type_name::<H1::Error>())
                 .field("state", &"Done")
                 .finish(),
+        }
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        match self {
+            AndThenOk::First { first, .. } => first.has_identity(),
+            AndThenOk::Second(second) => second.has_identity(),
+            AndThenOk::Done => false,
+        }
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, hasher: &mut dyn Hasher) {
+        match self {
+            AndThenOk::First { first, .. } => first.identity_hash(hasher),
+            AndThenOk::Second(second) => second.identity_hash(hasher),
+            AndThenOk::Done => {}
         }
     }
 }

@@ -107,4 +107,19 @@ where
                 .finish()
         }
     }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        self.body.is_some()
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, mut hasher: &mut dyn std::hash::Hasher) {
+        use std::{any::TypeId, hash::Hash};
+
+        if let Some(Body { address, .. }) = &self.body {
+            TypeId::of::<SendCommand<&'static str, ()>>().hash(&mut hasher);
+            address.borrow_parts().hash(&mut hasher);
+        }
+    }
 }

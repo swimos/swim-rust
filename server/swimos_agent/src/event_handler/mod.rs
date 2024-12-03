@@ -22,6 +22,8 @@ use std::{
 use bytes::BytesMut;
 use frunk::{coproduct::CNil, Coproduct};
 use static_assertions::assert_obj_safe;
+#[cfg(feature = "diverge-check")]
+use std::hash::{Hash, Hasher};
 use swimos_agent_protocol::{encoding::command::CommandMessageEncoder, CommandMessage};
 use swimos_api::{
     address::Address,
@@ -343,6 +345,14 @@ pub trait HandlerAction<Context> {
     fn describe(&self, context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         f.debug_tuple("OpaqueHandler").finish()
     }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        false
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, _hasher: &mut dyn Hasher) {}
 }
 
 /// A [`HandlerAction`] that does not produce a result.
@@ -383,6 +393,16 @@ where
     fn describe(&self, context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         (**self).describe(context, f)
     }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        (**self).has_identity()
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, hasher: &mut dyn Hasher) {
+        (**self).identity_hash(hasher);
+    }
 }
 
 impl<H: ?Sized, Context> HandlerAction<Context> for Box<H>
@@ -402,6 +422,16 @@ where
 
     fn describe(&self, context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         (**self).describe(context, f)
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        (**self).has_identity()
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, hasher: &mut dyn Hasher) {
+        (**self).identity_hash(hasher);
     }
 }
 
@@ -814,6 +844,18 @@ where
         }
         dbg.field("result_type", &type_name::<T>()).finish()
     }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        self.0.is_some()
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, hasher: &mut dyn Hasher) {
+        if let Map(Some((h, _))) = self {
+            h.identity_hash(hasher);
+        }
+    }
 }
 
 /// Utility type with a [`std::fmt::Debug`] implementation that calls the [`HandlerAction::describe`] method
@@ -909,6 +951,24 @@ where
             AndThenContextual::Done => f.debug_tuple("AndThenContextual").field(&CONSUMED).finish(),
         }
     }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        match self {
+            AndThenContextual::First { first, .. } => first.has_identity(),
+            AndThenContextual::Second(second) => second.has_identity(),
+            AndThenContextual::Done => false,
+        }
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, hasher: &mut dyn Hasher) {
+        match self {
+            AndThenContextual::First { first, .. } => first.identity_hash(hasher),
+            AndThenContextual::Second(second) => second.identity_hash(hasher),
+            AndThenContextual::Done => {}
+        }
+    }
 }
 
 impl<Context, H1, H2, F> HandlerAction<Context> for AndThen<H1, H2, F>
@@ -975,6 +1035,24 @@ where
                 .field("result_type", &type_name::<H2::Completion>())
                 .finish(),
             AndThen::Done => f.debug_tuple("AndThen").field(&CONSUMED).finish(),
+        }
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        match self {
+            AndThen::First { first, .. } => first.has_identity(),
+            AndThen::Second(second) => second.has_identity(),
+            AndThen::Done => false,
+        }
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, hasher: &mut dyn Hasher) {
+        match self {
+            AndThen::First { first, .. } => first.identity_hash(hasher),
+            AndThen::Second(second) => second.identity_hash(hasher),
+            AndThen::Done => {}
         }
     }
 }
@@ -1049,6 +1127,24 @@ where
             AndThenTry::Done => f.debug_tuple("AndThenTry").field(&CONSUMED).finish(),
         }
     }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        match self {
+            AndThenTry::First { first, .. } => first.has_identity(),
+            AndThenTry::Second(second) => second.has_identity(),
+            AndThenTry::Done => false,
+        }
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, hasher: &mut dyn Hasher) {
+        match self {
+            AndThenTry::First { first, .. } => first.identity_hash(hasher),
+            AndThenTry::Second(second) => second.identity_hash(hasher),
+            AndThenTry::Done => {}
+        }
+    }
 }
 
 impl<Context, H1, H2> HandlerAction<Context> for FollowedBy<H1, H2>
@@ -1114,6 +1210,24 @@ where
                 .field("result_type", &type_name::<H2::Completion>())
                 .finish(),
             FollowedBy::Done => f.debug_tuple("FollowedBy").field(&CONSUMED).finish(),
+        }
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        match self {
+            FollowedBy::First { first, .. } => first.has_identity(),
+            FollowedBy::Second(second) => second.has_identity(),
+            FollowedBy::Done => false,
+        }
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, hasher: &mut dyn Hasher) {
+        match self {
+            FollowedBy::First { first, .. } => first.identity_hash(hasher),
+            FollowedBy::Second(second) => second.identity_hash(hasher),
+            FollowedBy::Done => {}
         }
     }
 }
@@ -1211,6 +1325,22 @@ where
                 .finish(),
         }
     }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        match self {
+            Coproduct::Inl(h) => h.has_identity(),
+            Coproduct::Inr(h) => h.has_identity(),
+        }
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, hasher: &mut dyn Hasher) {
+        match self {
+            Coproduct::Inl(h) => h.identity_hash(hasher),
+            Coproduct::Inr(h) => h.identity_hash(hasher),
+        }
+    }
 }
 
 /// An event handler that will get the agent instance metadata.
@@ -1239,6 +1369,17 @@ impl<Context> HandlerAction<Context> for GetAgentUri {
 
     fn describe(&self, _context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         f.debug_tuple("GetAgentUri").finish()
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        true
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, mut hasher: &mut dyn Hasher) {
+        let id = TypeId::of::<GetAgentUri>();
+        id.hash(&mut hasher);
     }
 }
 
@@ -1279,6 +1420,20 @@ impl<Context, S: AsRef<str>> HandlerAction<Context> for GetParameter<S> {
             CONSUMED
         };
         f.debug_tuple("GetParameter").field(&body).finish()
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        self.key.is_some()
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, mut hasher: &mut dyn Hasher) {
+        if let Some(s) = &self.key {
+            let id = TypeId::of::<GetParameter<&'static str>>();
+            id.hash(&mut hasher);
+            hasher.write(s.as_ref().as_bytes());
+        }
     }
 }
 
@@ -1367,6 +1522,22 @@ where
                 .field(&"R")
                 .field(&Described::new(context, h))
                 .finish(),
+        }
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        match self {
+            Either::Left(h) => h.has_identity(),
+            Either::Right(h) => h.has_identity(),
+        }
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, hasher: &mut dyn Hasher) {
+        match self {
+            Either::Left(h) => h.identity_hash(hasher),
+            Either::Right(h) => h.identity_hash(hasher),
         }
     }
 }
@@ -1559,6 +1730,21 @@ where
             Sequentially::Done => f.debug_tuple("Sequentially").field(&CONSUMED).finish(),
         }
     }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        match self {
+            Sequentially::Running(_, h) => h.has_identity(),
+            _ => false,
+        }
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, hasher: &mut dyn Hasher) {
+        if let Sequentially::Running(_, h) = self {
+            h.identity_hash(hasher)
+        }
+    }
 }
 
 /// Event handler that runs another handler and discards its result.
@@ -1589,6 +1775,16 @@ impl<Context, H: HandlerAction<Context>> HandlerAction<Context> for Discard<H> {
         f.debug_tuple("Discard")
             .field(&Described::new(context, h))
             .finish()
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        self.0.has_identity()
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, hasher: &mut dyn Hasher) {
+        self.0.identity_hash(hasher);
     }
 }
 
@@ -1645,6 +1841,18 @@ where
                 .field("defined", &false)
                 .field("inner_type", &type_name::<H>())
                 .finish(),
+        }
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        self.is_some()
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, hasher: &mut dyn Hasher) {
+        if let Some(h) = self {
+            h.identity_hash(hasher);
         }
     }
 }
@@ -1714,6 +1922,16 @@ impl<Context> HandlerAction<Context> for Stop {
 
     fn describe(&self, _context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         f.debug_tuple("Stop").finish()
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        true
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, mut hasher: &mut dyn Hasher) {
+        self.type_id().hash(&mut hasher);
     }
 }
 
@@ -1807,6 +2025,24 @@ where
                 .field("first_handler_type", &type_name::<H1>())
                 .field("second_handler_type", &type_name::<H2>())
                 .finish(),
+        }
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        match &self.state {
+            JoinState::Init(h, _) => h.has_identity(),
+            JoinState::FirstDone(_, h) => h.has_identity(),
+            JoinState::AfterDone => false,
+        }
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, hasher: &mut dyn Hasher) {
+        match &self.state {
+            JoinState::Init(h, _) => h.identity_hash(hasher),
+            JoinState::FirstDone(_, h) => h.identity_hash(hasher),
+            JoinState::AfterDone => {}
         }
     }
 }
@@ -1942,6 +2178,26 @@ where
                 .finish(),
         }
     }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        match &self.state {
+            Join3State::Init(h, _, _) => h.has_identity(),
+            Join3State::FirstDone(_, h, _) => h.has_identity(),
+            Join3State::SecondDone(_, _, h) => h.has_identity(),
+            Join3State::AfterDone => false,
+        }
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, hasher: &mut dyn Hasher) {
+        match &self.state {
+            Join3State::Init(h, _, _) => h.identity_hash(hasher),
+            Join3State::FirstDone(_, h, _) => h.identity_hash(hasher),
+            Join3State::SecondDone(_, _, h) => h.identity_hash(hasher),
+            Join3State::AfterDone => {}
+        }
+    }
 }
 
 /// An event handler that fails with the provided error.
@@ -1984,6 +2240,16 @@ where
             .field("dummy_type", &type_name::<T>())
             .field("error", error)
             .finish()
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        true
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, mut hasher: &mut dyn Hasher) {
+        TypeId::of::<E>().hash(&mut hasher);
     }
 }
 
@@ -2060,6 +2326,20 @@ impl<Context> HandlerAction<Context> for ScheduleTimerEvent {
     fn describe(&self, _context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         write!(f, "{:?}", self)
     }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        self.at.is_some()
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, mut hasher: &mut dyn Hasher) {
+        if let ScheduleTimerEvent { at: Some(at), id } = self {
+            self.type_id().hash(&mut hasher);
+            at.hash(&mut hasher);
+            hasher.write_u64(*id);
+        }
+    }
 }
 
 /// Adds an annotation to an event handler. This will be visible in the description message for
@@ -2103,5 +2383,15 @@ where
             .field("annotation", annotation)
             .field("handler", &Described::new(context, handler))
             .finish()
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        self.handler.has_identity()
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, mut hasher: &mut dyn Hasher) {
+        self.handler.identity_hash(&mut hasher);
     }
 }

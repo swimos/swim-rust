@@ -9,8 +9,9 @@ repository = "https://github.com/swimos/swim-rust/tree/main/server/swimos_agent"
 homepage.workspace = true
 
 [features]
-default = ["json"]
+default = ["json", "diverge-check"]
 json = ["dep:serde", "dep:serde_json"]
+diverge-check = []
 
 [dependencies]
 futures = { workspace = true }

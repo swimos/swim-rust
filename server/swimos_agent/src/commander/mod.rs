@@ -140,6 +140,21 @@ impl<Context> HandlerAction<Context> for RegisterCommander {
             .field(&self.address)
             .finish()
     }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        self.address.is_some()
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, mut hasher: &mut dyn Hasher) {
+        use std::any::Any;
+
+        if let Some(addr) = &self.address {
+            self.type_id().hash(&mut hasher);
+            addr.hash(&mut hasher);
+        }
+    }
 }
 
 /// A [handler action](HandlerAction) to send a command to a lane that has been registered with
@@ -197,5 +212,21 @@ impl<T: StructuralWritable, Context> HandlerAction<Context> for SendCommandById<
             .field("overwrite_permitted", overwrite_permitted)
             .field("consumed", &body.is_none())
             .finish()
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        self.body.is_some()
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, mut hasher: &mut dyn Hasher) {
+        use std::any::TypeId;
+        let SendCommandById { id, body, .. } = self;
+
+        if body.is_some() {
+            TypeId::of::<SendCommandById<()>>().hash(&mut hasher);
+            hasher.write_u16(*id);
+        }
     }
 }
