@@ -147,7 +147,7 @@ impl<Context> HandlerAction<Context> for RegisterCommander {
     }
 
     #[cfg(feature = "diverge-check")]
-    fn identity_hash(&self, mut hasher: &mut dyn Hasher) {
+    fn identity_hash(&self, _context: &Context, mut hasher: &mut dyn Hasher) {
         use std::any::Any;
 
         if let Some(addr) = &self.address {
@@ -220,7 +220,7 @@ impl<T: StructuralWritable, Context> HandlerAction<Context> for SendCommandById<
     }
 
     #[cfg(feature = "diverge-check")]
-    fn identity_hash(&self, mut hasher: &mut dyn Hasher) {
+    fn identity_hash(&self, _context: &Context, mut hasher: &mut dyn Hasher) {
         use std::any::TypeId;
         let SendCommandById { id, body, .. } = self;
 

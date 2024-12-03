@@ -352,7 +352,8 @@ pub trait HandlerAction<Context> {
     }
 
     #[cfg(feature = "diverge-check")]
-    fn identity_hash(&self, _hasher: &mut dyn Hasher) {}
+    #[allow(unused_variables)]
+    fn identity_hash(&self, context: &Context, hasher: &mut dyn Hasher) {}
 }
 
 /// A [`HandlerAction`] that does not produce a result.
@@ -400,8 +401,8 @@ where
     }
 
     #[cfg(feature = "diverge-check")]
-    fn identity_hash(&self, hasher: &mut dyn Hasher) {
-        (**self).identity_hash(hasher);
+    fn identity_hash(&self, context: &Context, hasher: &mut dyn Hasher) {
+        (**self).identity_hash(context, hasher);
     }
 }
 
@@ -430,8 +431,8 @@ where
     }
 
     #[cfg(feature = "diverge-check")]
-    fn identity_hash(&self, hasher: &mut dyn Hasher) {
-        (**self).identity_hash(hasher);
+    fn identity_hash(&self, context: &Context, hasher: &mut dyn Hasher) {
+        (**self).identity_hash(context, hasher);
     }
 }
 
@@ -851,9 +852,9 @@ where
     }
 
     #[cfg(feature = "diverge-check")]
-    fn identity_hash(&self, hasher: &mut dyn Hasher) {
+    fn identity_hash(&self, context: &Context, hasher: &mut dyn Hasher) {
         if let Map(Some((h, _))) = self {
-            h.identity_hash(hasher);
+            h.identity_hash(context, hasher);
         }
     }
 }
@@ -962,10 +963,10 @@ where
     }
 
     #[cfg(feature = "diverge-check")]
-    fn identity_hash(&self, hasher: &mut dyn Hasher) {
+    fn identity_hash(&self, context: &Context, hasher: &mut dyn Hasher) {
         match self {
-            AndThenContextual::First { first, .. } => first.identity_hash(hasher),
-            AndThenContextual::Second(second) => second.identity_hash(hasher),
+            AndThenContextual::First { first, .. } => first.identity_hash(context, hasher),
+            AndThenContextual::Second(second) => second.identity_hash(context, hasher),
             AndThenContextual::Done => {}
         }
     }
@@ -1048,10 +1049,10 @@ where
     }
 
     #[cfg(feature = "diverge-check")]
-    fn identity_hash(&self, hasher: &mut dyn Hasher) {
+    fn identity_hash(&self, context: &Context, hasher: &mut dyn Hasher) {
         match self {
-            AndThen::First { first, .. } => first.identity_hash(hasher),
-            AndThen::Second(second) => second.identity_hash(hasher),
+            AndThen::First { first, .. } => first.identity_hash(context, hasher),
+            AndThen::Second(second) => second.identity_hash(context, hasher),
             AndThen::Done => {}
         }
     }
@@ -1138,10 +1139,10 @@ where
     }
 
     #[cfg(feature = "diverge-check")]
-    fn identity_hash(&self, hasher: &mut dyn Hasher) {
+    fn identity_hash(&self, context: &Context, hasher: &mut dyn Hasher) {
         match self {
-            AndThenTry::First { first, .. } => first.identity_hash(hasher),
-            AndThenTry::Second(second) => second.identity_hash(hasher),
+            AndThenTry::First { first, .. } => first.identity_hash(context, hasher),
+            AndThenTry::Second(second) => second.identity_hash(context, hasher),
             AndThenTry::Done => {}
         }
     }
@@ -1223,10 +1224,10 @@ where
     }
 
     #[cfg(feature = "diverge-check")]
-    fn identity_hash(&self, hasher: &mut dyn Hasher) {
+    fn identity_hash(&self, context: &Context, hasher: &mut dyn Hasher) {
         match self {
-            FollowedBy::First { first, .. } => first.identity_hash(hasher),
-            FollowedBy::Second(second) => second.identity_hash(hasher),
+            FollowedBy::First { first, .. } => first.identity_hash(context, hasher),
+            FollowedBy::Second(second) => second.identity_hash(context, hasher),
             FollowedBy::Done => {}
         }
     }
@@ -1335,10 +1336,10 @@ where
     }
 
     #[cfg(feature = "diverge-check")]
-    fn identity_hash(&self, hasher: &mut dyn Hasher) {
+    fn identity_hash(&self, context: &Context, hasher: &mut dyn Hasher) {
         match self {
-            Coproduct::Inl(h) => h.identity_hash(hasher),
-            Coproduct::Inr(h) => h.identity_hash(hasher),
+            Coproduct::Inl(h) => h.identity_hash(context, hasher),
+            Coproduct::Inr(h) => h.identity_hash(context, hasher),
         }
     }
 }
@@ -1377,7 +1378,7 @@ impl<Context> HandlerAction<Context> for GetAgentUri {
     }
 
     #[cfg(feature = "diverge-check")]
-    fn identity_hash(&self, mut hasher: &mut dyn Hasher) {
+    fn identity_hash(&self, _context: &Context, mut hasher: &mut dyn Hasher) {
         let id = TypeId::of::<GetAgentUri>();
         id.hash(&mut hasher);
     }
@@ -1428,7 +1429,7 @@ impl<Context, S: AsRef<str>> HandlerAction<Context> for GetParameter<S> {
     }
 
     #[cfg(feature = "diverge-check")]
-    fn identity_hash(&self, mut hasher: &mut dyn Hasher) {
+    fn identity_hash(&self, _context: &Context, mut hasher: &mut dyn Hasher) {
         if let Some(s) = &self.key {
             let id = TypeId::of::<GetParameter<&'static str>>();
             id.hash(&mut hasher);
@@ -1534,10 +1535,10 @@ where
     }
 
     #[cfg(feature = "diverge-check")]
-    fn identity_hash(&self, hasher: &mut dyn Hasher) {
+    fn identity_hash(&self, context: &Context, hasher: &mut dyn Hasher) {
         match self {
-            Either::Left(h) => h.identity_hash(hasher),
-            Either::Right(h) => h.identity_hash(hasher),
+            Either::Left(h) => h.identity_hash(context, hasher),
+            Either::Right(h) => h.identity_hash(context, hasher),
         }
     }
 }
@@ -1740,9 +1741,9 @@ where
     }
 
     #[cfg(feature = "diverge-check")]
-    fn identity_hash(&self, hasher: &mut dyn Hasher) {
+    fn identity_hash(&self, context: &Context, hasher: &mut dyn Hasher) {
         if let Sequentially::Running(_, h) = self {
-            h.identity_hash(hasher)
+            h.identity_hash(context, hasher)
         }
     }
 }
@@ -1783,8 +1784,8 @@ impl<Context, H: HandlerAction<Context>> HandlerAction<Context> for Discard<H> {
     }
 
     #[cfg(feature = "diverge-check")]
-    fn identity_hash(&self, hasher: &mut dyn Hasher) {
-        self.0.identity_hash(hasher);
+    fn identity_hash(&self, context: &Context, hasher: &mut dyn Hasher) {
+        self.0.identity_hash(context, hasher);
     }
 }
 
@@ -1850,9 +1851,9 @@ where
     }
 
     #[cfg(feature = "diverge-check")]
-    fn identity_hash(&self, hasher: &mut dyn Hasher) {
+    fn identity_hash(&self, context: &Context, hasher: &mut dyn Hasher) {
         if let Some(h) = self {
-            h.identity_hash(hasher);
+            h.identity_hash(context, hasher);
         }
     }
 }
@@ -1930,7 +1931,7 @@ impl<Context> HandlerAction<Context> for Stop {
     }
 
     #[cfg(feature = "diverge-check")]
-    fn identity_hash(&self, mut hasher: &mut dyn Hasher) {
+    fn identity_hash(&self, _context: &Context, mut hasher: &mut dyn Hasher) {
         self.type_id().hash(&mut hasher);
     }
 }
@@ -2038,10 +2039,10 @@ where
     }
 
     #[cfg(feature = "diverge-check")]
-    fn identity_hash(&self, hasher: &mut dyn Hasher) {
+    fn identity_hash(&self, context: &Context, hasher: &mut dyn Hasher) {
         match &self.state {
-            JoinState::Init(h, _) => h.identity_hash(hasher),
-            JoinState::FirstDone(_, h) => h.identity_hash(hasher),
+            JoinState::Init(h, _) => h.identity_hash(context, hasher),
+            JoinState::FirstDone(_, h) => h.identity_hash(context, hasher),
             JoinState::AfterDone => {}
         }
     }
@@ -2190,11 +2191,11 @@ where
     }
 
     #[cfg(feature = "diverge-check")]
-    fn identity_hash(&self, hasher: &mut dyn Hasher) {
+    fn identity_hash(&self, context: &Context, hasher: &mut dyn Hasher) {
         match &self.state {
-            Join3State::Init(h, _, _) => h.identity_hash(hasher),
-            Join3State::FirstDone(_, h, _) => h.identity_hash(hasher),
-            Join3State::SecondDone(_, _, h) => h.identity_hash(hasher),
+            Join3State::Init(h, _, _) => h.identity_hash(context, hasher),
+            Join3State::FirstDone(_, h, _) => h.identity_hash(context, hasher),
+            Join3State::SecondDone(_, _, h) => h.identity_hash(context, hasher),
             Join3State::AfterDone => {}
         }
     }
@@ -2248,7 +2249,7 @@ where
     }
 
     #[cfg(feature = "diverge-check")]
-    fn identity_hash(&self, mut hasher: &mut dyn Hasher) {
+    fn identity_hash(&self, _context: &Context, mut hasher: &mut dyn Hasher) {
         TypeId::of::<E>().hash(&mut hasher);
     }
 }
@@ -2333,7 +2334,7 @@ impl<Context> HandlerAction<Context> for ScheduleTimerEvent {
     }
 
     #[cfg(feature = "diverge-check")]
-    fn identity_hash(&self, mut hasher: &mut dyn Hasher) {
+    fn identity_hash(&self, _context: &Context, mut hasher: &mut dyn Hasher) {
         if let ScheduleTimerEvent { at: Some(at), id } = self {
             self.type_id().hash(&mut hasher);
             at.hash(&mut hasher);
@@ -2391,7 +2392,7 @@ where
     }
 
     #[cfg(feature = "diverge-check")]
-    fn identity_hash(&self, mut hasher: &mut dyn Hasher) {
-        self.handler.identity_hash(&mut hasher);
+    fn identity_hash(&self, context: &Context, mut hasher: &mut dyn Hasher) {
+        self.handler.identity_hash(context, &mut hasher);
     }
 }

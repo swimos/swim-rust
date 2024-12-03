@@ -137,8 +137,8 @@ where
     }
 
     #[cfg(feature = "diverge-check")]
-    fn identity_hash(&self, hasher: &mut dyn Hasher) {
-        self.0.identity_hash(hasher);
+    fn identity_hash(&self, context: &Context, hasher: &mut dyn Hasher) {
+        self.0.identity_hash(context, hasher);
     }
 }
 
@@ -262,10 +262,10 @@ where
     }
 
     #[cfg(feature = "diverge-check")]
-    fn identity_hash(&self, hasher: &mut dyn Hasher) {
+    fn identity_hash(&self, context: &C, hasher: &mut dyn Hasher) {
         match self {
-            AndThenOk::First { first, .. } => first.identity_hash(hasher),
-            AndThenOk::Second(second) => second.identity_hash(hasher),
+            AndThenOk::First { first, .. } => first.identity_hash(context, hasher),
+            AndThenOk::Second(second) => second.identity_hash(context, hasher),
             AndThenOk::Done => {}
         }
     }

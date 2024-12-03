@@ -114,7 +114,7 @@ where
     }
 
     #[cfg(feature = "diverge-check")]
-    fn identity_hash(&self, mut hasher: &mut dyn std::hash::Hasher) {
+    fn identity_hash(&self, _context: &Context, mut hasher: &mut dyn std::hash::Hasher) {
         use std::{any::TypeId, hash::Hash};
 
         if let Some(Body { address, .. }) = &self.body {
