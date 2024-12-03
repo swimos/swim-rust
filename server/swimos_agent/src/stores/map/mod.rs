@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::any::{type_name, TypeId};
+use std::any::type_name;
 use std::borrow::Borrow;
 use std::fmt::Formatter;
-use std::hash::{Hash, Hasher};
+use std::hash::Hash;
 use std::marker::PhantomData;
 use std::{cell::RefCell, collections::HashMap};
 
@@ -238,7 +238,9 @@ where
     }
 
     #[cfg(feature = "diverge-check")]
-    fn identity_hash(&self, context: &C, mut hasher: &mut dyn Hasher) {
+    fn identity_hash(&self, context: &C, mut hasher: &mut dyn std::hash::Hasher) {
+        use std::any::TypeId;
+
         let lane = (self.projection)(context);
         TypeId::of::<MapStoreUpdate<(), (), (), ()>>().hash(&mut hasher);
         hasher.write_u64(lane.id());
@@ -304,7 +306,9 @@ where
     }
 
     #[cfg(feature = "diverge-check")]
-    fn identity_hash(&self, context: &C, mut hasher: &mut dyn Hasher) {
+    fn identity_hash(&self, context: &C, mut hasher: &mut dyn std::hash::Hasher) {
+        use std::any::TypeId;
+
         let lane = (self.projection)(context);
         TypeId::of::<MapStoreRemove<(), (), (), ()>>().hash(&mut hasher);
         hasher.write_u64(lane.id());
@@ -371,7 +375,9 @@ where
     }
 
     #[cfg(feature = "diverge-check")]
-    fn identity_hash(&self, context: &C, mut hasher: &mut dyn Hasher) {
+    fn identity_hash(&self, context: &C, mut hasher: &mut dyn std::hash::Hasher) {
+        use std::any::TypeId;
+
         let lane = (self.projection)(context);
         TypeId::of::<MapStoreClear<(), (), (), ()>>().hash(&mut hasher);
         hasher.write_u64(lane.id());
@@ -439,7 +445,9 @@ where
     }
 
     #[cfg(feature = "diverge-check")]
-    fn identity_hash(&self, context: &C, mut hasher: &mut dyn Hasher) {
+    fn identity_hash(&self, context: &C, mut hasher: &mut dyn std::hash::Hasher) {
+        use std::any::TypeId;
+
         let lane = (self.projection)(context);
         TypeId::of::<MapStoreGet<(), (), (), ()>>().hash(&mut hasher);
         hasher.write_u64(lane.id());
@@ -502,7 +510,9 @@ where
     }
 
     #[cfg(feature = "diverge-check")]
-    fn identity_hash(&self, context: &C, mut hasher: &mut dyn Hasher) {
+    fn identity_hash(&self, context: &C, mut hasher: &mut dyn std::hash::Hasher) {
+        use std::any::TypeId;
+
         let lane = (self.projection)(context);
         TypeId::of::<MapStoreGetMap<(), (), (), ()>>().hash(&mut hasher);
         hasher.write_u64(lane.id());
@@ -582,7 +592,9 @@ where
     }
 
     #[cfg(feature = "diverge-check")]
-    fn identity_hash(&self, context: &C, mut hasher: &mut dyn Hasher) {
+    fn identity_hash(&self, context: &C, mut hasher: &mut dyn std::hash::Hasher) {
+        use std::any::TypeId;
+
         let lane = (self.projection)(context);
         TypeId::of::<MapStoreTransformEntry<(), (), (), (), ()>>().hash(&mut hasher);
         hasher.write_u64(lane.id());
@@ -657,7 +669,9 @@ where
     }
 
     #[cfg(feature = "diverge-check")]
-    fn identity_hash(&self, context: &C, mut hasher: &mut dyn Hasher) {
+    fn identity_hash(&self, context: &C, mut hasher: &mut dyn std::hash::Hasher) {
+        use std::any::TypeId;
+
         let lane = (self.projection)(context);
         TypeId::of::<MapStoreWithEntry<(), (), (), (), (), ()>>().hash(&mut hasher);
         hasher.write_u64(lane.id());

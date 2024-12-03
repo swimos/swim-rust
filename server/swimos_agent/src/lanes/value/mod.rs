@@ -18,12 +18,11 @@ pub mod lifecycle;
 mod tests;
 
 use std::{
-    any::{type_name, TypeId},
+    any::type_name,
     borrow::Borrow,
     cell::RefCell,
     collections::VecDeque,
     fmt::{Debug, Formatter},
-    hash::Hasher,
     marker::PhantomData,
 };
 
@@ -251,8 +250,8 @@ impl<C: AgentDescription, T: Clone> HandlerAction<C> for ValueLaneGet<C, T> {
     }
 
     #[cfg(feature = "diverge-check")]
-    fn identity_hash(&self, context: &C, mut hasher: &mut dyn Hasher) {
-        use std::hash::Hash;
+    fn identity_hash(&self, context: &C, mut hasher: &mut dyn std::hash::Hasher) {
+        use std::{any::TypeId, hash::Hash};
 
         let lane = (self.projection)(context);
         TypeId::of::<ValueLaneGet<(), ()>>().hash(&mut hasher);
@@ -303,8 +302,8 @@ impl<C: AgentDescription, T> HandlerAction<C> for ValueLaneSet<C, T> {
     }
 
     #[cfg(feature = "diverge-check")]
-    fn identity_hash(&self, context: &C, mut hasher: &mut dyn Hasher) {
-        use std::hash::Hash;
+    fn identity_hash(&self, context: &C, mut hasher: &mut dyn std::hash::Hasher) {
+        use std::{any::TypeId, hash::Hash};
 
         let lane = (self.projection)(context);
         TypeId::of::<ValueLaneSet<(), ()>>().hash(&mut hasher);
@@ -355,8 +354,8 @@ impl<C: AgentDescription, T> HandlerAction<C> for ValueLaneSync<C, T> {
     }
 
     #[cfg(feature = "diverge-check")]
-    fn identity_hash(&self, context: &C, mut hasher: &mut dyn Hasher) {
-        use std::hash::Hash;
+    fn identity_hash(&self, context: &C, mut hasher: &mut dyn std::hash::Hasher) {
+        use std::{any::TypeId, hash::Hash};
 
         let lane = (self.projection)(context);
         TypeId::of::<ValueLaneSync<(), ()>>().hash(&mut hasher);
@@ -427,8 +426,8 @@ where
     }
 
     #[cfg(feature = "diverge-check")]
-    fn identity_hash(&self, context: &C, mut hasher: &mut dyn Hasher) {
-        use std::hash::Hash;
+    fn identity_hash(&self, context: &C, mut hasher: &mut dyn std::hash::Hasher) {
+        use std::{any::TypeId, hash::Hash};
 
         let lane = (self.projection)(context);
         TypeId::of::<ValueLaneWithValue<(), (), (), ()>>().hash(&mut hasher);
@@ -597,8 +596,8 @@ where
     }
 
     #[cfg(feature = "diverge-check")]
-    fn identity_hash(&self, _context: &C, mut hasher: &mut dyn Hasher) {
-        use std::hash::Hash;
+    fn identity_hash(&self, _context: &C, mut hasher: &mut dyn std::hash::Hasher) {
+        use std::{any::TypeId, hash::Hash};
 
         if let Some((projection, _)) = &self.projection_value {
             TypeId::of::<ValueLaneSelectSet<(), (), ()>>().hash(&mut hasher);
@@ -698,7 +697,7 @@ where
     }
 
     #[cfg(feature = "diverge-check")]
-    fn identity_hash(&self, context: &C, hasher: &mut dyn Hasher) {
+    fn identity_hash(&self, context: &C, hasher: &mut dyn std::hash::Hasher) {
         match self {
             DecodeAndSelectSet::Decoding(decode, _) => {
                 HandlerAction::<C>::identity_hash(decode, context, hasher)
@@ -795,8 +794,8 @@ where
     }
 
     #[cfg(feature = "diverge-check")]
-    fn identity_hash(&self, _context: &C, mut hasher: &mut dyn Hasher) {
-        use std::hash::Hash;
+    fn identity_hash(&self, _context: &C, mut hasher: &mut dyn std::hash::Hasher) {
+        use std::{any::TypeId, hash::Hash};
 
         if let Some((projection, _)) = &self.projection_id {
             TypeId::of::<ValueLaneSelectSync<(), (), ()>>().hash(&mut hasher);

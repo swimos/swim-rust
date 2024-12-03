@@ -13,11 +13,10 @@
 // limitations under the License.
 
 use std::{
-    any::{type_name, TypeId},
+    any::type_name,
     borrow::Borrow,
     cell::{Cell, RefCell},
     fmt::Formatter,
-    hash::{Hash, Hasher},
     marker::PhantomData,
 };
 
@@ -270,7 +269,9 @@ impl<C: AgentDescription, T: Clone> HandlerAction<C> for ValueStoreGet<C, T> {
     }
 
     #[cfg(feature = "diverge-check")]
-    fn identity_hash(&self, context: &C, mut hasher: &mut dyn Hasher) {
+    fn identity_hash(&self, context: &C, mut hasher: &mut dyn std::hash::Hasher) {
+        use std::{any::TypeId, hash::Hash};
+
         let lane = (self.projection)(context);
         TypeId::of::<ValueStoreGet<(), ()>>().hash(&mut hasher);
         hasher.write_u64(lane.id());
@@ -320,7 +321,9 @@ impl<C: AgentDescription, T> HandlerAction<C> for ValueStoreSet<C, T> {
     }
 
     #[cfg(feature = "diverge-check")]
-    fn identity_hash(&self, context: &C, mut hasher: &mut dyn Hasher) {
+    fn identity_hash(&self, context: &C, mut hasher: &mut dyn std::hash::Hasher) {
+        use std::{any::TypeId, hash::Hash};
+
         let lane = (self.projection)(context);
         TypeId::of::<ValueStoreSet<(), ()>>().hash(&mut hasher);
         hasher.write_u64(lane.id());
@@ -389,7 +392,9 @@ where
     }
 
     #[cfg(feature = "diverge-check")]
-    fn identity_hash(&self, context: &C, mut hasher: &mut dyn Hasher) {
+    fn identity_hash(&self, context: &C, mut hasher: &mut dyn std::hash::Hasher) {
+        use std::{any::TypeId, hash::Hash};
+
         let lane = (self.projection)(context);
         TypeId::of::<ValueStoreWithValue<(), (), (), ()>>().hash(&mut hasher);
         hasher.write_u64(lane.id());
