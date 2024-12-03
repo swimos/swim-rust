@@ -231,6 +231,29 @@ where
                 .finish(),
         }
     }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        match &self.state {
+            DemandInner::Pending(h) => h.has_identity(),
+            DemandInner::Complete(v) => v.is_some(),
+        }
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, context: &Context, mut hasher: &mut dyn std::hash::Hasher) {
+        use std::{any::TypeId, hash::Hash};
+
+        match &self.state {
+            DemandInner::Pending(h) => h.identity_hash(context, hasher),
+            DemandInner::Complete(Some(_)) => {
+                let lane = (self.projection)(context);
+                TypeId::of::<Demand<(), (), ()>>().hash(&mut hasher);
+                hasher.write_u64(lane.id());
+            }
+            _ => {}
+        }
+    }
 }
 
 pub struct Cue<Context, T> {
@@ -281,6 +304,20 @@ where
             .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
             .field("cued", cued)
             .finish()
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        true
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, context: &Context, mut hasher: &mut dyn std::hash::Hasher) {
+        use std::{any::TypeId, hash::Hash};
+
+        let lane = (self.projection)(context);
+        TypeId::of::<Cue<(), ()>>().hash(&mut hasher);
+        hasher.write_u64(lane.id());
     }
 }
 

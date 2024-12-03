@@ -668,20 +668,6 @@ where
             .field("sync_id", &id)
             .finish()
     }
-
-    #[cfg(feature = "diverge-check")]
-    fn has_identity(&self) -> bool {
-        true
-    }
-
-    #[cfg(feature = "diverge-check")]
-    fn identity_hash(&self, context: &C, mut hasher: &mut dyn std::hash::Hasher) {
-        use std::{any::TypeId, hash::Hash};
-
-        let lane = (self.projection)(context);
-        TypeId::of::<MapLaneSync<(), (), (), ()>>().hash(&mut hasher);
-        hasher.write_u64(lane.id());
-    }
 }
 
 type MapLaneHandler<C, K, V, M = HashMap<K, V>> = Coprod!(

@@ -347,20 +347,6 @@ impl<C: AgentDescription, T> HandlerAction<C> for ValueLaneSync<C, T> {
             .field("sync_id", &id)
             .finish()
     }
-
-    #[cfg(feature = "diverge-check")]
-    fn has_identity(&self) -> bool {
-        true
-    }
-
-    #[cfg(feature = "diverge-check")]
-    fn identity_hash(&self, context: &C, mut hasher: &mut dyn std::hash::Hasher) {
-        use std::{any::TypeId, hash::Hash};
-
-        let lane = (self.projection)(context);
-        TypeId::of::<ValueLaneSync<(), ()>>().hash(&mut hasher);
-        hasher.write_u64(lane.id());
-    }
 }
 
 /// An [`HandlerAction`] that will produce a value from a reference to the contents of the lane.

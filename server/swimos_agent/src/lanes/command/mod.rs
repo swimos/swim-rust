@@ -147,6 +147,20 @@ impl<Context: AgentDescription, T> HandlerAction<Context> for DoCommand<Context,
             .field("consumed", &command.is_none())
             .finish()
     }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        true
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, context: &Context, mut hasher: &mut dyn std::hash::Hasher) {
+        use std::{any::TypeId, hash::Hash};
+
+        let lane = (self.projection)(context);
+        TypeId::of::<DoCommand<(), ()>>().hash(&mut hasher);
+        hasher.write_u64(lane.id());
+    }
 }
 
 impl<C, T> HandlerTrans<T> for ProjTransform<C, CommandLane<T>> {
