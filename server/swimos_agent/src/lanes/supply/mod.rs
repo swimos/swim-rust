@@ -180,6 +180,20 @@ where
             .field("consumed", &value.is_none())
             .finish()
     }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        true
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, context: &Context, mut hasher: &mut dyn std::hash::Hasher) {
+        use std::{any::TypeId, hash::Hash};
+
+        let lane = (self.projection)(context);
+        TypeId::of::<Supply<(), ()>>().hash(&mut hasher);
+        hasher.write_u64(lane.id());
+    }
 }
 
 pub struct SupplyLaneSync<Context, T> {
