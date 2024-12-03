@@ -13,10 +13,11 @@
 // limitations under the License.
 
 use std::{
-    any::type_name,
+    any::{type_name, TypeId},
     borrow::Borrow,
     cell::{Cell, RefCell},
     fmt::Formatter,
+    hash::{Hash, Hasher},
     marker::PhantomData,
 };
 
@@ -262,6 +263,16 @@ impl<C: AgentDescription, T: Clone> HandlerAction<C> for ValueStoreGet<C, T> {
             .field("store_name", &name.as_ref().map(|s| s.as_ref()))
             .finish()
     }
+
+    fn has_identity(&self) -> bool {
+        true
+    }
+
+    fn identity_hash(&self, context: &C, mut hasher: &mut dyn Hasher) {
+        let lane = (self.projection)(context);
+        TypeId::of::<ValueStoreGet<(), ()>>().hash(&mut hasher);
+        hasher.write_u64(lane.id());
+    }
 }
 
 impl<C: AgentDescription, T> HandlerAction<C> for ValueStoreSet<C, T> {
@@ -299,6 +310,16 @@ impl<C: AgentDescription, T> HandlerAction<C> for ValueStoreSet<C, T> {
             .field("store_name", &name.as_ref().map(|s| s.as_ref()))
             .field("consumed", &value.is_none())
             .finish()
+    }
+
+    fn has_identity(&self) -> bool {
+        true
+    }
+
+    fn identity_hash(&self, context: &C, mut hasher: &mut dyn Hasher) {
+        let lane = (self.projection)(context);
+        TypeId::of::<ValueStoreSet<(), ()>>().hash(&mut hasher);
+        hasher.write_u64(lane.id());
     }
 }
 
@@ -356,6 +377,16 @@ where
             .field("store_name", &name.as_ref().map(|s| s.as_ref()))
             .field("result_type", &type_name::<U>())
             .finish()
+    }
+
+    fn has_identity(&self) -> bool {
+        true
+    }
+
+    fn identity_hash(&self, context: &C, mut hasher: &mut dyn Hasher) {
+        let lane = (self.projection)(context);
+        TypeId::of::<ValueStoreWithValue<(), (), (), ()>>().hash(&mut hasher);
+        hasher.write_u64(lane.id());
     }
 }
 

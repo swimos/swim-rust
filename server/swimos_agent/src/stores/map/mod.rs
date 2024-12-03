@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::any::type_name;
+use std::any::{type_name, TypeId};
 use std::borrow::Borrow;
 use std::fmt::Formatter;
-use std::hash::Hash;
+use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
 use std::{cell::RefCell, collections::HashMap};
 
@@ -231,6 +231,16 @@ where
             .field("consumed", &key_value.is_none())
             .finish()
     }
+
+    fn has_identity(&self) -> bool {
+        true
+    }
+
+    fn identity_hash(&self, context: &C, mut hasher: &mut dyn Hasher) {
+        let lane = (self.projection)(context);
+        TypeId::of::<MapStoreUpdate<(), (), (), ()>>().hash(&mut hasher);
+        hasher.write_u64(lane.id());
+    }
 }
 
 ///  An [event handler](crate::event_handler::EventHandler)`] that will remove an entry from the map.
@@ -284,6 +294,16 @@ where
             .field("store_name", &name.as_ref().map(|s| s.as_ref()))
             .field("consumed", &key.is_none())
             .finish()
+    }
+
+    fn has_identity(&self) -> bool {
+        true
+    }
+
+    fn identity_hash(&self, context: &C, mut hasher: &mut dyn Hasher) {
+        let lane = (self.projection)(context);
+        TypeId::of::<MapStoreRemove<(), (), (), ()>>().hash(&mut hasher);
+        hasher.write_u64(lane.id());
     }
 }
 
@@ -339,6 +359,16 @@ where
             .field("store_name", &name.as_ref().map(|s| s.as_ref()))
             .field("consumed", done)
             .finish()
+    }
+
+    fn has_identity(&self) -> bool {
+        true
+    }
+
+    fn identity_hash(&self, context: &C, mut hasher: &mut dyn Hasher) {
+        let lane = (self.projection)(context);
+        TypeId::of::<MapStoreClear<(), (), (), ()>>().hash(&mut hasher);
+        hasher.write_u64(lane.id());
     }
 }
 
@@ -396,6 +426,16 @@ where
             .field("consumed", &self.done)
             .finish()
     }
+
+    fn has_identity(&self) -> bool {
+        true
+    }
+
+    fn identity_hash(&self, context: &C, mut hasher: &mut dyn Hasher) {
+        let lane = (self.projection)(context);
+        TypeId::of::<MapStoreGet<(), (), (), ()>>().hash(&mut hasher);
+        hasher.write_u64(lane.id());
+    }
 }
 
 ///  An [event handler](crate::event_handler::EventHandler)`] that will read the entire state of a map store.
@@ -446,6 +486,16 @@ where
             .field("store_name", &name.as_ref().map(|s| s.as_ref()))
             .field("consumed", &self.done)
             .finish()
+    }
+
+    fn has_identity(&self) -> bool {
+        true
+    }
+
+    fn identity_hash(&self, context: &C, mut hasher: &mut dyn Hasher) {
+        let lane = (self.projection)(context);
+        TypeId::of::<MapStoreGetMap<(), (), (), ()>>().hash(&mut hasher);
+        hasher.write_u64(lane.id());
     }
 }
 
@@ -515,6 +565,16 @@ where
             .field("consumed", &key_and_f.is_none())
             .finish()
     }
+
+    fn has_identity(&self) -> bool {
+        true
+    }
+
+    fn identity_hash(&self, context: &C, mut hasher: &mut dyn Hasher) {
+        let lane = (self.projection)(context);
+        TypeId::of::<MapStoreTransformEntry<(), (), (), (), ()>>().hash(&mut hasher);
+        hasher.write_u64(lane.id());
+    }
 }
 
 /// A [handler action][`HandlerAction`] that will produce a value by applying a closure to a reference to
@@ -577,6 +637,16 @@ where
             .field("result_type", &type_name::<U>())
             .field("consumed", &self.key_and_f.is_none())
             .finish()
+    }
+
+    fn has_identity(&self) -> bool {
+        true
+    }
+
+    fn identity_hash(&self, context: &C, mut hasher: &mut dyn Hasher) {
+        let lane = (self.projection)(context);
+        TypeId::of::<MapStoreWithEntry<(), (), (), (), (), ()>>().hash(&mut hasher);
+        hasher.write_u64(lane.id());
     }
 }
 impl<K, V, M> MapLikeItem<K, V, M> for MapStore<K, V, M>
