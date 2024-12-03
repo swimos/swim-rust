@@ -264,10 +264,12 @@ impl<C: AgentDescription, T: Clone> HandlerAction<C> for ValueStoreGet<C, T> {
             .finish()
     }
 
+    #[cfg(feature = "diverge-check")]
     fn has_identity(&self) -> bool {
         true
     }
 
+    #[cfg(feature = "diverge-check")]
     fn identity_hash(&self, context: &C, mut hasher: &mut dyn Hasher) {
         let lane = (self.projection)(context);
         TypeId::of::<ValueStoreGet<(), ()>>().hash(&mut hasher);
@@ -312,10 +314,12 @@ impl<C: AgentDescription, T> HandlerAction<C> for ValueStoreSet<C, T> {
             .finish()
     }
 
+    #[cfg(feature = "diverge-check")]
     fn has_identity(&self) -> bool {
         true
     }
 
+    #[cfg(feature = "diverge-check")]
     fn identity_hash(&self, context: &C, mut hasher: &mut dyn Hasher) {
         let lane = (self.projection)(context);
         TypeId::of::<ValueStoreSet<(), ()>>().hash(&mut hasher);
@@ -379,10 +383,12 @@ where
             .finish()
     }
 
+    #[cfg(feature = "diverge-check")]
     fn has_identity(&self) -> bool {
         true
     }
 
+    #[cfg(feature = "diverge-check")]
     fn identity_hash(&self, context: &C, mut hasher: &mut dyn Hasher) {
         let lane = (self.projection)(context);
         TypeId::of::<ValueStoreWithValue<(), (), (), ()>>().hash(&mut hasher);

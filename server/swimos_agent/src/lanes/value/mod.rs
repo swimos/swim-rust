@@ -18,11 +18,12 @@ pub mod lifecycle;
 mod tests;
 
 use std::{
-    any::type_name,
+    any::{type_name, TypeId},
     borrow::Borrow,
     cell::RefCell,
     collections::VecDeque,
     fmt::{Debug, Formatter},
+    hash::Hasher,
     marker::PhantomData,
 };
 
@@ -243,6 +244,20 @@ impl<C: AgentDescription, T: Clone> HandlerAction<C> for ValueLaneGet<C, T> {
             .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
             .finish()
     }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        true
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, context: &C, mut hasher: &mut dyn Hasher) {
+        use std::hash::Hash;
+
+        let lane = (self.projection)(context);
+        TypeId::of::<ValueLaneGet<(), ()>>().hash(&mut hasher);
+        hasher.write_u64(lane.id());
+    }
 }
 
 impl<C: AgentDescription, T> HandlerAction<C> for ValueLaneSet<C, T> {
@@ -281,6 +296,20 @@ impl<C: AgentDescription, T> HandlerAction<C> for ValueLaneSet<C, T> {
             .field("consumed", &value.is_none())
             .finish()
     }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        true
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, context: &C, mut hasher: &mut dyn Hasher) {
+        use std::hash::Hash;
+
+        let lane = (self.projection)(context);
+        TypeId::of::<ValueLaneSet<(), ()>>().hash(&mut hasher);
+        hasher.write_u64(lane.id());
+    }
 }
 
 impl<C: AgentDescription, T> HandlerAction<C> for ValueLaneSync<C, T> {
@@ -318,6 +347,20 @@ impl<C: AgentDescription, T> HandlerAction<C> for ValueLaneSync<C, T> {
             .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
             .field("sync_id", &id)
             .finish()
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        true
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, context: &C, mut hasher: &mut dyn Hasher) {
+        use std::hash::Hash;
+
+        let lane = (self.projection)(context);
+        TypeId::of::<ValueLaneSync<(), ()>>().hash(&mut hasher);
+        hasher.write_u64(lane.id());
     }
 }
 
@@ -376,6 +419,20 @@ where
             .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
             .field("result_type", &type_name::<U>())
             .finish()
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        true
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, context: &C, mut hasher: &mut dyn Hasher) {
+        use std::hash::Hash;
+
+        let lane = (self.projection)(context);
+        TypeId::of::<ValueLaneWithValue<(), (), (), ()>>().hash(&mut hasher);
+        hasher.write_u64(lane.id());
     }
 }
 
@@ -533,6 +590,21 @@ where
                 .finish()
         }
     }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        self.projection_value.is_some()
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, _context: &C, mut hasher: &mut dyn Hasher) {
+        use std::hash::Hash;
+
+        if let Some((projection, _)) = &self.projection_value {
+            TypeId::of::<ValueLaneSelectSet<(), (), ()>>().hash(&mut hasher);
+            hasher.write(projection.name().as_bytes());
+        }
+    }
 }
 
 #[derive(Default)]
@@ -609,6 +681,30 @@ where
                 .debug_tuple("DecodeAndSelectSet")
                 .field(&"<<CONSUMED>>")
                 .finish(),
+        }
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        use std::task::Context;
+
+        match self {
+            DecodeAndSelectSet::Decoding(decode, _) => {
+                HandlerAction::<Context>::has_identity(decode)
+            }
+            DecodeAndSelectSet::Selecting(select) => select.has_identity(),
+            DecodeAndSelectSet::Done => false,
+        }
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, context: &C, hasher: &mut dyn Hasher) {
+        match self {
+            DecodeAndSelectSet::Decoding(decode, _) => {
+                HandlerAction::<C>::identity_hash(decode, context, hasher)
+            }
+            DecodeAndSelectSet::Selecting(select) => select.identity_hash(context, hasher),
+            DecodeAndSelectSet::Done => {}
         }
     }
 }
@@ -690,6 +786,21 @@ where
             f.debug_tuple("ValueLaneSelectSync")
                 .field(&"<<CONSUMED>>")
                 .finish()
+        }
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        self.projection_id.is_some()
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, _context: &C, mut hasher: &mut dyn Hasher) {
+        use std::hash::Hash;
+
+        if let Some((projection, _)) = &self.projection_id {
+            TypeId::of::<ValueLaneSelectSync<(), (), ()>>().hash(&mut hasher);
+            hasher.write(projection.name().as_bytes());
         }
     }
 }

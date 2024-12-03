@@ -232,10 +232,12 @@ where
             .finish()
     }
 
+    #[cfg(feature = "diverge-check")]
     fn has_identity(&self) -> bool {
         true
     }
 
+    #[cfg(feature = "diverge-check")]
     fn identity_hash(&self, context: &C, mut hasher: &mut dyn Hasher) {
         let lane = (self.projection)(context);
         TypeId::of::<MapStoreUpdate<(), (), (), ()>>().hash(&mut hasher);
@@ -296,10 +298,12 @@ where
             .finish()
     }
 
+    #[cfg(feature = "diverge-check")]
     fn has_identity(&self) -> bool {
         true
     }
 
+    #[cfg(feature = "diverge-check")]
     fn identity_hash(&self, context: &C, mut hasher: &mut dyn Hasher) {
         let lane = (self.projection)(context);
         TypeId::of::<MapStoreRemove<(), (), (), ()>>().hash(&mut hasher);
@@ -361,10 +365,12 @@ where
             .finish()
     }
 
+    #[cfg(feature = "diverge-check")]
     fn has_identity(&self) -> bool {
         true
     }
 
+    #[cfg(feature = "diverge-check")]
     fn identity_hash(&self, context: &C, mut hasher: &mut dyn Hasher) {
         let lane = (self.projection)(context);
         TypeId::of::<MapStoreClear<(), (), (), ()>>().hash(&mut hasher);
@@ -427,10 +433,12 @@ where
             .finish()
     }
 
+    #[cfg(feature = "diverge-check")]
     fn has_identity(&self) -> bool {
         true
     }
 
+    #[cfg(feature = "diverge-check")]
     fn identity_hash(&self, context: &C, mut hasher: &mut dyn Hasher) {
         let lane = (self.projection)(context);
         TypeId::of::<MapStoreGet<(), (), (), ()>>().hash(&mut hasher);
@@ -488,10 +496,12 @@ where
             .finish()
     }
 
+    #[cfg(feature = "diverge-check")]
     fn has_identity(&self) -> bool {
         true
     }
 
+    #[cfg(feature = "diverge-check")]
     fn identity_hash(&self, context: &C, mut hasher: &mut dyn Hasher) {
         let lane = (self.projection)(context);
         TypeId::of::<MapStoreGetMap<(), (), (), ()>>().hash(&mut hasher);
@@ -566,10 +576,12 @@ where
             .finish()
     }
 
+    #[cfg(feature = "diverge-check")]
     fn has_identity(&self) -> bool {
         true
     }
 
+    #[cfg(feature = "diverge-check")]
     fn identity_hash(&self, context: &C, mut hasher: &mut dyn Hasher) {
         let lane = (self.projection)(context);
         TypeId::of::<MapStoreTransformEntry<(), (), (), (), ()>>().hash(&mut hasher);
@@ -639,10 +651,12 @@ where
             .finish()
     }
 
+    #[cfg(feature = "diverge-check")]
     fn has_identity(&self) -> bool {
         true
     }
 
+    #[cfg(feature = "diverge-check")]
     fn identity_hash(&self, context: &C, mut hasher: &mut dyn Hasher) {
         let lane = (self.projection)(context);
         TypeId::of::<MapStoreWithEntry<(), (), (), (), (), ()>>().hash(&mut hasher);
