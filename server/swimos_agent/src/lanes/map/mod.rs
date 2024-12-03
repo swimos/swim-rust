@@ -250,6 +250,20 @@ where
             .field("consumed", &key_value.is_none())
             .finish()
     }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        true
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, context: &C, mut hasher: &mut dyn std::hash::Hasher) {
+        use std::{any::TypeId, hash::Hash};
+
+        let lane = (self.projection)(context);
+        TypeId::of::<MapLaneUpdate<(), (), (), ()>>().hash(&mut hasher);
+        hasher.write_u64(lane.id());
+    }
 }
 
 ///  An [event handler](crate::event_handler::EventHandler)`] that will remove an entry from the map.
@@ -303,6 +317,20 @@ where
             .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
             .field("consumed", &key.is_none())
             .finish()
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        true
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, context: &C, mut hasher: &mut dyn std::hash::Hasher) {
+        use std::{any::TypeId, hash::Hash};
+
+        let lane = (self.projection)(context);
+        TypeId::of::<MapLaneRemove<(), (), (), ()>>().hash(&mut hasher);
+        hasher.write_u64(lane.id());
     }
 }
 
@@ -358,6 +386,20 @@ where
             .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
             .field("consumed", done)
             .finish()
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        true
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, context: &C, mut hasher: &mut dyn std::hash::Hasher) {
+        use std::{any::TypeId, hash::Hash};
+
+        let lane = (self.projection)(context);
+        TypeId::of::<MapLaneClear<(), (), (), ()>>().hash(&mut hasher);
+        hasher.write_u64(lane.id());
     }
 }
 
@@ -416,6 +458,20 @@ where
             .field("consumed", &self.done)
             .finish()
     }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        true
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, context: &C, mut hasher: &mut dyn std::hash::Hasher) {
+        use std::{any::TypeId, hash::Hash};
+
+        let lane = (self.projection)(context);
+        TypeId::of::<MapLaneGet<(), (), (), ()>>().hash(&mut hasher);
+        hasher.write_u64(lane.id());
+    }
 }
 
 ///  An [event handler](crate::event_handler::EventHandler)`] that will read the entire state of a map lane.
@@ -466,6 +522,20 @@ where
             .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
             .field("consumed", &self.done)
             .finish()
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        true
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, context: &C, mut hasher: &mut dyn std::hash::Hasher) {
+        use std::{any::TypeId, hash::Hash};
+
+        let lane = (self.projection)(context);
+        TypeId::of::<MapLaneGetMap<(), (), (), ()>>().hash(&mut hasher);
+        hasher.write_u64(lane.id());
     }
 }
 
@@ -530,6 +600,20 @@ where
             .field("consumed", &self.key_and_f.is_none())
             .finish()
     }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        true
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, context: &C, mut hasher: &mut dyn std::hash::Hasher) {
+        use std::{any::TypeId, hash::Hash};
+
+        let lane = (self.projection)(context);
+        TypeId::of::<MapLaneWithEntry<(), (), (), (), (), ()>>().hash(&mut hasher);
+        hasher.write_u64(lane.id());
+    }
 }
 
 ///  An [event handler](crate::event_handler::EventHandler)`] that will request a sync from the lane.
@@ -583,6 +667,20 @@ where
             .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
             .field("sync_id", &id)
             .finish()
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        true
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, context: &C, mut hasher: &mut dyn std::hash::Hasher) {
+        use std::{any::TypeId, hash::Hash};
+
+        let lane = (self.projection)(context);
+        TypeId::of::<MapLaneSync<(), (), (), ()>>().hash(&mut hasher);
+        hasher.write_u64(lane.id());
     }
 }
 
@@ -649,6 +747,9 @@ impl<'a, K: RecognizerReadable, V: RecognizerReadable> DecodeMapMessage<'a, K, V
 
 impl<'a, K: RecognizerReadable, V: RecognizerReadable, Context> HandlerAction<Context>
     for DecodeMapMessage<'a, K, V>
+where
+    K: 'static,
+    V: 'static,
 {
     type Completion = MapMessage<K, V>;
 
@@ -733,7 +834,10 @@ impl<'a, T: RecognizerReadable> DecodeMapMessageShared<'a, T> {
     }
 }
 
-impl<'a, T: RecognizerReadable, Context> HandlerAction<Context> for DecodeMapMessageShared<'a, T> {
+impl<'a, T: RecognizerReadable, Context> HandlerAction<Context> for DecodeMapMessageShared<'a, T>
+where
+    T: 'static,
+{
     type Completion = MapMessage<T, T>;
 
     fn step(
@@ -813,8 +917,8 @@ pub fn decode_and_apply<'a, C, K, V, M>(
 ) -> DecodeAndApply<'a, C, K, V, M>
 where
     C: AgentDescription,
-    K: Form + Clone + Eq + Hash,
-    V: RecognizerReadable,
+    K: Form + Clone + Eq + Hash + 'static,
+    V: RecognizerReadable + 'static,
     M: MapOps<K, V>,
 {
     let (key_decoder, value_decoder) = decoders;
@@ -885,6 +989,20 @@ where
             .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
             .field("consumed", &key_and_f.is_none())
             .finish()
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        true
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, context: &C, mut hasher: &mut dyn std::hash::Hasher) {
+        use std::{any::TypeId, hash::Hash};
+
+        let lane = (self.projection)(context);
+        TypeId::of::<MapLaneTransformEntry<(), (), (), (), ()>>().hash(&mut hasher);
+        hasher.write_u64(lane.id());
     }
 }
 
@@ -1085,6 +1203,21 @@ where
                 .finish()
         }
     }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        self.projection_key_value.is_some()
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, _context: &C, mut hasher: &mut dyn std::hash::Hasher) {
+        use std::{any::TypeId, hash::Hash};
+
+        if let Some((projection, _, _)) = &self.projection_key_value {
+            TypeId::of::<MapLaneSelectUpdate<(), (), (), ()>>().hash(&mut hasher);
+            hasher.write(projection.name().as_bytes());
+        }
+    }
 }
 
 /// An [event handler](crate::event_handler::EventHandler) that attempts to remove an entry from a map lane, if
@@ -1162,6 +1295,21 @@ where
                 .finish()
         }
     }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        self.projection_key.is_some()
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, _context: &C, mut hasher: &mut dyn std::hash::Hasher) {
+        use std::{any::TypeId, hash::Hash};
+
+        if let Some((projection, _)) = &self.projection_key {
+            TypeId::of::<MapLaneSelectRemove<(), (), (), ()>>().hash(&mut hasher);
+            hasher.write(projection.name().as_bytes());
+        }
+    }
 }
 
 /// An [event handler](crate::event_handler::EventHandler) that attempts to clear a map lane, if
@@ -1237,6 +1385,21 @@ where
                 .field("value_type", &type_name::<V>())
                 .field("consumed", &true)
                 .finish()
+        }
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        self.projection.is_some()
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, _context: &C, mut hasher: &mut dyn std::hash::Hasher) {
+        use std::{any::TypeId, hash::Hash};
+
+        if let Some(projection) = &self.projection {
+            TypeId::of::<MapLaneSelectClear<(), (), (), ()>>().hash(&mut hasher);
+            hasher.write(projection.name().as_bytes());
         }
     }
 }
@@ -1417,6 +1580,30 @@ where
                 .finish(),
         }
     }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        match self {
+            DecodeWithAndSelectApply::Decoding(h, _) => h.has_identity(),
+            DecodeWithAndSelectApply::Updating(h) => h.has_identity(),
+            DecodeWithAndSelectApply::Removing(h) => h.has_identity(),
+            DecodeWithAndSelectApply::Clearing(h) => h.has_identity(),
+            DecodeWithAndSelectApply::DroppingOrTaking(h) => h.has_identity(),
+            DecodeWithAndSelectApply::Done => false,
+        }
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, context: &C, hasher: &mut dyn std::hash::Hasher) {
+        match self {
+            DecodeWithAndSelectApply::Decoding(h, _) => h.identity_hash(context, hasher),
+            DecodeWithAndSelectApply::Updating(h) => h.identity_hash(context, hasher),
+            DecodeWithAndSelectApply::Removing(h) => h.identity_hash(context, hasher),
+            DecodeWithAndSelectApply::Clearing(h) => h.identity_hash(context, hasher),
+            DecodeWithAndSelectApply::DroppingOrTaking(h) => h.identity_hash(context, hasher),
+            DecodeWithAndSelectApply::Done => {}
+        }
+    }
 }
 
 type SelectType<C, K, V> = fn(&C) -> (&K, &V);
@@ -1483,6 +1670,21 @@ where
             f.debug_tuple("MapLaneSelectSync")
                 .field(&"<<CONSUMED>>")
                 .finish()
+        }
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        self.projection_id.is_some()
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, _context: &C, mut hasher: &mut dyn std::hash::Hasher) {
+        use std::{any::TypeId, hash::Hash};
+
+        if let Some((projection, _)) = &self.projection_id {
+            TypeId::of::<MapLaneSelectSync<(), (), (), ()>>().hash(&mut hasher);
+            hasher.write(projection.name().as_bytes());
         }
     }
 }
@@ -1556,6 +1758,22 @@ where
             .field("keys", &keys.as_ref().map(|v| v.len()))
             .field("consumed", &keys.is_none())
             .finish()
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        self.keys.is_none()
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, context: &C, mut hasher: &mut dyn std::hash::Hasher) {
+        use std::{any::TypeId, hash::Hash};
+
+        if self.keys.is_none() {
+            let lane = (self.projection)(context);
+            TypeId::of::<MapLaneRemoveMultiple<(), (), (), ()>>().hash(&mut hasher);
+            hasher.write_u64(lane.id());
+        }
     }
 }
 
@@ -1651,6 +1869,29 @@ where
                 .finish(),
         }
     }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        match &self.state {
+            DropOrTakeState::Init => true,
+            DropOrTakeState::Removing(_) => false,
+        }
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, context: &C, mut hasher: &mut dyn std::hash::Hasher) {
+        use std::{any::TypeId, hash::Hash};
+
+        match &self.state {
+            DropOrTakeState::Init => {
+                let lane = (self.projection)(context);
+                TypeId::of::<MapLaneDropOrTake<(), (), (), ()>>().hash(&mut hasher);
+                hasher.write_u64(lane.id());
+                self.kind.hash(&mut hasher);
+            }
+            DropOrTakeState::Removing(_) => {}
+        }
+    }
 }
 
 struct MapLaneSelectRemoveMultiple<C, K, V, F> {
@@ -1715,6 +1956,21 @@ where
             .field("keys", &keys.as_ref().map(|v| v.len()))
             .field("consumed", &keys.is_none())
             .finish()
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        self.keys.is_none()
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, _context: &C, mut hasher: &mut dyn std::hash::Hasher) {
+        use std::{any::TypeId, hash::Hash};
+
+        if self.keys.is_none() {
+            TypeId::of::<MapLaneSelectRemoveMultiple<(), (), (), ()>>().hash(&mut hasher);
+            hasher.write(self.projection.name().as_bytes());
+        }
     }
 }
 
@@ -1814,6 +2070,22 @@ where
                 .field("inner", &Described::new(context, h))
                 .finish(),
             SelectDropOrTakeState::Done => dbg.field("state", &"Done").finish(),
+        }
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        matches!(&self.state, SelectDropOrTakeState::Init(_))
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, _context: &C, mut hasher: &mut dyn std::hash::Hasher) {
+        use std::{any::TypeId, hash::Hash};
+
+        if let SelectDropOrTakeState::Init(projection) = &self.state {
+            TypeId::of::<MapLaneSelectDropOrTake<(), (), (), ()>>().hash(&mut hasher);
+            hasher.write(projection.name().as_bytes());
+            self.kind.hash(&mut hasher);
         }
     }
 }

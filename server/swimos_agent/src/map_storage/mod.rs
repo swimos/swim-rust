@@ -396,7 +396,7 @@ impl<K, V, Q, M> MapStoreInner<K, V, Q, M> {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Hash)]
 pub enum DropOrTake {
     Drop,
     Take,
