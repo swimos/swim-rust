@@ -255,6 +255,27 @@ where
                 .finish(),
         }
     }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        if let Some(dl) = &self.inner {
+            dl.has_identity()
+        } else {
+            false
+        }
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, context: &Context, mut hasher: &mut dyn std::hash::Hasher) {
+        use std::{any::TypeId, hash::Hash};
+
+        if let Some(dl) = &self.inner {
+            let lane = (self.projection)(context);
+            TypeId::of::<AddDownlinkAction<(), (), (), ()>>().hash(&mut hasher);
+            hasher.write_u64(lane.id());
+            dl.identity_hash(context, hasher);
+        }
+    }
 }
 
 impl<K, V> MapItem<K, V> for JoinValueLane<K, V>
@@ -331,6 +352,20 @@ where
             .field("consumed", &self.done)
             .finish()
     }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        true
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, context: &C, mut hasher: &mut dyn std::hash::Hasher) {
+        use std::{any::TypeId, hash::Hash};
+
+        let lane = (self.projection)(context);
+        TypeId::of::<JoinValueLaneGet<(), (), ()>>().hash(&mut hasher);
+        hasher.write_u64(lane.id());
+    }
 }
 
 ///  An [event handler](crate::event_handler::EventHandler)`] that will get an entry from the map.
@@ -384,6 +419,20 @@ where
             .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
             .field("consumed", &self.done)
             .finish()
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        true
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, context: &C, mut hasher: &mut dyn std::hash::Hasher) {
+        use std::{any::TypeId, hash::Hash};
+
+        let lane = (self.projection)(context);
+        TypeId::of::<JoinValueLaneGetMap<(), (), ()>>().hash(&mut hasher);
+        hasher.write_u64(lane.id());
     }
 }
 
@@ -448,7 +497,6 @@ where
 enum OpenDownlinkState<C, K> {
     Init {
         key: K,
-        address: Address<Text>,
     },
     Running {
         handler: Box<dyn EventHandler<C> + Send + 'static>,
@@ -458,6 +506,7 @@ enum OpenDownlinkState<C, K> {
 }
 
 pub struct JoinValueAddDownlink<C, K, V> {
+    address: Address<Text>,
     projection: fn(&C) -> &JoinValueLane<K, V>,
     state: OpenDownlinkState<C, K>,
 }
@@ -477,10 +526,14 @@ where
         meta: AgentMetadata,
         context: &C,
     ) -> StepResult<Self::Completion> {
-        let JoinValueAddDownlink { projection, state } = self;
+        let JoinValueAddDownlink {
+            projection,
+            address,
+            state,
+        } = self;
         loop {
             match std::mem::take(state) {
-                OpenDownlinkState::Init { key, address } => {
+                OpenDownlinkState::Init { key } => {
                     let lane_id = projection(context).id();
                     let handler = if let Some(init) = action_context.join_lane_initializer(lane_id)
                     {
@@ -488,7 +541,7 @@ where
                             Box::new(key),
                             TypeId::of::<K>(),
                             TypeId::of::<V>(),
-                            address,
+                            address.clone(),
                         ) {
                             Ok(boxed) => boxed,
                             Err(err) => {
@@ -499,7 +552,7 @@ where
                         let action = AddDownlinkAction::new(
                             *projection,
                             key,
-                            address,
+                            address.clone(),
                             DefaultJoinValueLifecycle,
                         );
                         let boxed: Box<dyn EventHandler<C> + Send + 'static> = Box::new(action);
@@ -524,11 +577,15 @@ where
         context: &C,
         f: &mut std::fmt::Formatter<'_>,
     ) -> Result<(), std::fmt::Error> {
-        let JoinValueAddDownlink { projection, state } = self;
+        let JoinValueAddDownlink {
+            projection,
+            address,
+            state,
+        } = self;
         let lane = (projection)(context);
         let name = context.item_name(lane.id());
         match state {
-            OpenDownlinkState::Init { address, .. } => f
+            OpenDownlinkState::Init { .. } => f
                 .debug_struct("JoinValueAddDownlink")
                 .field("id", &lane.id())
                 .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
@@ -550,6 +607,21 @@ where
                 .finish(),
         }
     }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        true
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, context: &C, mut hasher: &mut dyn std::hash::Hasher) {
+        use std::{any::TypeId, hash::Hash};
+
+        let lane = (self.projection)(context);
+        TypeId::of::<JoinValueAddDownlink<(), (), ()>>().hash(&mut hasher);
+        hasher.write_u64(lane.id());
+        self.address.hash(&mut hasher);
+    }
 }
 
 impl<C, K, V> JoinValueAddDownlink<C, K, V> {
@@ -560,7 +632,8 @@ impl<C, K, V> JoinValueAddDownlink<C, K, V> {
     ) -> Self {
         JoinValueAddDownlink {
             projection,
-            state: OpenDownlinkState::Init { key, address },
+            address,
+            state: OpenDownlinkState::Init { key },
         }
     }
 }
@@ -626,6 +699,20 @@ where
             .field("result_type", &type_name::<U>())
             .field("consumed", &self.f.is_none())
             .finish()
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        true
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, context: &C, mut hasher: &mut dyn std::hash::Hasher) {
+        use std::{any::TypeId, hash::Hash};
+
+        let lane = (self.projection)(context);
+        TypeId::of::<JoinValueLaneWithEntry<(), (), (), (), ()>>().hash(&mut hasher);
+        hasher.write_u64(lane.id());
     }
 }
 
@@ -747,6 +834,20 @@ where
             .field("lane_name", &name.as_ref().map(|s| s.as_ref()))
             .field("consumed", &key.is_none())
             .finish()
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        true
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, context: &C, mut hasher: &mut dyn std::hash::Hasher) {
+        use std::{any::TypeId, hash::Hash};
+
+        let lane = (self.projection)(context);
+        TypeId::of::<JoinValueRemoveDownlink<(), (), ()>>().hash(&mut hasher);
+        hasher.write_u64(lane.id());
     }
 }
 
