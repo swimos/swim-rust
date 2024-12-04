@@ -180,6 +180,21 @@ where
                 .finish()
         }
     }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        self.inner.is_some()
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, _context: &Context, mut hasher: &mut dyn std::hash::Hasher) {
+        use std::{any::TypeId, hash::Hash};
+
+        if let Some(Inner { address, .. }) = &self.inner {
+            TypeId::of::<OpenValueDownlinkAction<(), ()>>().hash(&mut hasher);
+            address.hash(&mut hasher);
+        }
+    }
 }
 
 impl<T, LC, Context> HandlerAction<Context> for OpenEventDownlinkAction<T, LC>
@@ -239,6 +254,21 @@ where
                 .field("type", &type_name::<T>())
                 .field("lifecycle_type", &type_name::<LC>())
                 .finish()
+        }
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        self.inner.is_some()
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, _context: &Context, mut hasher: &mut dyn std::hash::Hasher) {
+        use std::{any::TypeId, hash::Hash};
+
+        if let Some(Inner { address, .. }) = &self.inner {
+            TypeId::of::<OpenEventDownlinkAction<(), ()>>().hash(&mut hasher);
+            address.hash(&mut hasher);
         }
     }
 }
@@ -305,6 +335,21 @@ where
                 .field("value_type", &type_name::<V>())
                 .field("lifecycle_type", &type_name::<LC>())
                 .finish()
+        }
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn has_identity(&self) -> bool {
+        self.inner.is_some()
+    }
+
+    #[cfg(feature = "diverge-check")]
+    fn identity_hash(&self, _context: &Context, mut hasher: &mut dyn std::hash::Hasher) {
+        use std::{any::TypeId, hash::Hash};
+
+        if let Some(Inner { address, .. }) = &self.inner {
+            TypeId::of::<OpenMapDownlinkAction<(), (), (), ()>>().hash(&mut hasher);
+            address.hash(&mut hasher);
         }
     }
 }
