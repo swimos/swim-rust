@@ -483,7 +483,7 @@ struct TestSelectorFn(bool);
 impl SelectorFn<TestAgent> for TestSelectorFn {
     type Target = ValueLane<i32>;
 
-    fn selector(self, context: &TestAgent) -> impl Selector<Target = Self::Target> + '_ {
+    fn selector<'a>(&'a self, context: &'a TestAgent) -> impl Selector<Target = Self::Target> + 'a {
         TestSelector(context, self.0)
     }
 
