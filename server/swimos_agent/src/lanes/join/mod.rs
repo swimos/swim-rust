@@ -26,7 +26,7 @@ enum DownlinkStatus {
 }
 
 /// The response type for join lane lifecycle events to handle closed downlinks.
-#[derive(Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum LinkClosedResponse {
     /// Attempt to reinstate the link.
     Retry,
