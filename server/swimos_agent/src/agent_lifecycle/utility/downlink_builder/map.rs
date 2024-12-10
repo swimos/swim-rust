@@ -14,7 +14,6 @@
 
 use std::borrow::Borrow;
 
-use std::collections::HashMap;
 use std::hash::Hash;
 use std::marker::PhantomData;
 use swimos_api::address::Address;
@@ -27,6 +26,7 @@ use crate::downlink_lifecycle::{
     OnFailed, OnFailedShared, OnSynced, OnSyncedShared, StatefulMapLifecycle, StatelessMapLifecycle,
 };
 use crate::lifecycle_fn::{WithHandlerContext, WithHandlerContextBorrow};
+use crate::map_storage::MapOpsWithEntry;
 use crate::{
     agent_model::downlink::{MapDownlinkHandle, OpenMapDownlinkAction},
     config::MapDownlinkConfig,
@@ -38,21 +38,24 @@ use crate::{
     event_handler::HandlerAction,
 };
 
+type DlBuilderType<K, V, M, Context> = fn(Context) -> (K, V, M);
+
 /// A builder for constructing a map downlink. Each lifecycle event handler is independent and, by
 /// default, they all do nothing.
 pub struct StatelessMapDownlinkBuilder<
     Context,
     K,
     V,
-    LC = StatelessMapDownlinkLifecycle<Context, K, V>,
+    M,
+    LC = StatelessMapDownlinkLifecycle<Context, K, V, M>,
 > {
-    _type: PhantomData<fn(Context) -> (K, V)>,
+    _type: PhantomData<DlBuilderType<K, V, M, Context>>,
     address: Address<Text>,
     config: MapDownlinkConfig,
     inner: LC,
 }
 
-impl<Context, K, V> StatelessMapDownlinkBuilder<Context, K, V> {
+impl<Context, K, V, M> StatelessMapDownlinkBuilder<Context, K, V, M> {
     pub fn new(address: Address<Text>, config: MapDownlinkConfig) -> Self {
         StatelessMapDownlinkBuilder {
             _type: PhantomData,
@@ -63,20 +66,20 @@ impl<Context, K, V> StatelessMapDownlinkBuilder<Context, K, V> {
     }
 }
 
-type StatefulBuilderVar<Context, K, V, State> = (fn(Context, State) -> (K, V), State);
+type StatefulBuilderVar<Context, K, V, M, State> = (fn(Context, State) -> (K, V, M), State);
 
 /// A builder for constructing a map downlink. The lifecycle event handlers share state and, by default,
 /// they all do nothing.
-pub struct StatefulMapDownlinkBuilder<Context, K, V, State, LC> {
-    _type: PhantomData<StatefulBuilderVar<Context, K, V, State>>,
+pub struct StatefulMapDownlinkBuilder<Context, K, V, M, State, LC> {
+    _type: PhantomData<StatefulBuilderVar<Context, K, V, M, State>>,
     address: Address<Text>,
     config: MapDownlinkConfig,
     inner: LC,
 }
 
-impl<Context, K, V, LC> StatelessMapDownlinkBuilder<Context, K, V, LC>
+impl<Context, K, V, M, LC> StatelessMapDownlinkBuilder<Context, K, V, M, LC>
 where
-    LC: StatelessMapLifecycle<Context, K, V>,
+    LC: StatelessMapLifecycle<Context, K, V, M>,
 {
     /// Specify a handler for the `on_linked` event.
     ///
@@ -85,7 +88,7 @@ where
     pub fn on_linked<F>(
         self,
         handler: F,
-    ) -> StatelessMapDownlinkBuilder<Context, K, V, LC::WithOnLinked<WithHandlerContext<F>>>
+    ) -> StatelessMapDownlinkBuilder<Context, K, V, M, LC::WithOnLinked<WithHandlerContext<F>>>
     where
         WithHandlerContext<F>: OnLinked<Context>,
     {
@@ -110,9 +113,9 @@ where
     pub fn on_synced<F>(
         self,
         handler: F,
-    ) -> StatelessMapDownlinkBuilder<Context, K, V, LC::WithOnSynced<WithHandlerContext<F>>>
+    ) -> StatelessMapDownlinkBuilder<Context, K, V, M, LC::WithOnSynced<WithHandlerContext<F>>>
     where
-        WithHandlerContext<F>: OnSynced<HashMap<K, V>, Context>,
+        WithHandlerContext<F>: OnSynced<M, Context>,
     {
         let StatelessMapDownlinkBuilder {
             address,
@@ -135,7 +138,7 @@ where
     pub fn on_unlinked<F>(
         self,
         handler: F,
-    ) -> StatelessMapDownlinkBuilder<Context, K, V, LC::WithOnUnlinked<WithHandlerContext<F>>>
+    ) -> StatelessMapDownlinkBuilder<Context, K, V, M, LC::WithOnUnlinked<WithHandlerContext<F>>>
     where
         WithHandlerContext<F>: OnUnlinked<Context>,
     {
@@ -160,7 +163,7 @@ where
     pub fn on_failed<F>(
         self,
         handler: F,
-    ) -> StatelessMapDownlinkBuilder<Context, K, V, LC::WithOnFailed<WithHandlerContext<F>>>
+    ) -> StatelessMapDownlinkBuilder<Context, K, V, M, LC::WithOnFailed<WithHandlerContext<F>>>
     where
         WithHandlerContext<F>: OnFailed<Context>,
     {
@@ -185,11 +188,17 @@ where
     pub fn on_update<F, B>(
         self,
         handler: F,
-    ) -> StatelessMapDownlinkBuilder<Context, K, V, LC::WithOnUpdate<WithHandlerContextBorrow<F, B>>>
+    ) -> StatelessMapDownlinkBuilder<
+        Context,
+        K,
+        V,
+        M,
+        LC::WithOnUpdate<WithHandlerContextBorrow<F, B>>,
+    >
     where
         B: ?Sized,
         V: Borrow<B>,
-        WithHandlerContextBorrow<F, B>: OnDownlinkUpdate<K, V, Context>,
+        WithHandlerContextBorrow<F, B>: OnDownlinkUpdate<K, V, M, Context>,
     {
         let StatelessMapDownlinkBuilder {
             address,
@@ -212,9 +221,9 @@ where
     pub fn on_remove<F>(
         self,
         handler: F,
-    ) -> StatelessMapDownlinkBuilder<Context, K, V, LC::WithOnRemove<WithHandlerContext<F>>>
+    ) -> StatelessMapDownlinkBuilder<Context, K, V, M, LC::WithOnRemove<WithHandlerContext<F>>>
     where
-        WithHandlerContext<F>: OnDownlinkRemove<K, V, Context>,
+        WithHandlerContext<F>: OnDownlinkRemove<K, V, M, Context>,
     {
         let StatelessMapDownlinkBuilder {
             address,
@@ -237,9 +246,9 @@ where
     pub fn on_clear<F>(
         self,
         handler: F,
-    ) -> StatelessMapDownlinkBuilder<Context, K, V, LC::WithOnClear<WithHandlerContext<F>>>
+    ) -> StatelessMapDownlinkBuilder<Context, K, V, M, LC::WithOnClear<WithHandlerContext<F>>>
     where
-        WithHandlerContext<F>: OnDownlinkClear<K, V, Context>,
+        WithHandlerContext<F>: OnDownlinkClear<M, Context>,
     {
         let StatelessMapDownlinkBuilder {
             address,
@@ -261,7 +270,7 @@ where
     pub fn with_state<State: Send>(
         self,
         state: State,
-    ) -> StatefulMapDownlinkBuilder<Context, K, V, State, LC::WithShared<State>> {
+    ) -> StatefulMapDownlinkBuilder<Context, K, V, M, State, LC::WithShared<State>> {
         let StatelessMapDownlinkBuilder {
             address,
             config,
@@ -277,14 +286,15 @@ where
     }
 }
 
-impl<Context, K, V, LC> StatelessMapDownlinkBuilder<Context, K, V, LC>
+impl<Context, K, V, M, LC> StatelessMapDownlinkBuilder<Context, K, V, M, LC>
 where
     Context: AgentDescription + 'static,
     K: Form + Hash + Eq + Ord + Clone + Send + Sync + 'static,
     K::Rec: Send,
     V: Form + Send + Sync + 'static,
     V::Rec: Send,
-    LC: StatelessMapLifecycle<Context, K, V> + 'static,
+    M: Default + MapOpsWithEntry<K, V, K> + Send + 'static,
+    LC: StatelessMapLifecycle<Context, K, V, M> + 'static,
 {
     /// Complete the downlink and create a [`HandlerAction`] that will open the downlink when it is
     /// executed.
@@ -301,9 +311,9 @@ where
     }
 }
 
-impl<Context, K, V, State, LC> StatefulMapDownlinkBuilder<Context, K, V, State, LC>
+impl<Context, K, V, M, State, LC> StatefulMapDownlinkBuilder<Context, K, V, M, State, LC>
 where
-    LC: StatefulMapLifecycle<Context, State, K, V> + 'static,
+    LC: StatefulMapLifecycle<Context, State, K, V, M> + 'static,
 {
     /// Specify a handler for the `on_linked` event.
     ///
@@ -312,7 +322,7 @@ where
     pub fn on_linked<F>(
         self,
         handler: F,
-    ) -> StatefulMapDownlinkBuilder<Context, K, V, State, LC::WithOnLinked<FnHandler<F>>>
+    ) -> StatefulMapDownlinkBuilder<Context, K, V, M, State, LC::WithOnLinked<FnHandler<F>>>
     where
         FnHandler<F>: OnLinkedShared<Context, State>,
     {
@@ -337,9 +347,9 @@ where
     pub fn on_synced<F>(
         self,
         handler: F,
-    ) -> StatefulMapDownlinkBuilder<Context, K, V, State, LC::WithOnSynced<FnHandler<F>>>
+    ) -> StatefulMapDownlinkBuilder<Context, K, V, M, State, LC::WithOnSynced<FnHandler<F>>>
     where
-        FnHandler<F>: OnSyncedShared<HashMap<K, V>, Context, State>,
+        FnHandler<F>: OnSyncedShared<M, Context, State>,
     {
         let StatefulMapDownlinkBuilder {
             address,
@@ -362,7 +372,7 @@ where
     pub fn on_unlinked<F>(
         self,
         handler: F,
-    ) -> StatefulMapDownlinkBuilder<Context, K, V, State, LC::WithOnUnlinked<FnHandler<F>>>
+    ) -> StatefulMapDownlinkBuilder<Context, K, V, M, State, LC::WithOnUnlinked<FnHandler<F>>>
     where
         FnHandler<F>: OnUnlinkedShared<Context, State>,
     {
@@ -387,7 +397,7 @@ where
     pub fn on_failed<F>(
         self,
         handler: F,
-    ) -> StatefulMapDownlinkBuilder<Context, K, V, State, LC::WithOnFailed<FnHandler<F>>>
+    ) -> StatefulMapDownlinkBuilder<Context, K, V, M, State, LC::WithOnFailed<FnHandler<F>>>
     where
         FnHandler<F>: OnFailedShared<Context, State>,
     {
@@ -409,14 +419,15 @@ where
     ///
     /// # Arguments
     /// * `handler` - The event handler.
+    #[allow(clippy::type_complexity)]
     pub fn on_update<F, B>(
         self,
         handler: F,
-    ) -> StatefulMapDownlinkBuilder<Context, K, V, State, LC::WithOnUpdate<BorrowHandler<F, B>>>
+    ) -> StatefulMapDownlinkBuilder<Context, K, V, M, State, LC::WithOnUpdate<BorrowHandler<F, B>>>
     where
         B: ?Sized,
         V: Borrow<B>,
-        BorrowHandler<F, B>: OnDownlinkUpdateShared<K, V, Context, State>,
+        BorrowHandler<F, B>: OnDownlinkUpdateShared<K, V, M, Context, State>,
     {
         let StatefulMapDownlinkBuilder {
             address,
@@ -439,9 +450,9 @@ where
     pub fn on_remove<F>(
         self,
         handler: F,
-    ) -> StatefulMapDownlinkBuilder<Context, K, V, State, LC::WithOnRemove<FnHandler<F>>>
+    ) -> StatefulMapDownlinkBuilder<Context, K, V, M, State, LC::WithOnRemove<FnHandler<F>>>
     where
-        FnHandler<F>: OnDownlinkRemoveShared<K, V, Context, State>,
+        FnHandler<F>: OnDownlinkRemoveShared<K, V, M, Context, State>,
     {
         let StatefulMapDownlinkBuilder {
             address,
@@ -464,9 +475,9 @@ where
     pub fn on_clear<F>(
         self,
         handler: F,
-    ) -> StatefulMapDownlinkBuilder<Context, K, V, State, LC::WithOnClear<FnHandler<F>>>
+    ) -> StatefulMapDownlinkBuilder<Context, K, V, M, State, LC::WithOnClear<FnHandler<F>>>
     where
-        FnHandler<F>: OnDownlinkClearShared<K, V, Context, State>,
+        FnHandler<F>: OnDownlinkClearShared<M, Context, State>,
     {
         let StatefulMapDownlinkBuilder {
             address,
@@ -483,15 +494,16 @@ where
     }
 }
 
-impl<Context, K, V, State, LC> StatefulMapDownlinkBuilder<Context, K, V, State, LC>
+impl<Context, K, V, M, State, LC> StatefulMapDownlinkBuilder<Context, K, V, M, State, LC>
 where
     Context: AgentDescription + 'static,
     K: Form + Hash + Eq + Ord + Clone + Send + Sync + 'static,
     K::Rec: Send,
     V: Form + Send + Sync + 'static,
     V::Rec: Send,
+    M: Default + MapOpsWithEntry<K, V, K> + Send + 'static,
     State: Send + 'static,
-    LC: StatefulMapLifecycle<Context, State, K, V> + 'static,
+    LC: StatefulMapLifecycle<Context, State, K, V, M> + 'static,
 {
     /// Complete the downlink and create a [`HandlerAction`] that will open the downlink when it is
     /// executed.

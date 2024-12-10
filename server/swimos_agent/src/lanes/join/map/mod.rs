@@ -394,7 +394,7 @@ impl<Context, L, K, V, LC> HandlerAction<Context> for AddDownlinkAction<Context,
 where
     Context: AgentDescription + 'static,
     L: Clone + Eq + Hash + Send + 'static,
-    K: Form + Clone + Eq + Hash + Send + Ord + 'static,
+    K: Form + Clone + Eq + Hash + Ord + Send + 'static,
     V: Form + Send + 'static,
     K::Rec: Send,
     V::BodyRec: Send,
