@@ -101,7 +101,7 @@ pub enum ItemSpec<'a> {
     Demand(&'a Type),
     DemandMap(&'a Type, &'a Type),
     Value(ItemKind, &'a Type),
-    Map(ItemKind, &'a Type, &'a Type),
+    Map(ItemKind, &'a Type, &'a Type, Option<&'a Type>),
     Supply(&'a Type),
     JoinValue(&'a Type, &'a Type),
     JoinMap(&'a Type, &'a Type, &'a Type),
@@ -115,7 +115,7 @@ impl<'a> ItemSpec<'a> {
             ItemSpec::Demand(t) => Some(WarpLaneSpec::Demand(t)),
             ItemSpec::DemandMap(k, v) => Some(WarpLaneSpec::DemandMap(k, v)),
             ItemSpec::Value(ItemKind::Lane, t) => Some(WarpLaneSpec::Value(t)),
-            ItemSpec::Map(ItemKind::Lane, k, v) => Some(WarpLaneSpec::Map(k, v)),
+            ItemSpec::Map(ItemKind::Lane, k, v, m) => Some(WarpLaneSpec::Map(k, v, *m)),
             ItemSpec::JoinValue(k, v) => Some(WarpLaneSpec::JoinValue(k, v)),
             ItemSpec::JoinMap(l, k, v) => Some(WarpLaneSpec::JoinMap(l, k, v)),
             ItemSpec::Supply(t) => Some(WarpLaneSpec::Supply(t)),
@@ -134,7 +134,7 @@ impl<'a> ItemSpec<'a> {
     pub fn item_kind(&self) -> ItemKind {
         match self {
             ItemSpec::Value(k, _) => *k,
-            ItemSpec::Map(k, _, _) => *k,
+            ItemSpec::Map(k, _, _, _) => *k,
             ItemSpec::Command(_) => ItemKind::Lane,
             ItemSpec::JoinValue(_, _) => ItemKind::Lane,
             ItemSpec::JoinMap(_, _, _) => ItemKind::Lane,
@@ -154,7 +154,7 @@ pub enum WarpLaneSpec<'a> {
     DemandMap(&'a Type, &'a Type),
     Value(&'a Type),
     Supply(&'a Type),
-    Map(&'a Type, &'a Type),
+    Map(&'a Type, &'a Type, Option<&'a Type>),
     JoinValue(&'a Type, &'a Type),
     JoinMap(&'a Type, &'a Type, &'a Type),
 }
@@ -423,19 +423,19 @@ fn extract_lane_model(field: &Field) -> Validation<ItemModel<'_>, Errors<syn::Er
                             )),
                             Err(e) => Validation::fail(Errors::of(e)),
                         },
-                        MAP_LANE_NAME => match two_params(arguments) {
-                            Ok((param1, param2)) => Validation::valid(ItemModel::new(
+                        MAP_LANE_NAME => match two_plus_one_params(arguments) {
+                            Ok((param1, param2, param3)) => Validation::valid(ItemModel::new(
                                 fld_name,
-                                ItemSpec::Map(ItemKind::Lane, param1, param2),
+                                ItemSpec::Map(ItemKind::Lane, param1, param2, param3),
                                 lane_flags,
                                 transform,
                             )),
                             Err(e) => Validation::fail(Errors::of(e)),
                         },
-                        MAP_STORE_NAME => match two_params(arguments) {
-                            Ok((param1, param2)) => Validation::valid(ItemModel::new(
+                        MAP_STORE_NAME => match two_plus_one_params(arguments) {
+                            Ok((param1, param2, param3)) => Validation::valid(ItemModel::new(
                                 fld_name,
-                                ItemSpec::Map(ItemKind::Store, param1, param2),
+                                ItemSpec::Map(ItemKind::Store, param1, param2, param3),
                                 lane_flags,
                                 transform,
                             )),
@@ -571,14 +571,34 @@ fn http_params(args: &PathArguments, simple: bool) -> Result<HttpLaneSpec<'_>, s
 }
 
 fn two_params(args: &PathArguments) -> Result<(&Type, &Type), syn::Error> {
-    extract_params::<2>(args).map(|[p1, p2]| (p1, p2))
+    let maybe_params = extract_params::<2>(args)?;
+    maybe_params
+        .ok_or_else(|| syn::Error::new_spanned(args, BAD_PARAMS))
+        .map(|[p1, p2]| (p1, p2))
 }
 
 fn three_params(args: &PathArguments) -> Result<(&Type, &Type, &Type), syn::Error> {
-    extract_params::<3>(args).map(|[p1, p2, p3]| (p1, p2, p3))
+    let maybe_params = extract_params::<3>(args)?;
+    maybe_params
+        .ok_or_else(|| syn::Error::new_spanned(args, BAD_PARAMS))
+        .map(|[p1, p2, p3]| (p1, p2, p3))
 }
 
-fn extract_params<const N: usize>(args: &PathArguments) -> Result<[&Type; N], syn::Error> {
+fn two_plus_one_params(args: &PathArguments) -> Result<(&Type, &Type, Option<&Type>), syn::Error> {
+    let params = extract_params_vec(args)?;
+    match <[&Type; 2]>::try_from(params) {
+        Ok([p1, p2]) => Ok((p1, p2, None)),
+        Err(params) => {
+            if let Ok([p1, p2, p3]) = <[&Type; 3]>::try_from(params) {
+                Ok((p1, p2, Some(p3)))
+            } else {
+                Err(syn::Error::new_spanned(args, BAD_PARAMS))
+            }
+        }
+    }
+}
+
+fn extract_params_vec(args: &PathArguments) -> Result<Vec<&Type>, syn::Error> {
     if let PathArguments::AngleBracketed(AngleBracketedGenericArguments { args, .. }) = args {
         let mut good = vec![];
         let it = args.iter();
@@ -589,10 +609,13 @@ fn extract_params<const N: usize>(args: &PathArguments) -> Result<[&Type; N], sy
                 return Err(syn::Error::new_spanned(args, BAD_PARAMS));
             }
         }
-        Ok(good
-            .try_into()
-            .map_err(|_| syn::Error::new_spanned(args, BAD_PARAMS))?)
+        Ok(good)
     } else {
         Err(syn::Error::new_spanned(args, BAD_PARAMS))
     }
+}
+
+fn extract_params<const N: usize>(args: &PathArguments) -> Result<Option<[&Type; N]>, syn::Error> {
+    let params = extract_params_vec(args)?;
+    Ok(<[&Type; N]>::try_from(params).ok())
 }

@@ -234,13 +234,13 @@ impl<Agent: AgentDescription + 'static> HandlerContext<Agent> {
     ) -> impl HandlerAction<Agent, Completion = U> + Send + 'a
     where
         Agent: 'static,
-        Item: InspectableMapLikeItem<K, V> + 'static,
+        Item: InspectableMapLikeItem<K, V, B> + 'static,
         K: Send + Clone + Eq + Hash + 'static,
         V: Borrow<B> + 'static,
         B: ?Sized + 'static,
         F: FnOnce(Option<&B>) -> U + Send + 'a,
     {
-        Item::with_entry_handler::<Agent, F, B, U>(item, key, f)
+        Item::with_entry_handler::<Agent, F, U>(item, key, f)
     }
 
     /// Create an event handler that will transform the value in an entry of a map lane or store of the agent.
@@ -326,12 +326,12 @@ impl<Agent: AgentDescription + 'static> HandlerContext<Agent> {
     ///
     /// #Arguments
     /// * `item` - Projection to the map-like item.
-    pub fn get_map<Item, K, V>(
+    pub fn get_map<Item, K, V, M>(
         &self,
         item: fn(&Agent) -> &Item,
-    ) -> impl HandlerAction<Agent, Completion = HashMap<K, V>> + Send + 'static
+    ) -> impl HandlerAction<Agent, Completion = M> + Send + 'static
     where
-        Item: MapLikeItem<K, V>,
+        Item: MapLikeItem<K, V, M>,
         K: Send + Clone + Eq + Hash + 'static,
         V: Send + Clone + 'static,
     {

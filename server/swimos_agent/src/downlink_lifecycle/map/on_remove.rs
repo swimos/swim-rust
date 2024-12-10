@@ -119,9 +119,9 @@ where
 
 impl<K, V, Context, Shared, F> OnDownlinkRemoveShared<K, V, Context, Shared> for FnHandler<F>
 where
-    F: for<'a> MapRemoveFn<'a, Context, Shared, K, V> + Send,
+    F: for<'a> MapRemoveFn<'a, Context, Shared, K, V, HashMap<K, V>> + Send,
 {
-    type OnRemoveHandler<'a> = <F as MapRemoveFn<'a, Context, Shared, K, V>>::Handler
+    type OnRemoveHandler<'a> = <F as MapRemoveFn<'a, Context, Shared, K, V, HashMap<K, V>>>::Handler
     where
         Self: 'a,
         Shared: 'a;
