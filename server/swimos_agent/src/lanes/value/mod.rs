@@ -42,6 +42,7 @@ use crate::{
     item::{AgentItem, MutableValueLikeItem, ValueItem, ValueLikeItem},
     meta::AgentMetadata,
     stores::value::ValueStore,
+    ReconDecoder,
 };
 
 use super::{LaneItem, ProjTransform, Selector, SelectorFn};
@@ -387,15 +388,16 @@ impl<C, T> HandlerTrans<T> for ProjTransform<C, ValueLane<T>> {
     }
 }
 
-pub type DecodeAndSet<C, T> =
-    AndThen<Decode<T>, ValueLaneSet<C, T>, ProjTransform<C, ValueLane<T>>>;
+pub type DecodeAndSet<'a, C, T> =
+    AndThen<Decode<'a, T>, ValueLaneSet<C, T>, ProjTransform<C, ValueLane<T>>>;
 
 /// Create an event handler that will decode an incoming command and set the value into a value lane.
-pub fn decode_and_set<C: AgentDescription, T: RecognizerReadable>(
+pub fn decode_and_set<'a, C: AgentDescription, T: RecognizerReadable>(
+    decoder: &'a mut ReconDecoder<T>,
     buffer: BytesMut,
     projection: fn(&C) -> &ValueLane<T>,
-) -> DecodeAndSet<C, T> {
-    let decode: Decode<T> = Decode::new(buffer);
+) -> DecodeAndSet<'a, C, T> {
+    let decode: Decode<'a, T> = Decode::new(decoder, buffer);
     decode.and_then(ProjTransform::new(projection))
 }
 
@@ -535,14 +537,14 @@ where
 
 #[derive(Default)]
 #[doc(hidden)]
-pub enum DecodeAndSelectSet<C, T, F> {
-    Decoding(Decode<T>, F),
+pub enum DecodeAndSelectSet<'a, C, T: RecognizerReadable, F> {
+    Decoding(Decode<'a, T>, F),
     Selecting(ValueLaneSelectSet<C, T, F>),
     #[default]
     Done,
 }
 
-impl<C, T, F> HandlerAction<C> for DecodeAndSelectSet<C, T, F>
+impl<'a, C, T, F> HandlerAction<C> for DecodeAndSelectSet<'a, C, T, F>
 where
     C: AgentDescription,
     T: RecognizerReadable,
@@ -613,14 +615,15 @@ where
 
 /// Create an event handler that will decode an incoming command and set the value into a value lane.
 pub fn decode_and_select_set<C, T, F>(
+    decoder: &mut ReconDecoder<T>,
     buffer: BytesMut,
     projection: F,
-) -> DecodeAndSelectSet<C, T, F>
+) -> DecodeAndSelectSet<'_, C, T, F>
 where
     T: RecognizerReadable,
     F: SelectorFn<C, Target = ValueLane<T>>,
 {
-    let decode: Decode<T> = Decode::new(buffer);
+    let decode: Decode<T> = Decode::new(decoder, buffer);
     DecodeAndSelectSet::Decoding(decode, projection)
 }
 

@@ -33,7 +33,7 @@ use swimos_api::{
 };
 use swimos_form::{read::RecognizerReadable, write::StructuralWritable};
 use swimos_model::Text;
-use swimos_recon::parser::{AsyncParseError, RecognizerDecoder};
+use swimos_recon::parser::AsyncParseError;
 use swimos_utilities::{never::Never, routing::RouteUri};
 use thiserror::Error;
 use tokio::time::Instant;
@@ -45,6 +45,7 @@ use crate::{
     },
     lanes::JoinLaneKind,
     meta::AgentMetadata,
+    ReconDecoder,
 };
 
 use bitflags::bitflags;
@@ -1283,23 +1284,21 @@ impl<Context, S: AsRef<str>> HandlerAction<Context> for GetParameter<S> {
 
 /// An event handler that will attempt to decode a [readable](`swimos_form::read::StructuralReadable`) type
 /// from a buffer, immediately returning the result or an error.
-pub struct Decode<T> {
-    _target_type: PhantomData<fn() -> T>,
+pub struct Decode<'a, T: RecognizerReadable> {
+    decoder: Option<&'a mut ReconDecoder<T>>,
     buffer: BytesMut,
-    complete: bool,
 }
 
-impl<T> Decode<T> {
-    pub fn new(buffer: BytesMut) -> Self {
+impl<'a, T: RecognizerReadable> Decode<'a, T> {
+    pub fn new(decoder: &'a mut ReconDecoder<T>, buffer: BytesMut) -> Self {
         Decode {
-            _target_type: PhantomData,
+            decoder: Some(decoder),
             buffer,
-            complete: false,
         }
     }
 }
 
-impl<Context, T: RecognizerReadable> HandlerAction<Context> for Decode<T> {
+impl<'a, T: RecognizerReadable, Context> HandlerAction<Context> for Decode<'a, T> {
     type Completion = T;
 
     fn step(
@@ -1308,27 +1307,24 @@ impl<Context, T: RecognizerReadable> HandlerAction<Context> for Decode<T> {
         _meta: AgentMetadata,
         _context: &Context,
     ) -> StepResult<Self::Completion> {
-        let Decode {
-            buffer, complete, ..
-        } = self;
-        if *complete {
-            StepResult::after_done()
-        } else {
-            let mut decoder = RecognizerDecoder::new(T::make_recognizer());
-            *complete = true;
+        let Decode { decoder, buffer } = self;
+        if let Some(decoder) = decoder.take() {
+            decoder.reset();
             match decoder.decode_eof(buffer) {
                 Ok(Some(value)) => StepResult::done(value),
                 Ok(_) => StepResult::Fail(EventHandlerError::IncompleteCommand),
                 Err(e) => StepResult::Fail(EventHandlerError::BadCommand(e)),
             }
+        } else {
+            StepResult::after_done()
         }
     }
 
     fn describe(&self, _context: &Context, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         let Decode {
-            buffer, complete, ..
+            buffer, decoder, ..
         } = self;
-        let content = if *complete {
+        let content = if decoder.is_none() {
             CONSUMED
         } else {
             std::str::from_utf8(buffer.as_ref()).unwrap_or("<<BAD UTF8>>")
