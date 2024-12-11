@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::HashMap;
-
 use swimos_utilities::handlers::{FnHandler, NoHandler};
 
 use crate::{
@@ -23,7 +21,7 @@ use crate::{
 };
 
 /// Lifecycle event for the `on_remove` event of a downlink, from an agent.
-pub trait OnDownlinkRemove<K, V, Context>: Send {
+pub trait OnDownlinkRemove<K, V, M, Context>: Send {
     type OnRemoveHandler<'a>: EventHandler<Context> + 'a
     where
         Self: 'a;
@@ -32,17 +30,12 @@ pub trait OnDownlinkRemove<K, V, Context>: Send {
     /// * `key` - The key that has been removed.
     /// * `map` - The current state of the map.
     /// * `removed` - The removed value.
-    fn on_remove<'a>(
-        &'a self,
-        key: K,
-        map: &HashMap<K, V>,
-        removed: V,
-    ) -> Self::OnRemoveHandler<'a>;
+    fn on_remove<'a>(&'a self, key: K, map: &M, removed: V) -> Self::OnRemoveHandler<'a>;
 }
 
 /// Lifecycle event for the `on_remove` event of a downlink, from an agent, where the event
 /// handler has shared state with other handlers for the same downlink.
-pub trait OnDownlinkRemoveShared<K, V, Context, Shared>: Send {
+pub trait OnDownlinkRemoveShared<K, V, M, Context, Shared>: Send {
     type OnRemoveHandler<'a>: EventHandler<Context> + 'a
     where
         Self: 'a,
@@ -59,27 +52,22 @@ pub trait OnDownlinkRemoveShared<K, V, Context, Shared>: Send {
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
         key: K,
-        map: &HashMap<K, V>,
+        map: &M,
         removed: V,
     ) -> Self::OnRemoveHandler<'a>;
 }
 
-impl<K, V, Context> OnDownlinkRemove<K, V, Context> for NoHandler {
+impl<K, V, M, Context> OnDownlinkRemove<K, V, M, Context> for NoHandler {
     type OnRemoveHandler<'a> = UnitHandler
     where
         Self: 'a;
 
-    fn on_remove<'a>(
-        &'a self,
-        _key: K,
-        _map: &HashMap<K, V>,
-        _removed: V,
-    ) -> Self::OnRemoveHandler<'a> {
+    fn on_remove<'a>(&'a self, _key: K, _map: &M, _removed: V) -> Self::OnRemoveHandler<'a> {
         UnitHandler::default()
     }
 }
 
-impl<K, V, Context, Shared> OnDownlinkRemoveShared<K, V, Context, Shared> for NoHandler {
+impl<K, V, M, Context, Shared> OnDownlinkRemoveShared<K, V, M, Context, Shared> for NoHandler {
     type OnRemoveHandler<'a> = UnitHandler
     where
         Self: 'a,
@@ -90,38 +78,33 @@ impl<K, V, Context, Shared> OnDownlinkRemoveShared<K, V, Context, Shared> for No
         _shared: &'a Shared,
         _handler_context: HandlerContext<Context>,
         _key: K,
-        _map: &HashMap<K, V>,
+        _map: &M,
         _removed: V,
     ) -> Self::OnRemoveHandler<'a> {
         UnitHandler::default()
     }
 }
 
-impl<K, V, Context, F, H> OnDownlinkRemove<K, V, Context> for FnHandler<F>
+impl<K, V, M, Context, F, H> OnDownlinkRemove<K, V, M, Context> for FnHandler<F>
 where
-    F: Fn(K, &HashMap<K, V>, V) -> H + Send,
+    F: Fn(K, &M, V) -> H + Send,
     H: EventHandler<Context> + 'static,
 {
     type OnRemoveHandler<'a> = H
     where
         Self: 'a;
 
-    fn on_remove<'a>(
-        &'a self,
-        key: K,
-        map: &HashMap<K, V>,
-        removed: V,
-    ) -> Self::OnRemoveHandler<'a> {
+    fn on_remove<'a>(&'a self, key: K, map: &M, removed: V) -> Self::OnRemoveHandler<'a> {
         let FnHandler(f) = self;
         f(key, map, removed)
     }
 }
 
-impl<K, V, Context, Shared, F> OnDownlinkRemoveShared<K, V, Context, Shared> for FnHandler<F>
+impl<K, V, M, Context, Shared, F> OnDownlinkRemoveShared<K, V, M, Context, Shared> for FnHandler<F>
 where
-    F: for<'a> MapRemoveFn<'a, Context, Shared, K, V> + Send,
+    F: for<'a> MapRemoveFn<'a, Context, Shared, K, V, M> + Send,
 {
-    type OnRemoveHandler<'a> = <F as MapRemoveFn<'a, Context, Shared, K, V>>::Handler
+    type OnRemoveHandler<'a> = <F as MapRemoveFn<'a, Context, Shared, K, V, M>>::Handler
     where
         Self: 'a,
         Shared: 'a;
@@ -131,7 +114,7 @@ where
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
         key: K,
-        map: &HashMap<K, V>,
+        map: &M,
         removed: V,
     ) -> Self::OnRemoveHandler<'a> {
         let FnHandler(f) = self;
@@ -139,30 +122,25 @@ where
     }
 }
 
-impl<Context, K, V, F, H> OnDownlinkRemove<K, V, Context> for WithHandlerContext<F>
+impl<Context, K, V, M, F, H> OnDownlinkRemove<K, V, M, Context> for WithHandlerContext<F>
 where
-    F: Fn(HandlerContext<Context>, K, &HashMap<K, V>, V) -> H + Send,
+    F: Fn(HandlerContext<Context>, K, &M, V) -> H + Send,
     H: EventHandler<Context> + 'static,
 {
     type OnRemoveHandler<'a> = H
     where
         Self: 'a;
 
-    fn on_remove<'a>(
-        &'a self,
-        key: K,
-        map: &HashMap<K, V>,
-        removed: V,
-    ) -> Self::OnRemoveHandler<'a> {
+    fn on_remove<'a>(&'a self, key: K, map: &M, removed: V) -> Self::OnRemoveHandler<'a> {
         let WithHandlerContext { inner } = self;
         inner(Default::default(), key, map, removed)
     }
 }
 
-impl<K, V, Context, Shared, F> OnDownlinkRemoveShared<K, V, Context, Shared>
+impl<K, V, M, Context, Shared, F> OnDownlinkRemoveShared<K, V, M, Context, Shared>
     for LiftShared<F, Shared>
 where
-    F: OnDownlinkRemove<K, V, Context> + Send,
+    F: OnDownlinkRemove<K, V, M, Context> + Send,
 {
     type OnRemoveHandler<'a> = F::OnRemoveHandler<'a>
     where
@@ -174,7 +152,7 @@ where
         _shared: &'a Shared,
         _handler_context: HandlerContext<Context>,
         key: K,
-        map: &HashMap<K, V>,
+        map: &M,
         removed: V,
     ) -> Self::OnRemoveHandler<'a> {
         let LiftShared { inner, .. } = self;

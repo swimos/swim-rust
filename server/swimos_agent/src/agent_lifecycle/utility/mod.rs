@@ -58,6 +58,7 @@ use crate::lanes::join_map::JoinMapAddDownlink;
 use crate::lanes::join_value::{JoinValueAddDownlink, JoinValueLane};
 use crate::lanes::supply::{Supply, SupplyLane};
 use crate::lanes::{DemandMapLane, JoinMapLane, OpenLane};
+use crate::map_storage::MapOpsWithEntry;
 
 pub use self::downlink_builder::event::{
     StatefulEventDownlinkBuilder, StatelessEventDownlinkBuilder,
@@ -234,13 +235,13 @@ impl<Agent: AgentDescription + 'static> HandlerContext<Agent> {
     ) -> impl HandlerAction<Agent, Completion = U> + Send + 'a
     where
         Agent: 'static,
-        Item: InspectableMapLikeItem<K, V> + 'static,
+        Item: InspectableMapLikeItem<K, V, B> + 'static,
         K: Send + Clone + Eq + Hash + 'static,
         V: Borrow<B> + 'static,
         B: ?Sized + 'static,
         F: FnOnce(Option<&B>) -> U + Send + 'a,
     {
-        Item::with_entry_handler::<Agent, F, B, U>(item, key, f)
+        Item::with_entry_handler::<Agent, F, U>(item, key, f)
     }
 
     /// Create an event handler that will transform the value in an entry of a map lane or store of the agent.
@@ -326,12 +327,12 @@ impl<Agent: AgentDescription + 'static> HandlerContext<Agent> {
     ///
     /// #Arguments
     /// * `item` - Projection to the map-like item.
-    pub fn get_map<Item, K, V>(
+    pub fn get_map<Item, K, V, M>(
         &self,
         item: fn(&Agent) -> &Item,
-    ) -> impl HandlerAction<Agent, Completion = HashMap<K, V>> + Send + 'static
+    ) -> impl HandlerAction<Agent, Completion = M> + Send + 'static
     where
-        Item: MapLikeItem<K, V>,
+        Item: MapLikeItem<K, V, M>,
         K: Send + Clone + Eq + Hash + 'static,
         V: Send + Clone + 'static,
     {
@@ -472,7 +473,7 @@ impl<Agent: AgentDescription + 'static> HandlerContext<Agent> {
     ) -> impl HandlerAction<Agent, Completion = ()> + Send + 'static
     where
         L: Any + Clone + Eq + Hash + Send + 'static,
-        K: Any + Form + Clone + Eq + Hash + Send + Ord + 'static,
+        K: Any + Form + Clone + Eq + Hash + Ord + Send + 'static,
         V: Form + Send + 'static,
         K::Rec: Send,
         V::BodyRec: Send,
@@ -793,7 +794,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
     /// * `lane` - The lane to downlink from.
     /// * `config` - Configuration parameters for the downlink.
     /// * `lifecycle` - Lifecycle events for the downlink.
-    pub fn open_map_downlink<K, V, LC>(
+    pub fn open_map_downlink<K, V, M, LC>(
         &self,
         host: Option<&str>,
         node: &str,
@@ -802,9 +803,10 @@ impl<Agent: 'static> HandlerContext<Agent> {
         config: MapDownlinkConfig,
     ) -> impl HandlerAction<Agent, Completion = MapDownlinkHandle<K, V>> + Send + 'static
     where
-        K: Form + Hash + Eq + Ord + Clone + Send + Sync + 'static,
+        K: Form + Hash + Eq + Clone + Send + Sync + 'static,
         V: Form + Send + Sync + 'static,
-        LC: MapDownlinkLifecycle<K, V, Agent> + Send + 'static,
+        M: Default + MapOpsWithEntry<K, V, K> + Send + 'static,
+        LC: MapDownlinkLifecycle<K, V, M, Agent> + Send + 'static,
         K::Rec: Send,
         V::Rec: Send,
     {
@@ -885,9 +887,33 @@ impl<Agent: 'static> HandlerContext<Agent> {
         node: &str,
         lane: &str,
         config: MapDownlinkConfig,
-    ) -> StatelessMapDownlinkBuilder<Agent, K, V>
+    ) -> StatelessMapDownlinkBuilder<Agent, K, V, HashMap<K, V>>
     where
-        K: Form + Hash + Eq + Ord + Clone + Send + Sync + 'static,
+        K: Form + Hash + Eq + Clone + Send + Sync + 'static,
+        K::Rec: Send,
+        V: Form + Send + Sync + 'static,
+        V::Rec: Send,
+    {
+        StatelessMapDownlinkBuilder::new(Address::text(host, node, lane), config)
+    }
+
+    /// Create a builder to construct a request to open a map downlink, using the specified map type
+    /// as the backing representation of the downlink.
+    /// # Arguments
+    /// * `host` - The remote host at which the agent resides (a local agent if not specified).
+    /// * `node` - The node URI of the agent.
+    /// * `lane` - The lane to downlink from.
+    /// * `config` - Configuration parameters for the downlink.
+    pub fn map_downlink_builder_for<K, V, M>(
+        &self,
+        host: Option<&str>,
+        node: &str,
+        lane: &str,
+        config: MapDownlinkConfig,
+    ) -> StatelessMapDownlinkBuilder<Agent, K, V, M>
+    where
+        M: MapOpsWithEntry<K, V, K>,
+        K: Form + Hash + Eq + Clone + Send + Sync + 'static,
         K::Rec: Send,
         V: Form + Send + Sync + 'static,
         V::Rec: Send,
@@ -1048,7 +1074,7 @@ impl<Agent, L, K, V> JoinMapContext<Agent, L, K, V>
 where
     Agent: 'static,
     L: Any + Clone + Eq + Hash + Send + 'static,
-    K: Any + Form + Clone + Eq + Hash + Ord + Send + 'static,
+    K: Any + Form + Clone + Eq + Hash + Send + 'static,
     V: Form + Send + 'static,
     K::Rec: Send,
     V::BodyRec: Send,

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fmt::Write;
 
 use swimos::agent::agent_model::ItemFlags;
@@ -843,4 +843,44 @@ fn agent_level_transient_flag() {
         transient_lane(2, "third", WarpLaneKind::Command),
         transient_store(3, "fourth", StoreKind::Value),
     ]);
+}
+
+#[test]
+fn map_lane_explicit_backing() {
+    #[derive(AgentLaneModel)]
+    struct MapLaneExplicit {
+        lane: MapLane<i32, String, HashMap<i32, String>>,
+    }
+
+    check_agent::<MapLaneExplicit>(vec![persistent_lane(0, "lane", WarpLaneKind::Map)]);
+}
+
+#[test]
+fn map_store_explicit_backing() {
+    #[derive(AgentLaneModel)]
+    struct MapStoreExplicit {
+        store: MapStore<i32, String, HashMap<i32, String>>,
+    }
+
+    check_agent::<MapStoreExplicit>(vec![persistent_store(0, "store", StoreKind::Map)]);
+}
+
+#[test]
+fn map_lane_ordered_map() {
+    #[derive(AgentLaneModel)]
+    struct MapLaneOrdered {
+        lane: MapLane<i32, String, BTreeMap<i32, String>>,
+    }
+
+    check_agent::<MapLaneOrdered>(vec![persistent_lane(0, "lane", WarpLaneKind::Map)]);
+}
+
+#[test]
+fn map_store_ordered_map() {
+    #[derive(AgentLaneModel)]
+    struct MapStoreOrdered {
+        store: MapStore<i32, String, BTreeMap<i32, String>>,
+    }
+
+    check_agent::<MapStoreOrdered>(vec![persistent_store(0, "store", StoreKind::Map)]);
 }

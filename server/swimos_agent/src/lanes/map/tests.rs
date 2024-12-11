@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use std::borrow::Cow;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::fmt::Debug;
 
 use bytes::BytesMut;
@@ -1122,35 +1122,75 @@ fn drop_take_choose_keys() {
         .collect::<HashMap<_, _>>();
 
     assert_eq!(
-        drop_or_take(&map, super::DropOrTake::Drop, 2),
+        drop_or_take(&map, DropOrTake::Drop, 2),
         VecDeque::from(vec![1, 2])
     );
     assert_eq!(
-        drop_or_take(&map, super::DropOrTake::Take, 3),
+        drop_or_take(&map, DropOrTake::Take, 3),
         VecDeque::from(vec![4])
     );
     assert_eq!(
-        drop_or_take(&map, super::DropOrTake::Drop, 4),
+        drop_or_take(&map, DropOrTake::Drop, 4),
         VecDeque::from(vec![1, 2, 3, 4])
     );
     assert_eq!(
-        drop_or_take(&map, super::DropOrTake::Take, 4),
+        drop_or_take(&map, DropOrTake::Take, 4),
         VecDeque::from(vec![])
     );
     assert_eq!(
-        drop_or_take(&map, super::DropOrTake::Drop, 10),
+        drop_or_take(&map, DropOrTake::Drop, 10),
         VecDeque::from(vec![1, 2, 3, 4])
     );
     assert_eq!(
-        drop_or_take(&map, super::DropOrTake::Take, 10),
+        drop_or_take(&map, DropOrTake::Take, 10),
         VecDeque::from(vec![])
     );
     assert_eq!(
-        drop_or_take(&map, super::DropOrTake::Drop, 0),
+        drop_or_take(&map, DropOrTake::Drop, 0),
         VecDeque::from(vec![])
     );
     assert_eq!(
-        drop_or_take(&map, super::DropOrTake::Take, 0),
+        drop_or_take(&map, DropOrTake::Take, 0),
+        VecDeque::from(vec![1, 2, 3, 4])
+    );
+}
+
+#[test]
+fn drop_take_choose_keys_ordered() {
+    let map = [(1, 2), (2, 4), (3, 6), (4, 8)]
+        .into_iter()
+        .collect::<BTreeMap<_, _>>();
+
+    assert_eq!(
+        drop_or_take(&map, DropOrTake::Drop, 2),
+        VecDeque::from(vec![1, 2])
+    );
+    assert_eq!(
+        drop_or_take(&map, DropOrTake::Take, 3),
+        VecDeque::from(vec![4])
+    );
+    assert_eq!(
+        drop_or_take(&map, DropOrTake::Drop, 4),
+        VecDeque::from(vec![1, 2, 3, 4])
+    );
+    assert_eq!(
+        drop_or_take(&map, DropOrTake::Take, 4),
+        VecDeque::from(vec![])
+    );
+    assert_eq!(
+        drop_or_take(&map, DropOrTake::Drop, 10),
+        VecDeque::from(vec![1, 2, 3, 4])
+    );
+    assert_eq!(
+        drop_or_take(&map, DropOrTake::Take, 10),
+        VecDeque::from(vec![])
+    );
+    assert_eq!(
+        drop_or_take(&map, DropOrTake::Drop, 0),
+        VecDeque::from(vec![])
+    );
+    assert_eq!(
+        drop_or_take(&map, DropOrTake::Take, 0),
         VecDeque::from(vec![1, 2, 3, 4])
     );
 }

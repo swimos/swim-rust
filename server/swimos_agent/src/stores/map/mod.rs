@@ -29,7 +29,8 @@ use crate::agent_model::{AgentDescription, WriteResult};
 use crate::event_handler::{ActionContext, HandlerAction, Modification, StepResult};
 use crate::event_queue::EventQueue;
 use crate::item::{AgentItem, InspectableMapLikeItem, MapItem, MapLikeItem, MutableMapLikeItem};
-use crate::map_storage::{MapStoreInner, TransformEntryResult};
+use crate::lanes::map::MapLaneEvent;
+use crate::map_storage::{MapOps, MapOpsWithEntry, MapStoreInner, TransformEntryResult};
 use crate::meta::AgentMetadata;
 
 use super::StoreItem;
@@ -37,24 +38,24 @@ use super::StoreItem;
 #[cfg(test)]
 mod tests;
 
-type Inner<K, V> = MapStoreInner<K, V, EventQueue<K, ()>>;
+type Inner<K, V, M> = MapStoreInner<K, V, EventQueue<K, ()>, M>;
 
 /// Adding a [`MapStore`] to an agent provides additional state that is not exposed as a lane.
 /// If persistence is enabled (and the store is not marked as transient) the state of the store
 /// will be persisted in the same way as the state of a lane.
 #[derive(Debug)]
-pub struct MapStore<K, V> {
+pub struct MapStore<K, V, M = HashMap<K, V>> {
     id: u64,
-    inner: RefCell<Inner<K, V>>,
+    inner: RefCell<Inner<K, V, M>>,
 }
 
 assert_impl_all!(MapStore<(), ()>: Send);
 
-impl<K, V> MapStore<K, V> {
+impl<K, V, M> MapStore<K, V, M> {
     /// # Arguments
     /// * `id` - The ID of the store. This should be unique within an agent.
     /// * `init` - The initial contents of the map.
-    pub fn new(id: u64, init: HashMap<K, V>) -> Self {
+    pub fn new(id: u64, init: M) -> Self {
         MapStore {
             id,
             inner: RefCell::new(Inner::new(init)),
@@ -62,31 +63,33 @@ impl<K, V> MapStore<K, V> {
     }
 }
 
-impl<K, V> AgentItem for MapStore<K, V> {
+impl<K, V, M> AgentItem for MapStore<K, V, M> {
     fn id(&self) -> u64 {
         self.id
     }
 }
 
-impl<K, V> MapItem<K, V> for MapStore<K, V>
+impl<K, V, M> MapItem<K, V, M> for MapStore<K, V, M>
 where
-    K: Eq + Hash + Clone,
+    K: Hash + Eq + Clone,
+    M: MapOps<K, V>,
 {
-    fn init(&self, map: HashMap<K, V>) {
+    fn init(&self, map: M) {
         self.inner.borrow_mut().init(map)
     }
 
     fn read_with_prev<F, R>(&self, f: F) -> R
     where
-        F: FnOnce(Option<crate::lanes::map::MapLaneEvent<K, V>>, &HashMap<K, V>) -> R,
+        F: FnOnce(Option<MapLaneEvent<K, V, M>>, &M) -> R,
     {
         self.inner.borrow_mut().read_with_prev(f)
     }
 }
 
-impl<K, V> MapStore<K, V>
+impl<K, V, M> MapStore<K, V, M>
 where
     K: Clone + Eq + Hash,
+    M: MapOps<K, V>,
 {
     /// Update the value associated with a key.
     pub fn update(&self, key: K, value: V) {
@@ -111,37 +114,36 @@ where
         self.inner.borrow_mut().clear()
     }
 
-    /// Read a value from the map, if it exists.
-    pub fn get<Q, F, R>(&self, key: &Q, f: F) -> R
-    where
-        K: Borrow<Q> + Eq + Hash,
-        Q: Eq + Hash,
-        F: FnOnce(Option<&V>) -> R,
-    {
-        self.inner.borrow().with_entry(key, f)
-    }
-
     /// Read the complete state of the map.
     pub fn get_map<F, R>(&self, f: F) -> R
     where
-        F: FnOnce(&HashMap<K, V>) -> R,
+        F: FnOnce(&M) -> R,
     {
         self.inner.borrow().get_map(f)
     }
 }
 
-impl<K, V> MapStore<K, V>
-where
-    K: Eq + Hash,
-{
+impl<K, V, M> MapStore<K, V, M> {
+    /// Read a value from the map, if it exists.
+    pub fn get<Q, F, R>(&self, key: &Q, f: F) -> R
+    where
+        K: Borrow<Q>,
+        F: FnOnce(Option<&V>) -> R,
+        M: MapOpsWithEntry<K, V, Q>,
+    {
+        self.inner.borrow().with_entry(key, f)
+    }
+}
+
+impl<K, V, M> MapStore<K, V, M> {
     pub fn with_entry<F, B1, B2, U>(&self, key: &B1, f: F) -> U
     where
         B1: ?Sized,
         B2: ?Sized,
         K: Borrow<B1>,
-        B1: Eq + Hash,
         V: Borrow<B2>,
         F: FnOnce(Option<&B2>) -> U,
+        M: MapOpsWithEntry<K, V, B1>,
     {
         self.inner.borrow().with_entry(key, f)
     }
@@ -149,10 +151,11 @@ where
 
 const INFALLIBLE_SER: &str = "Serializing store responses to recon should be infallible.";
 
-impl<K, V> StoreItem for MapStore<K, V>
+impl<K, V, M> StoreItem for MapStore<K, V, M>
 where
     K: Clone + Eq + Hash + StructuralWritable + 'static,
     V: StructuralWritable + 'static,
+    M: MapOps<K, V>,
 {
     fn write_to_buffer(&self, buffer: &mut BytesMut) -> WriteResult {
         let mut encoder = MapStoreResponseEncoder::default();
@@ -171,13 +174,13 @@ where
 }
 
 ///  An [event handler](crate::event_handler::EventHandler)`] that will update the value of an entry in the map.
-pub struct MapStoreUpdate<C, K, V> {
-    projection: for<'a> fn(&'a C) -> &'a MapStore<K, V>,
+pub struct MapStoreUpdate<C, K, V, M = HashMap<K, V>> {
+    projection: for<'a> fn(&'a C) -> &'a MapStore<K, V, M>,
     key_value: Option<(K, V)>,
 }
 
-impl<C, K, V> MapStoreUpdate<C, K, V> {
-    pub fn new(projection: for<'a> fn(&'a C) -> &'a MapStore<K, V>, key: K, value: V) -> Self {
+impl<C, K, V, M> MapStoreUpdate<C, K, V, M> {
+    pub fn new(projection: for<'a> fn(&'a C) -> &'a MapStore<K, V, M>, key: K, value: V) -> Self {
         MapStoreUpdate {
             projection,
             key_value: Some((key, value)),
@@ -185,10 +188,11 @@ impl<C, K, V> MapStoreUpdate<C, K, V> {
     }
 }
 
-impl<C, K, V> HandlerAction<C> for MapStoreUpdate<C, K, V>
+impl<C, K, V, M> HandlerAction<C> for MapStoreUpdate<C, K, V, M>
 where
     C: AgentDescription,
     K: Clone + Eq + Hash,
+    M: MapOps<K, V>,
 {
     type Completion = ();
 
@@ -230,13 +234,13 @@ where
 }
 
 ///  An [event handler](crate::event_handler::EventHandler)`] that will remove an entry from the map.
-pub struct MapStoreRemove<C, K, V> {
-    projection: for<'a> fn(&'a C) -> &'a MapStore<K, V>,
+pub struct MapStoreRemove<C, K, V, M = HashMap<K, V>> {
+    projection: for<'a> fn(&'a C) -> &'a MapStore<K, V, M>,
     key: Option<K>,
 }
 
-impl<C, K, V> MapStoreRemove<C, K, V> {
-    pub fn new(projection: for<'a> fn(&'a C) -> &'a MapStore<K, V>, key: K) -> Self {
+impl<C, K, V, M> MapStoreRemove<C, K, V, M> {
+    pub fn new(projection: for<'a> fn(&'a C) -> &'a MapStore<K, V, M>, key: K) -> Self {
         MapStoreRemove {
             projection,
             key: Some(key),
@@ -244,10 +248,11 @@ impl<C, K, V> MapStoreRemove<C, K, V> {
     }
 }
 
-impl<C, K, V> HandlerAction<C> for MapStoreRemove<C, K, V>
+impl<C, K, V, M> HandlerAction<C> for MapStoreRemove<C, K, V, M>
 where
     C: AgentDescription,
     K: Clone + Eq + Hash,
+    M: MapOps<K, V>,
 {
     type Completion = ();
 
@@ -283,13 +288,13 @@ where
 }
 
 ///  An [event handler](crate::event_handler::EventHandler)`] that will clear the map.
-pub struct MapStoreClear<C, K, V> {
-    projection: for<'a> fn(&'a C) -> &'a MapStore<K, V>,
+pub struct MapStoreClear<C, K, V, M = HashMap<K, V>> {
+    projection: for<'a> fn(&'a C) -> &'a MapStore<K, V, M>,
     done: bool,
 }
 
-impl<C, K, V> MapStoreClear<C, K, V> {
-    pub fn new(projection: for<'a> fn(&'a C) -> &'a MapStore<K, V>) -> Self {
+impl<C, K, V, M> MapStoreClear<C, K, V, M> {
+    pub fn new(projection: for<'a> fn(&'a C) -> &'a MapStore<K, V, M>) -> Self {
         MapStoreClear {
             projection,
             done: false,
@@ -297,10 +302,11 @@ impl<C, K, V> MapStoreClear<C, K, V> {
     }
 }
 
-impl<C, K, V> HandlerAction<C> for MapStoreClear<C, K, V>
+impl<C, K, V, M> HandlerAction<C> for MapStoreClear<C, K, V, M>
 where
     C: AgentDescription,
     K: Clone + Eq + Hash,
+    M: MapOps<K, V>,
 {
     type Completion = ();
 
@@ -337,14 +343,14 @@ where
 }
 
 ///  An [event handler](crate::event_handler::EventHandler)`] that will get an entry from the map.
-pub struct MapStoreGet<C, K, V> {
-    projection: for<'a> fn(&'a C) -> &'a MapStore<K, V>,
+pub struct MapStoreGet<C, K, V, M = HashMap<K, V>> {
+    projection: for<'a> fn(&'a C) -> &'a MapStore<K, V, M>,
     key: K,
     done: bool,
 }
 
-impl<C, K, V> MapStoreGet<C, K, V> {
-    pub fn new(projection: for<'a> fn(&'a C) -> &'a MapStore<K, V>, key: K) -> Self {
+impl<C, K, V, M> MapStoreGet<C, K, V, M> {
+    pub fn new(projection: for<'a> fn(&'a C) -> &'a MapStore<K, V, M>, key: K) -> Self {
         MapStoreGet {
             projection,
             key,
@@ -353,11 +359,11 @@ impl<C, K, V> MapStoreGet<C, K, V> {
     }
 }
 
-impl<C, K, V> HandlerAction<C> for MapStoreGet<C, K, V>
+impl<C, K, V, M> HandlerAction<C> for MapStoreGet<C, K, V, M>
 where
     C: AgentDescription,
-    K: Clone + Eq + Hash,
     V: Clone,
+    M: MapOpsWithEntry<K, V, K>,
 {
     type Completion = Option<V>;
 
@@ -375,7 +381,7 @@ where
         if !*done {
             *done = true;
             let store = projection(context);
-            StepResult::done(store.get(key, |v| v.cloned()))
+            StepResult::done(MapStore::get(store, key, |v| v.cloned()))
         } else {
             StepResult::after_done()
         }
@@ -393,13 +399,13 @@ where
 }
 
 ///  An [event handler](crate::event_handler::EventHandler)`] that will read the entire state of a map store.
-pub struct MapStoreGetMap<C, K, V> {
-    projection: for<'a> fn(&'a C) -> &'a MapStore<K, V>,
+pub struct MapStoreGetMap<C, K, V, M = HashMap<K, V>> {
+    projection: for<'a> fn(&'a C) -> &'a MapStore<K, V, M>,
     done: bool,
 }
 
-impl<C, K, V> MapStoreGetMap<C, K, V> {
-    pub fn new(projection: for<'a> fn(&'a C) -> &'a MapStore<K, V>) -> Self {
+impl<C, K, V, M> MapStoreGetMap<C, K, V, M> {
+    pub fn new(projection: for<'a> fn(&'a C) -> &'a MapStore<K, V, M>) -> Self {
         MapStoreGetMap {
             projection,
             done: false,
@@ -407,13 +413,14 @@ impl<C, K, V> MapStoreGetMap<C, K, V> {
     }
 }
 
-impl<C, K, V> HandlerAction<C> for MapStoreGetMap<C, K, V>
+impl<C, K, V, M> HandlerAction<C> for MapStoreGetMap<C, K, V, M>
 where
     C: AgentDescription,
     K: Clone + Eq + Hash,
     V: Clone,
+    M: MapOps<K, V> + Clone,
 {
-    type Completion = HashMap<K, V>;
+    type Completion = M;
 
     fn step(
         &mut self,
@@ -443,13 +450,13 @@ where
 }
 
 ///  An [event handler](crate::event_handler::EventHandler)`] that may alter an entry in the map.
-pub struct MapStoreTransformEntry<C, K, V, F> {
-    projection: for<'a> fn(&'a C) -> &'a MapStore<K, V>,
+pub struct MapStoreTransformEntry<C, K, V, F, M = HashMap<K, V>> {
+    projection: for<'a> fn(&'a C) -> &'a MapStore<K, V, M>,
     key_and_f: Option<(K, F)>,
 }
 
-impl<C, K, V, F> MapStoreTransformEntry<C, K, V, F> {
-    pub fn new(projection: for<'a> fn(&'a C) -> &'a MapStore<K, V>, key: K, f: F) -> Self {
+impl<C, K, V, F, M> MapStoreTransformEntry<C, K, V, F, M> {
+    pub fn new(projection: for<'a> fn(&'a C) -> &'a MapStore<K, V, M>, key: K, f: F) -> Self {
         MapStoreTransformEntry {
             projection,
             key_and_f: Some((key, f)),
@@ -457,11 +464,12 @@ impl<C, K, V, F> MapStoreTransformEntry<C, K, V, F> {
     }
 }
 
-impl<C, K, V, F> HandlerAction<C> for MapStoreTransformEntry<C, K, V, F>
+impl<C, K, V, F, M> HandlerAction<C> for MapStoreTransformEntry<C, K, V, F, M>
 where
     C: AgentDescription,
     K: Clone + Eq + Hash,
     F: FnOnce(Option<&V>) -> Option<V>,
+    M: MapOps<K, V>,
 {
     type Completion = ();
 
@@ -511,18 +519,18 @@ where
 
 /// A [handler action][`HandlerAction`] that will produce a value by applying a closure to a reference to
 /// and entry in the store.
-pub struct MapStoreWithEntry<C, K, V, F, B: ?Sized> {
-    projection: for<'a> fn(&'a C) -> &'a MapStore<K, V>,
+pub struct MapStoreWithEntry<C, K, V, F, B: ?Sized, M = HashMap<K, V>> {
+    projection: for<'a> fn(&'a C) -> &'a MapStore<K, V, M>,
     key_and_f: Option<(K, F)>,
     _type: PhantomData<fn(&B)>,
 }
 
-impl<C, K, V, F, B: ?Sized> MapStoreWithEntry<C, K, V, F, B> {
+impl<C, K, V, F, B: ?Sized, M> MapStoreWithEntry<C, K, V, F, B, M> {
     /// #Arguments
     /// * `projection` - Projection from the agent context to the store.
     /// * `key` - Key of the entry.
     /// * `f` - The closure to apply to the entry.
-    pub fn new(projection: for<'a> fn(&'a C) -> &'a MapStore<K, V>, key: K, f: F) -> Self {
+    pub fn new(projection: for<'a> fn(&'a C) -> &'a MapStore<K, V, M>, key: K, f: F) -> Self {
         MapStoreWithEntry {
             projection,
             key_and_f: Some((key, f)),
@@ -531,13 +539,13 @@ impl<C, K, V, F, B: ?Sized> MapStoreWithEntry<C, K, V, F, B> {
     }
 }
 
-impl<C, K, V, F, B, U> HandlerAction<C> for MapStoreWithEntry<C, K, V, F, B>
+impl<C, K, V, F, B, U, M> HandlerAction<C> for MapStoreWithEntry<C, K, V, F, B, M>
 where
     C: AgentDescription,
-    K: Eq + Hash,
     B: ?Sized,
     V: Borrow<B>,
     F: FnOnce(Option<&B>) -> U,
+    M: MapOpsWithEntry<K, V, K>,
 {
     type Completion = U;
 
@@ -571,12 +579,13 @@ where
             .finish()
     }
 }
-impl<K, V> MapLikeItem<K, V> for MapStore<K, V>
+impl<K, V, M> MapLikeItem<K, V, M> for MapStore<K, V, M>
 where
     K: Clone + Eq + Hash + Send + 'static,
     V: Clone + 'static,
+    M: MapOpsWithEntry<K, V, K> + Clone + 'static,
 {
-    type GetHandler<C> = MapStoreGet<C, K, V>
+    type GetHandler<C> = MapStoreGet<C, K, V, M>
     where
         C: AgentDescription + 'static;
 
@@ -587,7 +596,7 @@ where
         MapStoreGet::new(projection, key)
     }
 
-    type GetMapHandler<C> = MapStoreGetMap<C, K, V>
+    type GetMapHandler<C> = MapStoreGetMap<C, K, V, M>
     where
         C: AgentDescription + 'static;
 
@@ -598,49 +607,48 @@ where
     }
 }
 
-impl<K, V> InspectableMapLikeItem<K, V> for MapStore<K, V>
+impl<K, V, M, B> InspectableMapLikeItem<K, V, B> for MapStore<K, V, M>
 where
-    K: Eq + Hash + Send + 'static,
-    V: 'static,
+    K: Send + 'static,
+    V: Borrow<B> + 'static,
+    B: ?Sized + 'static,
+    M: MapOpsWithEntry<K, V, K>,
 {
-    type WithEntryHandler<'a, C, F, B, U> = MapStoreWithEntry<C, K, V, F, B>
+    type WithEntryHandler<'a, C, F, U> = MapStoreWithEntry<C, K, V, F, B, M>
     where
         Self: 'static,
         C: AgentDescription + 'a,
-        B: ?Sized +'static,
-        V: Borrow<B>,
         F: FnOnce(Option<&B>) -> U + Send + 'a;
 
-    fn with_entry_handler<'a, C, F, B, U>(
+    fn with_entry_handler<'a, C, F, U>(
         projection: fn(&C) -> &Self,
         key: K,
         f: F,
-    ) -> Self::WithEntryHandler<'a, C, F, B, U>
+    ) -> Self::WithEntryHandler<'a, C, F, U>
     where
         Self: 'static,
         C: AgentDescription + 'a,
-        B: ?Sized + 'static,
-        V: Borrow<B>,
         F: FnOnce(Option<&B>) -> U + Send + 'a,
     {
         MapStoreWithEntry::new(projection, key, f)
     }
 }
 
-impl<K, V> MutableMapLikeItem<K, V> for MapStore<K, V>
+impl<K, V, M> MutableMapLikeItem<K, V> for MapStore<K, V, M>
 where
     K: Clone + Eq + Hash + Send + 'static,
     V: Send + 'static,
+    M: MapOps<K, V> + 'static,
 {
-    type UpdateHandler<C> = MapStoreUpdate<C, K, V>
+    type UpdateHandler<C> = MapStoreUpdate<C, K, V, M>
     where
         C: AgentDescription + 'static;
 
-    type RemoveHandler<C> = MapStoreRemove<C, K, V>
+    type RemoveHandler<C> = MapStoreRemove<C, K, V, M>
     where
         C: AgentDescription + 'static;
 
-    type ClearHandler<C> = MapStoreClear<C, K, V>
+    type ClearHandler<C> = MapStoreClear<C, K, V, M>
     where
         C: AgentDescription + 'static;
 
@@ -665,7 +673,7 @@ where
         MapStoreClear::new(projection)
     }
 
-    type TransformEntryHandler<'a, C, F> = MapStoreTransformEntry<C, K, V, F>
+    type TransformEntryHandler<'a, C, F> = MapStoreTransformEntry<C, K, V, F, M>
     where
         Self: 'static,
         C: AgentDescription + 'a,

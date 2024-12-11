@@ -345,7 +345,7 @@ impl<'a> OrdinalWarpLaneModel<'a> {
     pub fn map_like(&self) -> bool {
         matches!(
             &self.model.kind,
-            WarpLaneSpec::Map(_, _)
+            WarpLaneSpec::Map(_, _, _)
                 | WarpLaneSpec::DemandMap(_, _)
                 | WarpLaneSpec::JoinValue(_, _)
                 | WarpLaneSpec::JoinMap(_, _, _)
@@ -391,7 +391,7 @@ impl<'a> OrdinalItemModel<'a> {
 
     fn category(&self) -> ItemCategory {
         match &self.model.kind {
-            ItemSpec::Map(_, _, _)
+            ItemSpec::Map(_, _, _, _)
             | ItemSpec::JoinValue(_, _)
             | ItemSpec::JoinMap(_, _, _)
             | ItemSpec::DemandMap(_, _) => ItemCategory::MapLike,
@@ -430,10 +430,10 @@ impl<'a> FieldInitializer<'a> {
             ItemSpec::Value(ItemKind::Store, _) => {
                 quote!(#name: #root::stores::ValueStore::new(#ordinal, ::core::default::Default::default()))
             }
-            ItemSpec::Map(ItemKind::Lane, _, _) => {
+            ItemSpec::Map(ItemKind::Lane, _, _, _) => {
                 quote!(#name: #root::lanes::MapLane::new(#ordinal, ::core::default::Default::default()))
             }
-            ItemSpec::Map(ItemKind::Store, _, _) => {
+            ItemSpec::Map(ItemKind::Store, _, _, _) => {
                 quote!(#name: #root::stores::MapStore::new(#ordinal, ::core::default::Default::default()))
             }
             ItemSpec::JoinValue(_, _) => {
@@ -470,8 +470,12 @@ impl<'a> HandlerType<'a> {
             WarpLaneSpec::Value(t) => {
                 quote!(#root::lanes::value::DecodeAndSet<#agent_name, #t>)
             }
-            WarpLaneSpec::Map(k, v) => {
-                quote!(#root::lanes::map::DecodeAndApply<#agent_name, #k, #v>)
+            WarpLaneSpec::Map(k, v, m) => {
+                if let Some(map_t) = m {
+                    quote!(#root::lanes::map::DecodeAndApply<#agent_name, #k, #v, #map_t>)
+                } else {
+                    quote!(#root::lanes::map::DecodeAndApply<#agent_name, #k, #v>)
+                }
             }
             WarpLaneSpec::Demand(_)
             | WarpLaneSpec::DemandMap(_, _)
@@ -503,8 +507,12 @@ impl<'a> SyncHandlerType<'a> {
             WarpLaneSpec::Value(t) => {
                 quote!(#root::lanes::value::ValueLaneSync<#agent_name, #t>)
             }
-            WarpLaneSpec::Map(k, v) => {
-                quote!(#root::lanes::map::MapLaneSync<#agent_name, #k, #v>)
+            WarpLaneSpec::Map(k, v, m) => {
+                if let Some(map_t) = m {
+                    quote!(#root::lanes::map::MapLaneSync<#agent_name, #k, #v, #map_t>)
+                } else {
+                    quote!(#root::lanes::map::MapLaneSync<#agent_name, #k, #v>)
+                }
             }
             WarpLaneSpec::JoinValue(k, v) => {
                 quote!(#root::lanes::join_value::JoinValueLaneSync<#agent_name, #k, #v>)
@@ -568,8 +576,12 @@ impl<'a> WarpLaneHandlerMatch<'a> {
             WarpLaneSpec::Value(ty) => {
                 quote!(#root::lanes::value::decode_and_set::<#agent_name, #ty>(body, |agent: &#agent_name| &agent.#name))
             }
-            WarpLaneSpec::Map(k, v) => {
-                quote!(#root::lanes::map::decode_and_apply::<#agent_name, #k, #v>(body, |agent: &#agent_name| &agent.#name))
+            WarpLaneSpec::Map(k, v, m) => {
+                if let Some(map_t) = m {
+                    quote!(#root::lanes::map::decode_and_apply::<#agent_name, #k, #v, #map_t>(body, |agent: &#agent_name| &agent.#name))
+                } else {
+                    quote!(#root::lanes::map::decode_and_apply::<#agent_name, #k, #v, _>(body, |agent: &#agent_name| &agent.#name))
+                }
             }
             WarpLaneSpec::Demand(_)
             | WarpLaneSpec::DemandMap(_, _)
@@ -672,8 +684,12 @@ impl<'a> SyncHandlerMatch<'a> {
             WarpLaneSpec::Value(ty) => {
                 quote!(#root::lanes::value::ValueLaneSync::<#agent_name, #ty>::new(|agent: &#agent_name| &agent.#name, id))
             }
-            WarpLaneSpec::Map(k, v) => {
-                quote!(#root::lanes::map::MapLaneSync::<#agent_name, #k, #v>::new(|agent: &#agent_name| &agent.#name, id))
+            WarpLaneSpec::Map(k, v, m) => {
+                if let Some(map_t) = m {
+                    quote!(#root::lanes::map::MapLaneSync::<#agent_name, #k, #v, #map_t>::new(|agent: &#agent_name| &agent.#name, id))
+                } else {
+                    quote!(#root::lanes::map::MapLaneSync::<#agent_name, #k, #v>::new(|agent: &#agent_name| &agent.#name, id))
+                }
             }
             WarpLaneSpec::JoinValue(k, v) => {
                 quote!(#root::lanes::join_value::JoinValueLaneSync::<#agent_name, #k, #v>::new(|agent: &#agent_name| &agent.#name, id))
@@ -764,7 +780,7 @@ struct MapItemInitMatch<'a> {
 impl<'a> MapItemInitMatch<'a> {
     pub fn new(item: &OrdinalItemModel<'a>) -> Self {
         let init_kind = match &item.model.kind {
-            ItemSpec::Map(ItemKind::Lane, _, _) => InitKind::MapLane,
+            ItemSpec::Map(ItemKind::Lane, _, _, _) => InitKind::MapLane,
             _ => InitKind::MapStore,
         };
         MapItemInitMatch {
@@ -822,10 +838,10 @@ impl<'a> LaneSpecInsert<'a> {
             ItemSpec::Value(ItemKind::Store, _) => {
                 quote!(#root::agent_model::ItemDescriptor::Store { kind: #root::agent_model::StoreKind::Value, flags: #flags })
             }
-            ItemSpec::Map(ItemKind::Lane, _, _) => {
+            ItemSpec::Map(ItemKind::Lane, _, _, _) => {
                 quote!(#root::agent_model::ItemDescriptor::WarpLane { kind: #root::agent_model::WarpLaneKind::Map, flags: #flags })
             }
-            ItemSpec::Map(ItemKind::Store, _, _) => {
+            ItemSpec::Map(ItemKind::Store, _, _, _) => {
                 quote!(#root::agent_model::ItemDescriptor::Store { kind: #root::agent_model::StoreKind::Map, flags: #flags })
             }
             ItemSpec::JoinValue(_, _) => {
