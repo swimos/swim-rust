@@ -17,16 +17,17 @@ use std::hash::Hash;
 
 /// Enumeration of the possible inputs to a map lane event handler.
 #[derive(Debug, Clone)]
-pub enum MapLaneEvent<K, V> {
-    Clear(HashMap<K, V>),
+pub enum MapLaneEvent<K, V, M = HashMap<K, V>> {
+    Clear(M),
     Update(K, Option<V>),
     Remove(K, V),
 }
 
-impl<K, V> PartialEq for MapLaneEvent<K, V>
+impl<K, V, M> PartialEq for MapLaneEvent<K, V, M>
 where
     K: Eq + Hash,
     V: PartialEq,
+    M: PartialEq,
 {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
@@ -38,10 +39,11 @@ where
     }
 }
 
-impl<K, V> Eq for MapLaneEvent<K, V>
+impl<K, V, M> Eq for MapLaneEvent<K, V, M>
 where
     K: Eq + Hash,
     V: Eq,
+    M: Eq,
 {
     fn assert_receiver_is_total_eq(&self) {}
 }

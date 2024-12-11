@@ -43,7 +43,9 @@ use crate::{
         HandlerTrans, Modification, StepResult,
     },
     item::{AgentItem, InspectableMapLikeItem, MapItem, MapLikeItem, MutableMapLikeItem},
-    map_storage::{MapStoreInner, TransformEntryResult},
+    map_storage::{
+        drop_or_take, DropOrTake, MapOps, MapOpsWithEntry, MapStoreInner, TransformEntryResult,
+    },
     meta::AgentMetadata,
 };
 
@@ -53,26 +55,23 @@ pub use event::MapLaneEvent;
 
 use super::{LaneItem, ProjTransform};
 
-type Inner<K, V> = MapStoreInner<K, V, WriteQueues<K>>;
+type Inner<K, V, M> = MapStoreInner<K, V, WriteQueues<K>, M>;
 
 /// Model of a value lane. This maintains a sate consisting of a hash-map from keys to values. It generates an
 /// event whenever the map is updated (updating the value for a key, removing a key or clearing the map).
-///
-/// TODO: This could be parameterized over the type of the hash (and potentially over the kind of the map,
-/// potentially allowing a choice between hash and ordered maps).
 #[derive(Debug)]
-pub struct MapLane<K, V> {
+pub struct MapLane<K, V, M = HashMap<K, V>> {
     id: u64,
-    inner: RefCell<Inner<K, V>>,
+    inner: RefCell<Inner<K, V, M>>,
 }
 
 assert_impl_all!(MapLane<(), ()>: Send);
 
-impl<K, V> MapLane<K, V> {
+impl<K, V, M> MapLane<K, V, M> {
     /// # Arguments
     /// * `id` - The ID of the lane. This should be unique within an agent.
     /// * `init` - The initial contents of the map.
-    pub fn new(id: u64, init: HashMap<K, V>) -> Self {
+    pub fn new(id: u64, init: M) -> Self {
         MapLane {
             id,
             inner: RefCell::new(Inner::new(init)),
@@ -80,31 +79,33 @@ impl<K, V> MapLane<K, V> {
     }
 }
 
-impl<K, V> AgentItem for MapLane<K, V> {
+impl<K, V, M> AgentItem for MapLane<K, V, M> {
     fn id(&self) -> u64 {
         self.id
     }
 }
 
-impl<K, V> MapItem<K, V> for MapLane<K, V>
+impl<K, V, M> MapItem<K, V, M> for MapLane<K, V, M>
 where
     K: Eq + Hash + Clone,
+    M: MapOps<K, V>,
 {
-    fn init(&self, map: HashMap<K, V>) {
+    fn init(&self, map: M) {
         self.inner.borrow_mut().init(map)
     }
 
     fn read_with_prev<F, R>(&self, f: F) -> R
     where
-        F: FnOnce(Option<MapLaneEvent<K, V>>, &HashMap<K, V>) -> R,
+        F: FnOnce(Option<MapLaneEvent<K, V, M>>, &M) -> R,
     {
         self.inner.borrow_mut().read_with_prev(f)
     }
 }
 
-impl<K, V> MapLane<K, V>
+impl<K, V, M> MapLane<K, V, M>
 where
     K: Clone + Eq + Hash,
+    M: MapOps<K, V>,
 {
     /// Update the value associated with a key.
     pub(crate) fn update(&self, key: K, value: V) {
@@ -135,6 +136,7 @@ where
         K: Borrow<Q>,
         Q: Hash + Eq,
         F: FnOnce(Option<&V>) -> R,
+        M: MapOpsWithEntry<K, V, Q>,
     {
         self.inner.borrow().with_entry(key, f)
     }
@@ -142,7 +144,7 @@ where
     /// Read the complete state of the map.
     pub fn get_map<F, R>(&self, f: F) -> R
     where
-        F: FnOnce(&HashMap<K, V>) -> R,
+        F: FnOnce(&M) -> R,
     {
         self.inner.borrow().get_map(f)
     }
@@ -154,15 +156,13 @@ where
     }
 }
 
-impl<K, V> MapLane<K, V>
-where
-    K: Eq + Hash,
-{
+impl<K, V, M> MapLane<K, V, M> {
     pub fn with_entry<F, B, U>(&self, key: &K, f: F) -> U
     where
         B: ?Sized,
         V: Borrow<B>,
         F: FnOnce(Option<&B>) -> U,
+        M: MapOpsWithEntry<K, V, K>,
     {
         self.inner.borrow().with_entry(key, f)
     }
@@ -170,10 +170,11 @@ where
 
 const INFALLIBLE_SER: &str = "Serializing lane responses to recon should be infallible.";
 
-impl<K, V> LaneItem for MapLane<K, V>
+impl<K, V, M> LaneItem for MapLane<K, V, M>
 where
     K: Clone + Eq + Hash + StructuralWritable,
     V: StructuralWritable,
+    M: MapOps<K, V>,
 {
     fn write_to_buffer(&self, buffer: &mut BytesMut) -> WriteResult {
         let mut encoder = MapLaneResponseEncoder::default();
@@ -192,13 +193,13 @@ where
 }
 
 ///  An [event handler](crate::event_handler::EventHandler)`] that will update the value of an entry in the map.
-pub struct MapLaneUpdate<C, K, V> {
-    projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>,
+pub struct MapLaneUpdate<C, K, V, M = HashMap<K, V>> {
+    projection: for<'a> fn(&'a C) -> &'a MapLane<K, V, M>,
     key_value: Option<(K, V)>,
 }
 
-impl<C, K, V> MapLaneUpdate<C, K, V> {
-    pub fn new(projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>, key: K, value: V) -> Self {
+impl<C, K, V, M> MapLaneUpdate<C, K, V, M> {
+    pub fn new(projection: for<'a> fn(&'a C) -> &'a MapLane<K, V, M>, key: K, value: V) -> Self {
         MapLaneUpdate {
             projection,
             key_value: Some((key, value)),
@@ -206,10 +207,11 @@ impl<C, K, V> MapLaneUpdate<C, K, V> {
     }
 }
 
-impl<C, K, V> HandlerAction<C> for MapLaneUpdate<C, K, V>
+impl<C, K, V, M> HandlerAction<C> for MapLaneUpdate<C, K, V, M>
 where
     C: AgentDescription,
     K: Clone + Eq + Hash,
+    M: MapOps<K, V>,
 {
     type Completion = ();
 
@@ -251,13 +253,13 @@ where
 }
 
 ///  An [event handler](crate::event_handler::EventHandler)`] that will remove an entry from the map.
-pub struct MapLaneRemove<C, K, V> {
-    projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>,
+pub struct MapLaneRemove<C, K, V, M = HashMap<K, V>> {
+    projection: for<'a> fn(&'a C) -> &'a MapLane<K, V, M>,
     key: Option<K>,
 }
 
-impl<C, K, V> MapLaneRemove<C, K, V> {
-    pub fn new(projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>, key: K) -> Self {
+impl<C, K, V, M> MapLaneRemove<C, K, V, M> {
+    pub fn new(projection: for<'a> fn(&'a C) -> &'a MapLane<K, V, M>, key: K) -> Self {
         MapLaneRemove {
             projection,
             key: Some(key),
@@ -265,10 +267,11 @@ impl<C, K, V> MapLaneRemove<C, K, V> {
     }
 }
 
-impl<C, K, V> HandlerAction<C> for MapLaneRemove<C, K, V>
+impl<C, K, V, M> HandlerAction<C> for MapLaneRemove<C, K, V, M>
 where
     C: AgentDescription,
     K: Clone + Eq + Hash,
+    M: MapOps<K, V>,
 {
     type Completion = ();
 
@@ -304,13 +307,13 @@ where
 }
 
 ///  An [event handler](crate::event_handler::EventHandler)`] that will clear the map.
-pub struct MapLaneClear<C, K, V> {
-    projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>,
+pub struct MapLaneClear<C, K, V, M = HashMap<K, V>> {
+    projection: for<'a> fn(&'a C) -> &'a MapLane<K, V, M>,
     done: bool,
 }
 
-impl<C, K, V> MapLaneClear<C, K, V> {
-    pub fn new(projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>) -> Self {
+impl<C, K, V, M> MapLaneClear<C, K, V, M> {
+    pub fn new(projection: for<'a> fn(&'a C) -> &'a MapLane<K, V, M>) -> Self {
         MapLaneClear {
             projection,
             done: false,
@@ -318,10 +321,11 @@ impl<C, K, V> MapLaneClear<C, K, V> {
     }
 }
 
-impl<C, K, V> HandlerAction<C> for MapLaneClear<C, K, V>
+impl<C, K, V, M> HandlerAction<C> for MapLaneClear<C, K, V, M>
 where
     C: AgentDescription,
     K: Clone + Eq + Hash,
+    M: MapOps<K, V>,
 {
     type Completion = ();
 
@@ -358,14 +362,14 @@ where
 }
 
 ///  An [event handler](crate::event_handler::EventHandler)`] that will get an entry from the map.
-pub struct MapLaneGet<C, K, V> {
-    projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>,
+pub struct MapLaneGet<C, K, V, M = HashMap<K, V>> {
+    projection: for<'a> fn(&'a C) -> &'a MapLane<K, V, M>,
     key: K,
     done: bool,
 }
 
-impl<C, K, V> MapLaneGet<C, K, V> {
-    pub fn new(projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>, key: K) -> Self {
+impl<C, K, V, M> MapLaneGet<C, K, V, M> {
+    pub fn new(projection: for<'a> fn(&'a C) -> &'a MapLane<K, V, M>, key: K) -> Self {
         MapLaneGet {
             projection,
             key,
@@ -374,11 +378,12 @@ impl<C, K, V> MapLaneGet<C, K, V> {
     }
 }
 
-impl<C, K, V> HandlerAction<C> for MapLaneGet<C, K, V>
+impl<C, K, V, M> HandlerAction<C> for MapLaneGet<C, K, V, M>
 where
     C: AgentDescription,
     K: Clone + Eq + Hash,
     V: Clone,
+    M: MapOpsWithEntry<K, V, K>,
 {
     type Completion = Option<V>;
 
@@ -414,13 +419,13 @@ where
 }
 
 ///  An [event handler](crate::event_handler::EventHandler)`] that will read the entire state of a map lane.
-pub struct MapLaneGetMap<C, K, V> {
-    projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>,
+pub struct MapLaneGetMap<C, K, V, M = HashMap<K, V>> {
+    projection: for<'a> fn(&'a C) -> &'a MapLane<K, V, M>,
     done: bool,
 }
 
-impl<C, K, V> MapLaneGetMap<C, K, V> {
-    pub fn new(projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>) -> Self {
+impl<C, K, V, M> MapLaneGetMap<C, K, V, M> {
+    pub fn new(projection: for<'a> fn(&'a C) -> &'a MapLane<K, V, M>) -> Self {
         MapLaneGetMap {
             projection,
             done: false,
@@ -428,13 +433,14 @@ impl<C, K, V> MapLaneGetMap<C, K, V> {
     }
 }
 
-impl<C, K, V> HandlerAction<C> for MapLaneGetMap<C, K, V>
+impl<C, K, V, M> HandlerAction<C> for MapLaneGetMap<C, K, V, M>
 where
     C: AgentDescription,
     K: Clone + Eq + Hash,
     V: Clone,
+    M: MapOps<K, V> + Clone,
 {
-    type Completion = HashMap<K, V>;
+    type Completion = M;
 
     fn step(
         &mut self,
@@ -463,13 +469,35 @@ where
     }
 }
 
-impl<C, K, V, F, B, U> HandlerAction<C> for MapLaneWithEntry<C, K, V, F, B>
+///  An [event handler](crate::event_handler::EventHandler)`] that will alter an entry in the map.
+pub struct MapLaneWithEntry<C, K, V, F, B: ?Sized, M = HashMap<K, V>> {
+    projection: for<'a> fn(&'a C) -> &'a MapLane<K, V, M>,
+    key_and_f: Option<(K, F)>,
+    _type: PhantomData<fn(&B)>,
+}
+
+impl<C, K, V, F, B: ?Sized, M> MapLaneWithEntry<C, K, V, F, B, M> {
+    /// #Arguments
+    /// * `projection` - Projection from the agent context to the lane.
+    /// * `key` - Key of the entry.
+    /// * `f` - The closure to apply to the entry.
+    pub fn new(projection: for<'a> fn(&'a C) -> &'a MapLane<K, V, M>, key: K, f: F) -> Self {
+        MapLaneWithEntry {
+            projection,
+            key_and_f: Some((key, f)),
+            _type: PhantomData,
+        }
+    }
+}
+
+impl<C, K, V, F, B, U, M> HandlerAction<C> for MapLaneWithEntry<C, K, V, F, B, M>
 where
     C: AgentDescription,
     K: Eq + Hash,
     B: ?Sized,
     V: Borrow<B>,
     F: FnOnce(Option<&B>) -> U,
+    M: MapOpsWithEntry<K, V, K>,
 {
     type Completion = U;
 
@@ -504,35 +532,14 @@ where
     }
 }
 
-///  An [event handler](crate::event_handler::EventHandler)`] that will alter an entry in the map.
-pub struct MapLaneWithEntry<C, K, V, F, B: ?Sized> {
-    projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>,
-    key_and_f: Option<(K, F)>,
-    _type: PhantomData<fn(&B)>,
-}
-
-impl<C, K, V, F, B: ?Sized> MapLaneWithEntry<C, K, V, F, B> {
-    /// #Arguments
-    /// * `projection` - Projection from the agent context to the lane.
-    /// * `key` - Key of the entry.
-    /// * `f` - The closure to apply to the entry.
-    pub fn new(projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>, key: K, f: F) -> Self {
-        MapLaneWithEntry {
-            projection,
-            key_and_f: Some((key, f)),
-            _type: PhantomData,
-        }
-    }
-}
-
 ///  An [event handler](crate::event_handler::EventHandler)`] that will request a sync from the lane.
-pub struct MapLaneSync<C, K, V> {
-    projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>,
+pub struct MapLaneSync<C, K, V, M = HashMap<K, V>> {
+    projection: for<'a> fn(&'a C) -> &'a MapLane<K, V, M>,
     id: Option<Uuid>,
 }
 
-impl<C, K, V> MapLaneSync<C, K, V> {
-    pub fn new(projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>, id: Uuid) -> Self {
+impl<C, K, V, M> MapLaneSync<C, K, V, M> {
+    pub fn new(projection: for<'a> fn(&'a C) -> &'a MapLane<K, V, M>, id: Uuid) -> Self {
         MapLaneSync {
             projection,
             id: Some(id),
@@ -540,10 +547,11 @@ impl<C, K, V> MapLaneSync<C, K, V> {
     }
 }
 
-impl<C, K, V> HandlerAction<C> for MapLaneSync<C, K, V>
+impl<C, K, V, M> HandlerAction<C> for MapLaneSync<C, K, V, M>
 where
     C: AgentDescription,
     K: Clone + Eq + Hash,
+    M: MapOps<K, V>,
 {
     type Completion = ();
 
@@ -578,15 +586,15 @@ where
     }
 }
 
-type MapLaneHandler<C, K, V> = Coprod!(
-    MapLaneUpdate<C, K, V>,
-    MapLaneRemove<C, K, V>,
-    MapLaneClear<C, K, V>,
-    MapLaneDropOrTake<C, K, V>,
+type MapLaneHandler<C, K, V, M = HashMap<K, V>> = Coprod!(
+    MapLaneUpdate<C, K, V, M>,
+    MapLaneRemove<C, K, V, M>,
+    MapLaneClear<C, K, V, M>,
+    MapLaneDropOrTake<C, K, V, M>,
 );
 
-impl<C, K, V> HandlerTrans<MapMessage<K, V>> for ProjTransform<C, MapLane<K, V>> {
-    type Out = MapLaneHandler<C, K, V>;
+impl<C, K, V, M> HandlerTrans<MapMessage<K, V>> for ProjTransform<C, MapLane<K, V, M>> {
+    type Out = MapLaneHandler<C, K, V, M>;
 
     fn transform(self, input: MapMessage<K, V>) -> Self::Out {
         let ProjTransform { projection } = self;
@@ -697,31 +705,32 @@ where
     }
 }
 
-pub type DecodeAndApply<C, K, V> =
-    AndThen<DecodeMapMessage<K, V>, MapLaneHandler<C, K, V>, ProjTransform<C, MapLane<K, V>>>;
+pub type DecodeAndApply<C, K, V, M = HashMap<K, V>> =
+    AndThen<DecodeMapMessage<K, V>, MapLaneHandler<C, K, V, M>, ProjTransform<C, MapLane<K, V, M>>>;
 
 /// Create an event handler that will decode an incoming map message and apply the value into a map lane.
-pub fn decode_and_apply<C, K, V>(
+pub fn decode_and_apply<C, K, V, M>(
     message: MapMessage<BytesMut, BytesMut>,
-    projection: fn(&C) -> &MapLane<K, V>,
-) -> DecodeAndApply<C, K, V>
+    projection: fn(&C) -> &MapLane<K, V, M>,
+) -> DecodeAndApply<C, K, V, M>
 where
     C: AgentDescription,
     K: Form + Clone + Eq + Hash,
     V: RecognizerReadable,
+    M: MapOps<K, V>,
 {
     let decode: DecodeMapMessage<K, V> = DecodeMapMessage::new(message);
     decode.and_then(ProjTransform::new(projection))
 }
 
 /// An (event handler)[`crate::event_handler::EventHandler`] that will alter an entry in the map.
-pub struct MapLaneTransformEntry<C, K, V, F> {
-    projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>,
+pub struct MapLaneTransformEntry<C, K, V, F, M = HashMap<K, V>> {
+    projection: for<'a> fn(&'a C) -> &'a MapLane<K, V, M>,
     key_and_f: Option<(K, F)>,
 }
 
-impl<C, K, V, F> MapLaneTransformEntry<C, K, V, F> {
-    pub fn new(projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>, key: K, f: F) -> Self {
+impl<C, K, V, F, M> MapLaneTransformEntry<C, K, V, F, M> {
+    pub fn new(projection: for<'a> fn(&'a C) -> &'a MapLane<K, V, M>, key: K, f: F) -> Self {
         MapLaneTransformEntry {
             projection,
             key_and_f: Some((key, f)),
@@ -729,11 +738,12 @@ impl<C, K, V, F> MapLaneTransformEntry<C, K, V, F> {
     }
 }
 
-impl<C, K, V, F> HandlerAction<C> for MapLaneTransformEntry<C, K, V, F>
+impl<C, K, V, F, M> HandlerAction<C> for MapLaneTransformEntry<C, K, V, F, M>
 where
     C: AgentDescription,
     K: Clone + Eq + Hash,
     F: FnOnce(Option<&V>) -> Option<V>,
+    M: MapOps<K, V>,
 {
     type Completion = ();
 
@@ -778,12 +788,13 @@ where
     }
 }
 
-impl<K, V> MapLikeItem<K, V> for MapLane<K, V>
+impl<K, V, M> MapLikeItem<K, V, M> for MapLane<K, V, M>
 where
     K: Clone + Eq + Hash + Send + 'static,
     V: Clone + 'static,
+    M: MapOpsWithEntry<K, V, K> + Clone + 'static,
 {
-    type GetHandler<C> = MapLaneGet<C, K, V>
+    type GetHandler<C> = MapLaneGet<C, K, V, M>
     where
         C: AgentDescription + 'static;
 
@@ -794,7 +805,7 @@ where
         MapLaneGet::new(projection, key)
     }
 
-    type GetMapHandler<C> = MapLaneGetMap<C, K, V>
+    type GetMapHandler<C> = MapLaneGetMap<C, K, V, M>
     where
         C: AgentDescription + 'static;
 
@@ -805,49 +816,48 @@ where
     }
 }
 
-impl<K, V> InspectableMapLikeItem<K, V> for MapLane<K, V>
+impl<K, V, B, M> InspectableMapLikeItem<K, V, B> for MapLane<K, V, M>
 where
     K: Eq + Hash + Send + 'static,
-    V: 'static,
+    V: Borrow<B> + 'static,
+    B: ?Sized + 'static,
+    M: MapOpsWithEntry<K, V, K>,
 {
-    type WithEntryHandler<'a, C, F, B, U> = MapLaneWithEntry<C, K, V, F, B>
+    type WithEntryHandler<'a, C, F, U> = MapLaneWithEntry<C, K, V, F, B, M>
     where
         Self: 'static,
         C: AgentDescription + 'a,
-        B: ?Sized +'static,
-        V: Borrow<B>,
         F: FnOnce(Option<&B>) -> U + Send + 'a;
 
-    fn with_entry_handler<'a, C, F, B, U>(
+    fn with_entry_handler<'a, C, F, U>(
         projection: fn(&C) -> &Self,
         key: K,
         f: F,
-    ) -> Self::WithEntryHandler<'a, C, F, B, U>
+    ) -> Self::WithEntryHandler<'a, C, F, U>
     where
         Self: 'static,
         C: AgentDescription + 'a,
-        B: ?Sized + 'static,
-        V: Borrow<B>,
         F: FnOnce(Option<&B>) -> U + Send + 'a,
     {
         MapLaneWithEntry::new(projection, key, f)
     }
 }
 
-impl<K, V> MutableMapLikeItem<K, V> for MapLane<K, V>
+impl<K, V, M> MutableMapLikeItem<K, V> for MapLane<K, V, M>
 where
     K: Clone + Eq + Hash + Send + 'static,
     V: Send + 'static,
+    M: MapOps<K, V> + 'static,
 {
-    type UpdateHandler<C> = MapLaneUpdate<C, K, V>
+    type UpdateHandler<C> = MapLaneUpdate<C, K, V, M>
     where
         C: AgentDescription + 'static;
 
-    type RemoveHandler<C> = MapLaneRemove<C, K, V>
+    type RemoveHandler<C> = MapLaneRemove<C, K, V, M>
     where
         C: AgentDescription + 'static;
 
-    type ClearHandler<C> = MapLaneClear<C, K, V>
+    type ClearHandler<C> = MapLaneClear<C, K, V, M>
     where
         C: AgentDescription + 'static;
 
@@ -872,7 +882,7 @@ where
         MapLaneClear::new(projection)
     }
 
-    type TransformEntryHandler<'a, C, F> = MapLaneTransformEntry<C, K, V, F>
+    type TransformEntryHandler<'a, C, F> = MapLaneTransformEntry<C, K, V, F, M>
     where
         Self: 'static,
         C: AgentDescription + 'a,
@@ -920,11 +930,12 @@ impl<C, K, V, F> MapLaneSelectUpdate<C, K, V, F> {
     }
 }
 
-impl<C, K, V, F> HandlerAction<C> for MapLaneSelectUpdate<C, K, V, F>
+impl<C, K, V, F, M> HandlerAction<C> for MapLaneSelectUpdate<C, K, V, F>
 where
     C: AgentDescription,
     K: Clone + Eq + Hash,
-    F: SelectorFn<C, Target = MapLane<K, V>>,
+    F: SelectorFn<C, Target = MapLane<K, V, M>>,
+    M: MapOps<K, V>,
 {
     type Completion = ();
 
@@ -1003,10 +1014,11 @@ impl<C, K, V, F> MapLaneSelectRemove<C, K, V, F> {
     }
 }
 
-impl<C, K, V, F> HandlerAction<C> for MapLaneSelectRemove<C, K, V, F>
+impl<C, K, V, F, M> HandlerAction<C> for MapLaneSelectRemove<C, K, V, F>
 where
     K: Clone + Eq + Hash,
-    F: SelectorFn<C, Target = MapLane<K, V>>,
+    F: SelectorFn<C, Target = MapLane<K, V, M>>,
+    M: MapOps<K, V>,
 {
     type Completion = ();
 
@@ -1078,11 +1090,12 @@ impl<C, K, V, F> MapLaneSelectClear<C, K, V, F> {
     }
 }
 
-impl<C, K, V, F> HandlerAction<C> for MapLaneSelectClear<C, K, V, F>
+impl<C, K, V, F, M> HandlerAction<C> for MapLaneSelectClear<C, K, V, F>
 where
     C: AgentDescription,
     K: Clone + Eq + Hash,
-    F: SelectorFn<C, Target = MapLane<K, V>>,
+    F: SelectorFn<C, Target = MapLane<K, V, M>>,
+    M: MapOps<K, V>,
 {
     type Completion = ();
 
@@ -1140,12 +1153,13 @@ pub enum DecodeAndSelectApply<C, K, V, F> {
     Done,
 }
 
-impl<C, K, V, F> HandlerAction<C> for DecodeAndSelectApply<C, K, V, F>
+impl<C, K, V, F, M> HandlerAction<C> for DecodeAndSelectApply<C, K, V, F>
 where
     C: AgentDescription,
     K: Form + Clone + Eq + Hash,
     V: RecognizerReadable,
-    F: SelectorFn<C, Target = MapLane<K, V>>,
+    F: SelectorFn<C, Target = MapLane<K, V, M>>,
+    M: MapOps<K, V>,
 {
     type Completion = ();
 
@@ -1267,14 +1281,15 @@ where
 }
 
 /// Create an event handler that will decode an incoming map message and apply the value into a map lane.
-pub fn decode_and_select_apply<C, K, V, F>(
+pub fn decode_and_select_apply<C, K, V, M, F>(
     message: MapMessage<BytesMut, BytesMut>,
     projection: F,
 ) -> DecodeAndSelectApply<C, K, V, F>
 where
     K: Clone + Eq + Hash + RecognizerReadable,
     V: RecognizerReadable,
-    F: SelectorFn<C, Target = MapLane<K, V>>,
+    F: SelectorFn<C, Target = MapLane<K, V, M>>,
+    M: MapOps<K, V>,
 {
     let decode: DecodeMapMessage<K, V> = DecodeMapMessage::new(message);
     DecodeAndSelectApply::Decoding(decode, projection)
@@ -1301,11 +1316,12 @@ impl<C, K, V, F> MapLaneSelectSync<C, K, V, F> {
     }
 }
 
-impl<C, K, V, F> HandlerAction<C> for MapLaneSelectSync<C, K, V, F>
+impl<C, K, V, F, M> HandlerAction<C> for MapLaneSelectSync<C, K, V, F>
 where
     C: AgentDescription,
     K: Clone + Eq + Hash,
-    F: SelectorFn<C, Target = MapLane<K, V>>,
+    F: SelectorFn<C, Target = MapLane<K, V, M>>,
+    M: MapOps<K, V>,
 {
     type Completion = ();
 
@@ -1347,14 +1363,14 @@ where
     }
 }
 
-struct MapLaneRemoveMultiple<C, K, V> {
-    projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>,
+struct MapLaneRemoveMultiple<C, K, V, M = HashMap<K, V>> {
+    projection: for<'a> fn(&'a C) -> &'a MapLane<K, V, M>,
     keys: Option<VecDeque<K>>,
-    current: Option<MapLaneRemove<C, K, V>>,
+    current: Option<MapLaneRemove<C, K, V, M>>,
 }
 
-impl<C, K, V> MapLaneRemoveMultiple<C, K, V> {
-    fn new(projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>, keys: VecDeque<K>) -> Self {
+impl<C, K, V, M> MapLaneRemoveMultiple<C, K, V, M> {
+    fn new(projection: for<'a> fn(&'a C) -> &'a MapLane<K, V, M>, keys: VecDeque<K>) -> Self {
         MapLaneRemoveMultiple {
             projection,
             keys: Some(keys),
@@ -1363,10 +1379,11 @@ impl<C, K, V> MapLaneRemoveMultiple<C, K, V> {
     }
 }
 
-impl<C, K, V> HandlerAction<C> for MapLaneRemoveMultiple<C, K, V>
+impl<C, K, V, M> HandlerAction<C> for MapLaneRemoveMultiple<C, K, V, M>
 where
     C: AgentDescription,
     K: Clone + Eq + Hash,
+    M: MapOps<K, V>,
 {
     type Completion = ();
 
@@ -1418,29 +1435,23 @@ where
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-enum DropOrTake {
-    Drop,
-    Take,
-}
-
-enum DropOrTakeState<C, K, V> {
+enum DropOrTakeState<C, K, V, M> {
     Init,
-    Removing(MapLaneRemoveMultiple<C, K, V>),
+    Removing(MapLaneRemoveMultiple<C, K, V, M>),
 }
 
 /// An [event handler](crate::event_handler::EventHandler)`] that will either retain or drop the first `n` elements
 /// from a map (ordering the keys by the ordering of their Recon model representations).
-pub struct MapLaneDropOrTake<C, K, V> {
-    projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>,
+pub struct MapLaneDropOrTake<C, K, V, M = HashMap<K, V>> {
+    projection: for<'a> fn(&'a C) -> &'a MapLane<K, V, M>,
     kind: DropOrTake,
     number: u64,
-    state: DropOrTakeState<C, K, V>,
+    state: DropOrTakeState<C, K, V, M>,
 }
 
-impl<C, K, V> MapLaneDropOrTake<C, K, V> {
+impl<C, K, V, M> MapLaneDropOrTake<C, K, V, M> {
     fn new(
-        projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>,
+        projection: for<'a> fn(&'a C) -> &'a MapLane<K, V, M>,
         kind: DropOrTake,
         number: u64,
     ) -> Self {
@@ -1453,38 +1464,11 @@ impl<C, K, V> MapLaneDropOrTake<C, K, V> {
     }
 }
 
-fn drop_or_take<K, V>(map: &HashMap<K, V>, kind: DropOrTake, number: usize) -> VecDeque<K>
-where
-    K: StructuralWritable + Clone + Eq + Hash,
-{
-    let mut keys_with_recon = map.keys().map(|k| (k.structure(), k)).collect::<Vec<_>>();
-    keys_with_recon.sort_by(|(k1, _), (k2, _)| k1.cmp(k2));
-    let mut to_remove: VecDeque<K> = VecDeque::new();
-    match kind {
-        DropOrTake::Drop => {
-            to_remove.extend(
-                keys_with_recon
-                    .into_iter()
-                    .take(number)
-                    .map(|(_, k1)| k1.clone()),
-            );
-        }
-        DropOrTake::Take => {
-            to_remove.extend(
-                keys_with_recon
-                    .into_iter()
-                    .skip(number)
-                    .map(|(_, k1)| k1.clone()),
-            );
-        }
-    }
-    to_remove
-}
-
-impl<C, K, V> HandlerAction<C> for MapLaneDropOrTake<C, K, V>
+impl<C, K, V, M> HandlerAction<C> for MapLaneDropOrTake<C, K, V, M>
 where
     C: AgentDescription,
     K: StructuralWritable + Clone + Eq + Hash,
+    M: MapOps<K, V>,
 {
     type Completion = ();
 
@@ -1561,10 +1545,11 @@ impl<C, K, V, F> MapLaneSelectRemoveMultiple<C, K, V, F> {
     }
 }
 
-impl<C, K, V, F> HandlerAction<C> for MapLaneSelectRemoveMultiple<C, K, V, F>
+impl<C, K, V, F, M> HandlerAction<C> for MapLaneSelectRemoveMultiple<C, K, V, F>
 where
     K: Clone + Eq + Hash,
-    F: SelectorFn<C, Target = MapLane<K, V>>,
+    F: SelectorFn<C, Target = MapLane<K, V, M>>,
+    M: MapOps<K, V>,
 {
     type Completion = ();
 
@@ -1635,11 +1620,12 @@ impl<C, K, V, F> MapLaneSelectDropOrTake<C, K, V, F> {
     }
 }
 
-impl<C, K, V, F> HandlerAction<C> for MapLaneSelectDropOrTake<C, K, V, F>
+impl<C, K, V, F, M> HandlerAction<C> for MapLaneSelectDropOrTake<C, K, V, F>
 where
     C: AgentDescription,
     K: StructuralWritable + Clone + Eq + Hash,
-    F: SelectorFn<C, Target = MapLane<K, V>>,
+    F: SelectorFn<C, Target = MapLane<K, V, M>>,
+    M: MapOps<K, V>,
 {
     type Completion = ();
 

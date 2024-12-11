@@ -12,14 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 use std::hash::Hash;
 
 use swimos_agent_protocol::{LaneResponse, MapOperation};
 use uuid::Uuid;
 
 use crate::event_queue::{to_operation, EventQueue};
-use crate::map_storage::MapEventQueue;
+use crate::map_storage::{MapEventQueue, MapOps};
 
 /// For a sync operation on a map lane, keeps track of which keys are synced for a given remote.
 #[derive(Debug)]
@@ -202,7 +202,11 @@ where
         self.push_operation(action)
     }
 
-    fn pop<'a>(&mut self, content: &'a HashMap<K, V>) -> Option<Self::Output<'a>> {
+    fn pop<'a, M>(&mut self, content: &'a M) -> Option<Self::Output<'a>>
+    where
+        K: 'a,
+        M: MapOps<K, V>,
+    {
         loop {
             match WriteQueues::pop(self)? {
                 ToWrite::Event(action) => {
