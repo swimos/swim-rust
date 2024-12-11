@@ -37,19 +37,32 @@ impl AgentDescription for EmptyAgent {
 }
 
 impl AgentSpec for EmptyAgent {
-    type ValCommandHandler = UnitHandler;
+    type ValCommandHandler<'a> = UnitHandler
+    where
+        Self: 'a;
 
-    type MapCommandHandler = UnitHandler;
+    type MapCommandHandler<'a> = UnitHandler
+    where
+        Self: 'a;
 
     type OnSyncHandler = UnitHandler;
 
     type HttpRequestHandler = UnitHandler;
 
+    type Deserializers = ();
+
+    fn initialize_deserializers(&self) -> Self::Deserializers {}
+
     fn item_specs() -> HashMap<&'static str, ItemSpec> {
         HashMap::new()
     }
 
-    fn on_value_command(&self, _lane: &str, _body: BytesMut) -> Option<Self::ValCommandHandler> {
+    fn on_value_command(
+        &self,
+        _: &mut (),
+        _lane: &str,
+        _body: BytesMut,
+    ) -> Option<Self::ValCommandHandler<'_>> {
         None
     }
 
@@ -67,11 +80,12 @@ impl AgentSpec for EmptyAgent {
         None
     }
 
-    fn on_map_command(
+    fn on_map_command<'a>(
         &self,
+        _: &'a mut (),
         _lane: &str,
         _body: MapMessage<BytesMut, BytesMut>,
-    ) -> Option<Self::MapCommandHandler> {
+    ) -> Option<Self::MapCommandHandler<'a>> {
         None
     }
 

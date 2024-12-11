@@ -262,6 +262,7 @@ pub mod agent_model {
 }
 
 pub use swimos_agent::AgentItem;
+pub use swimos_agent::ReconDecoder;
 
 /// Defines the lane types that can be included in agent specifications. Lanes are exposed externally by the runtime,
 /// using the WARP protocol (or HTTP in the case of [HTTP lanes](`lanes::HttpLane`)). The states of lanes may be stored

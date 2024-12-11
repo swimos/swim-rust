@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::iter::once;
+
 use proc_macro2::TokenStream;
 use quote::{quote, ToTokens, TokenStreamExt};
 use swimos_utilities::errors::{Errors, Validation};
@@ -140,6 +142,19 @@ impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
             no_handler
         };
 
+        let deser_types = warp_lane_models
+            .iter()
+            .map(|model| {
+                let tokens = DecoderType(model.clone()).into_tokens(root);
+                let t: syn::Type = parse_quote!(#tokens);
+                t
+            })
+            .chain(once(parse_quote!(())));
+        let deser_tup_type = quote!((#(#deser_types),*));
+        let deser_inits =
+            (0..=warp_lane_models.len()).map(|_| quote!(::core::default::Default::default()));
+        let deser_init_statement = quote!((#(#deser_inits),*));
+
         let item_specs = item_models
             .iter()
             .map(|model| LaneSpecInsert(model.ordinal, model.model.clone()))
@@ -213,14 +228,25 @@ impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
             }
 
             #[automatically_derived]
+            #[allow(clippy::unused_unit)]
             impl #root::agent_model::AgentSpec for #agent_type {
-                type ValCommandHandler = #value_handler;
+                type ValCommandHandler<'a> = #value_handler
+                where
+                    Self: 'a;
 
-                type MapCommandHandler = #map_handler;
+                type MapCommandHandler<'a> = #map_handler
+                where
+                    Self: 'a;
 
                 type OnSyncHandler = #sync_handler;
 
                 type HttpRequestHandler = #http_handler;
+
+                type Deserializers = #deser_tup_type;
+
+                fn initialize_deserializers(&self) -> Self::Deserializers {
+                    #deser_init_statement
+                }
 
                 fn item_specs() -> ::std::collections::HashMap<&'static str, #root::agent_model::ItemSpec> {
                     let mut lanes = ::std::collections::HashMap::new();
@@ -228,18 +254,19 @@ impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
                     lanes
                 }
 
-                fn on_value_command(&self, lane: &str, body: #root::reexport::bytes::BytesMut) -> ::core::option::Option<Self::ValCommandHandler> {
+                fn on_value_command<'a>(&self, deserializers: &'a mut Self::Deserializers, lane: &str, body: #root::reexport::bytes::BytesMut) -> ::core::option::Option<Self::ValCommandHandler<'a>> {
                     match lane {
                         #(#value_match_blocks,)*
                         _ => ::core::option::Option::None,
                     }
                 }
 
-                fn on_map_command(
+                fn on_map_command<'a>(
                     &self,
+                    deserializers: &'a mut Self::Deserializers,
                     lane: &str,
                     body: #root::model::MapMessage<#root::reexport::bytes::BytesMut, #root::reexport::bytes::BytesMut>,
-                ) -> ::core::option::Option<Self::MapCommandHandler> {
+                ) -> ::core::option::Option<Self::MapCommandHandler<'a>> {
                     match lane {
                         #(#map_match_blocks,)*
                         _ => ::core::option::Option::None,
@@ -455,6 +482,8 @@ struct SyncHandlerType<'a>(OrdinalWarpLaneModel<'a>);
 
 struct HttpHandlerType<'a>(OrdinalHttpLaneModel<'a>);
 
+struct DecoderType<'a>(OrdinalWarpLaneModel<'a>);
+
 impl<'a> HandlerType<'a> {
     fn into_tokens(self, root: &syn::Path) -> impl ToTokens {
         let HandlerType(OrdinalWarpLaneModel {
@@ -465,16 +494,16 @@ impl<'a> HandlerType<'a> {
 
         match kind {
             WarpLaneSpec::Command(t) => {
-                quote!(#root::lanes::command::DecodeAndCommand<#agent_name, #t>)
+                quote!(#root::lanes::command::DecodeAndCommand<'a, #agent_name, #t>)
             }
             WarpLaneSpec::Value(t) => {
-                quote!(#root::lanes::value::DecodeAndSet<#agent_name, #t>)
+                quote!(#root::lanes::value::DecodeAndSet<'a, #agent_name, #t>)
             }
             WarpLaneSpec::Map(k, v, m) => {
                 if let Some(map_t) = m {
-                    quote!(#root::lanes::map::DecodeAndApply<#agent_name, #k, #v, #map_t>)
+                    quote!(#root::lanes::map::DecodeAndApply<'a, #agent_name, #k, #v, #map_t>)
                 } else {
-                    quote!(#root::lanes::map::DecodeAndApply<#agent_name, #k, #v>)
+                    quote!(#root::lanes::map::DecodeAndApply<'a, #agent_name, #k, #v>)
                 }
             }
             WarpLaneSpec::Demand(_)
@@ -545,6 +574,34 @@ impl<'a> HttpHandlerType<'a> {
     }
 }
 
+impl<'a> DecoderType<'a> {
+    fn into_tokens(self, root: &syn::Path) -> impl ToTokens {
+        let DecoderType(OrdinalWarpLaneModel {
+            model: WarpLaneModel { kind, .. },
+            ..
+        }) = self;
+
+        match kind {
+            WarpLaneSpec::Command(t) => {
+                quote!(#root::ReconDecoder<#t>)
+            }
+            WarpLaneSpec::Value(t) => {
+                quote!(#root::ReconDecoder<#t>)
+            }
+            WarpLaneSpec::Map(k, v, _) => {
+                quote!((#root::ReconDecoder<#k>, #root::ReconDecoder<#v>))
+            }
+            WarpLaneSpec::Demand(_)
+            | WarpLaneSpec::DemandMap(_, _)
+            | WarpLaneSpec::JoinValue(_, _)
+            | WarpLaneSpec::JoinMap(_, _, _)
+            | WarpLaneSpec::Supply(_) => {
+                quote!(())
+            }
+        }
+    }
+}
+
 struct WarpLaneHandlerMatch<'a> {
     group_ordinal: usize,
     model: OrdinalWarpLaneModel<'a>,
@@ -561,26 +618,31 @@ impl<'a> WarpLaneHandlerMatch<'a> {
     fn into_tokens(self, root: &syn::Path) -> impl ToTokens {
         let WarpLaneHandlerMatch {
             group_ordinal,
-            model: OrdinalWarpLaneModel {
-                agent_name, model, ..
-            },
+            model:
+                OrdinalWarpLaneModel {
+                    agent_name,
+                    model,
+                    lane_ordinal,
+                    ..
+                },
         } = self;
+        let index = syn::Index::from(lane_ordinal);
         let name_lit = model.literal();
         let WarpLaneModel { name, kind, .. } = model;
         let handler_base: syn::Expr = parse_quote!(handler);
         let coprod_con = coproduct_constructor(root, handler_base, group_ordinal);
         let lane_handler_expr = match kind {
             WarpLaneSpec::Command(ty) => {
-                quote!(#root::lanes::command::decode_and_command::<#agent_name, #ty>(body, |agent: &#agent_name| &agent.#name))
+                quote!(#root::lanes::command::decode_and_command::<#agent_name, #ty>(&mut deserializers.#index, body, |agent: &#agent_name| &agent.#name))
             }
             WarpLaneSpec::Value(ty) => {
-                quote!(#root::lanes::value::decode_and_set::<#agent_name, #ty>(body, |agent: &#agent_name| &agent.#name))
+                quote!(#root::lanes::value::decode_and_set::<#agent_name, #ty>(&mut deserializers.#index, body, |agent: &#agent_name| &agent.#name))
             }
             WarpLaneSpec::Map(k, v, m) => {
                 if let Some(map_t) = m {
-                    quote!(#root::lanes::map::decode_and_apply::<#agent_name, #k, #v, #map_t>(body, |agent: &#agent_name| &agent.#name))
+                    quote!(#root::lanes::map::decode_and_apply::<#agent_name, #k, #v, #map_t>(&mut deserializers.#index, body, |agent: &#agent_name| &agent.#name))
                 } else {
-                    quote!(#root::lanes::map::decode_and_apply::<#agent_name, #k, #v, _>(body, |agent: &#agent_name| &agent.#name))
+                    quote!(#root::lanes::map::decode_and_apply::<#agent_name, #k, #v, _>(&mut deserializers.#index, body, |agent: &#agent_name| &agent.#name))
                 }
             }
             WarpLaneSpec::Demand(_)

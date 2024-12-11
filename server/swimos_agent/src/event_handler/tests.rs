@@ -23,9 +23,10 @@ use tokio::time::Instant;
 
 use crate::agent_model::AgentDescription;
 use crate::event_handler::check_step::{check_is_complete, check_is_continue};
-use crate::event_handler::{GetParameter, ModificationFlags, WithParameters};
+use crate::event_handler::{Decode, GetParameter, ModificationFlags, WithParameters};
 
 use crate::test_context::{NO_DOWNLINKS, NO_DYN_LANES};
+use crate::ReconDecoder;
 use crate::{
     event_handler::{
         ConstHandler, EventHandlerError, GetAgentUri, HandlerActionExt, Sequentially, SideEffects,
@@ -36,7 +37,7 @@ use crate::{
 };
 
 use super::{
-    join, ActionContext, Decode, HandlerAction, HandlerFuture, Modification, ScheduleTimerEvent,
+    join, ActionContext, HandlerAction, HandlerFuture, Modification, ScheduleTimerEvent,
     SideEffect, Spawner, StepResult,
 };
 
@@ -526,6 +527,7 @@ fn followed_by_handler() {
 
 #[test]
 fn decoding_handler_success() {
+    let mut decoder = ReconDecoder::<i32>::default();
     let uri = make_uri();
     let route_params = HashMap::new();
     let meta = make_meta(&uri, &route_params);
@@ -533,7 +535,7 @@ fn decoding_handler_success() {
     let mut buffer = BytesMut::new();
     write!(buffer, "56").expect("Write failed.");
 
-    let mut handler = Decode::<i32>::new(buffer);
+    let mut handler = Decode::<i32>::new(&mut decoder, buffer);
 
     let result = handler.step(
         &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
@@ -561,6 +563,7 @@ fn decoding_handler_success() {
 
 #[test]
 fn decoding_handler_failure() {
+    let mut decoder = ReconDecoder::<i32>::default();
     let uri = make_uri();
     let route_params = HashMap::new();
     let meta = make_meta(&uri, &route_params);
@@ -568,7 +571,7 @@ fn decoding_handler_failure() {
     let mut buffer = BytesMut::new();
     write!(buffer, "boom").expect("Write failed.");
 
-    let mut handler = Decode::<i32>::new(buffer);
+    let mut handler = Decode::<i32>::new(&mut decoder, buffer);
 
     let result = handler.step(
         &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
