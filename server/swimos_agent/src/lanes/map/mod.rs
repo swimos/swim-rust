@@ -1726,7 +1726,7 @@ enum SelectDropOrTakeState<C, K, V, F> {
     Done,
 }
 
-/// An [event handler](crate::event_handler::EventHandler) that attempts to drop or retain the first `n` elements of
+/// An [event handler](crate::event_handler::EventHandler) that attempts to drop or retain the first or last `n` elements of
 /// a map lane, if that lane exists.
 pub struct MapLaneSelectDropOrTake<C, K, V, F> {
     kind: DropOrTake,
