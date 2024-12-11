@@ -77,7 +77,8 @@ where
     L: Clone + Hash + Eq + Send,
     LC: OnJoinMapLinked<L, Context>,
 {
-    type OnLinkedHandler<'a> = FollowedBy<AlterLinkState<L, K, V, Context>, LC::OnJoinMapLinkedHandler<'a>>
+    type OnLinkedHandler<'a>
+        = FollowedBy<AlterLinkState<L, K, V, Context>, LC::OnJoinMapLinkedHandler<'a>>
     where
         Self: 'a;
 
@@ -174,7 +175,8 @@ where
     LC: Send,
     K: Clone + Hash + Eq + Ord + Send,
 {
-    type OnEventHandler<'a> = JoinMapLaneUpdate<Context, L, K, V>
+    type OnEventHandler<'a>
+        = JoinMapLaneUpdate<Context, L, K, V>
     where
         Self: 'a;
 
@@ -271,10 +273,11 @@ where
     L: Clone + Hash + Eq + Send,
     LC: OnJoinMapSynced<L, K, Context>,
 {
-    type OnSyncedHandler<'a> = AndThenContextual<
+    type OnSyncedHandler<'a>
+        = AndThenContextual<
         ConstHandler<L>,
         LC::OnJoinMapSyncedHandler<'a>,
-        RetrieveKeys<'a, Context, L, K, V, LC>
+        RetrieveKeys<'a, Context, L, K, V, LC>,
     >
     where
         Self: 'a;
@@ -370,7 +373,8 @@ where
     V::BodyRec: Send,
     LC: OnJoinMapUnlinked<L, K, Context>,
 {
-    type OnUnlinkedHandler<'a> = JoinMapOnUnlinked<'a, L, K, V, Context, LC>
+    type OnUnlinkedHandler<'a>
+        = JoinMapOnUnlinked<'a, L, K, V, Context, LC>
     where
         Self: 'a;
 
@@ -400,7 +404,8 @@ where
     V::BodyRec: Send,
     LC: OnJoinMapFailed<L, K, Context>,
 {
-    type OnFailedHandler<'a> = JoinMapOnFailed<'a, L, K, V, Context, LC>
+    type OnFailedHandler<'a>
+        = JoinMapOnFailed<'a, L, K, V, Context, LC>
     where
         Self: 'a;
 

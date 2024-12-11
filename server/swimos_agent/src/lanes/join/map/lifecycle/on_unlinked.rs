@@ -59,7 +59,8 @@ pub trait OnJoinMapUnlinkedShared<L, K, Context, Shared>: Send {
 }
 
 impl<L, K, Context> OnJoinMapUnlinked<L, K, Context> for NoHandler {
-    type OnJoinMapUnlinkedHandler<'a> = ConstHandler<LinkClosedResponse>
+    type OnJoinMapUnlinkedHandler<'a>
+        = ConstHandler<LinkClosedResponse>
     where
         Self: 'a;
 
@@ -74,7 +75,8 @@ impl<L, K, Context> OnJoinMapUnlinked<L, K, Context> for NoHandler {
 }
 
 impl<L, K, Context, Shared> OnJoinMapUnlinkedShared<L, K, Context, Shared> for NoHandler {
-    type OnJoinMapUnlinkedHandler<'a> = ConstHandler<LinkClosedResponse>
+    type OnJoinMapUnlinkedHandler<'a>
+        = ConstHandler<LinkClosedResponse>
     where
         Self: 'a,
         Shared: 'a;
@@ -96,7 +98,8 @@ where
     F: Fn(L, Address<&str>, HashSet<K>) -> H + Send,
     H: HandlerAction<Context, Completion = LinkClosedResponse> + 'static,
 {
-    type OnJoinMapUnlinkedHandler<'a> = H
+    type OnJoinMapUnlinkedHandler<'a>
+        = H
     where
         Self: 'a;
 
@@ -115,7 +118,8 @@ impl<L, K, Context, Shared, F> OnJoinMapUnlinkedShared<L, K, Context, Shared> fo
 where
     F: for<'a> JoinMapHandlerStoppedFn<'a, Context, Shared, L, K, LinkClosedResponse> + Send,
 {
-    type OnJoinMapUnlinkedHandler<'a> = <F as JoinMapHandlerStoppedFn<'a, Context, Shared, L, K, LinkClosedResponse>>::Handler
+    type OnJoinMapUnlinkedHandler<'a>
+        = <F as JoinMapHandlerStoppedFn<'a, Context, Shared, L, K, LinkClosedResponse>>::Handler
     where
         Self: 'a,
         Shared: 'a;
@@ -138,7 +142,8 @@ where
     F: Fn(HandlerContext<Context>, L, Address<&str>, HashSet<K>) -> H + Send,
     H: HandlerAction<Context, Completion = LinkClosedResponse> + 'static,
 {
-    type OnJoinMapUnlinkedHandler<'a> = H
+    type OnJoinMapUnlinkedHandler<'a>
+        = H
     where
         Self: 'a;
 
@@ -158,7 +163,8 @@ impl<L, K, Context, Shared, F> OnJoinMapUnlinkedShared<L, K, Context, Shared>
 where
     F: OnJoinMapUnlinked<L, K, Context> + Send,
 {
-    type OnJoinMapUnlinkedHandler<'a> = F::OnJoinMapUnlinkedHandler<'a>
+    type OnJoinMapUnlinkedHandler<'a>
+        = F::OnJoinMapUnlinkedHandler<'a>
     where
         Self: 'a,
         Shared: 'a;

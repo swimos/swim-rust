@@ -50,7 +50,8 @@ pub trait OnJoinValueFailedShared<K, Context, Shared>: Send {
 }
 
 impl<K, Context> OnJoinValueFailed<K, Context> for NoHandler {
-    type OnJoinValueFailedHandler<'a> = ConstHandler<LinkClosedResponse>
+    type OnJoinValueFailedHandler<'a>
+        = ConstHandler<LinkClosedResponse>
     where
         Self: 'a;
 
@@ -68,7 +69,8 @@ where
     F: Fn(K, Address<&str>) -> H + Send,
     H: HandlerAction<Context, Completion = LinkClosedResponse> + 'static,
 {
-    type OnJoinValueFailedHandler<'a> = H
+    type OnJoinValueFailedHandler<'a>
+        = H
     where
         Self: 'a;
 
@@ -83,7 +85,8 @@ where
 }
 
 impl<K, Context, Shared> OnJoinValueFailedShared<K, Context, Shared> for NoHandler {
-    type OnJoinValueFailedHandler<'a> = ConstHandler<LinkClosedResponse>
+    type OnJoinValueFailedHandler<'a>
+        = ConstHandler<LinkClosedResponse>
     where
         Self: 'a,
         Shared: 'a;
@@ -103,7 +106,8 @@ impl<K, Context, Shared, F> OnJoinValueFailedShared<K, Context, Shared> for FnHa
 where
     F: for<'a> JoinHandlerFn<'a, Context, Shared, K, LinkClosedResponse> + Send,
 {
-    type OnJoinValueFailedHandler<'a> = <F as JoinHandlerFn<'a, Context, Shared, K, LinkClosedResponse>>::Handler
+    type OnJoinValueFailedHandler<'a>
+        = <F as JoinHandlerFn<'a, Context, Shared, K, LinkClosedResponse>>::Handler
     where
         Self: 'a,
         Shared: 'a;
@@ -125,7 +129,8 @@ where
     F: Fn(HandlerContext<Context>, K, Address<&str>) -> H + Send,
     H: HandlerAction<Context, Completion = LinkClosedResponse> + 'static,
 {
-    type OnJoinValueFailedHandler<'a> = H
+    type OnJoinValueFailedHandler<'a>
+        = H
     where
         Self: 'a;
 
@@ -143,7 +148,8 @@ impl<K, Context, Shared, F> OnJoinValueFailedShared<K, Context, Shared> for Lift
 where
     F: OnJoinValueFailed<K, Context> + Send,
 {
-    type OnJoinValueFailedHandler<'a> = F::OnJoinValueFailedHandler<'a>
+    type OnJoinValueFailedHandler<'a>
+        = F::OnJoinValueFailedHandler<'a>
     where
         Self: 'a,
         Shared: 'a;

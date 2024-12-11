@@ -106,7 +106,8 @@ impl<T> FakeLifecycle<T> {
 }
 
 impl<T: Clone + Send + 'static> OnCommand<T, TestAgent> for FakeLifecycle<T> {
-    type OnCommandHandler<'a> = OnCommandHandler<T>
+    type OnCommandHandler<'a>
+        = OnCommandHandler<T>
     where
         Self: 'a;
 

@@ -39,7 +39,8 @@ pub trait OnUnlinkedShared<Shared>: Send {
 }
 
 impl OnUnlinked for NoHandler {
-    type OnUnlinkedFut<'a> = Ready<()>
+    type OnUnlinkedFut<'a>
+        = Ready<()>
     where
         Self: 'a;
 
@@ -53,7 +54,8 @@ where
     F: FnMut() -> Fut + Send,
     Fut: Future<Output = ()> + Send + 'static,
 {
-    type OnUnlinkedFut<'a> = Fut
+    type OnUnlinkedFut<'a>
+        = Fut
     where
         Self: 'a;
 
@@ -64,7 +66,8 @@ where
 }
 
 impl<Shared> OnUnlinkedShared<Shared> for NoHandler {
-    type OnUnlinkedFut<'a> = Ready<()>
+    type OnUnlinkedFut<'a>
+        = Ready<()>
     where
         Self: 'a,
         Shared: 'a;
@@ -78,7 +81,8 @@ impl<Shared, F> OnUnlinkedShared<Shared> for FnMutHandler<F>
 where
     F: for<'a> SharedHandlerFn0<'a, Shared> + Send,
 {
-    type OnUnlinkedFut<'a> = <F as SharedHandlerFn0<'a, Shared>>::Fut
+    type OnUnlinkedFut<'a>
+        = <F as SharedHandlerFn0<'a, Shared>>::Fut
     where
         Self: 'a,
         Shared: 'a;
@@ -93,7 +97,8 @@ impl<H, Shared> OnUnlinkedShared<Shared> for WithShared<H>
 where
     H: OnUnlinked,
 {
-    type OnUnlinkedFut<'a> = H::OnUnlinkedFut<'a>
+    type OnUnlinkedFut<'a>
+        = H::OnUnlinkedFut<'a>
     where
         Self: 'a,
         Shared: 'a;
@@ -107,7 +112,8 @@ impl<F> OnUnlinked for BlockingHandler<F>
 where
     F: FnMut() + Send,
 {
-    type OnUnlinkedFut<'a> = Ready<()>
+    type OnUnlinkedFut<'a>
+        = Ready<()>
     where
         Self: 'a;
 
@@ -123,7 +129,8 @@ where
     Shared: 'static,
     F: FnMut(&mut Shared) + Send,
 {
-    type OnUnlinkedFut<'a> = Ready<()>
+    type OnUnlinkedFut<'a>
+        = Ready<()>
     where
         Self: 'a,
         Shared: 'a;

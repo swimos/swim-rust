@@ -62,7 +62,8 @@ where
 }
 
 impl KafkaConsumer for LoggingConsumer {
-    type Msg<'a> = MessageFacade<BorrowedMessage<'a>>
+    type Msg<'a>
+        = MessageFacade<BorrowedMessage<'a>>
     where
         Self: 'a;
 

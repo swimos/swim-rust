@@ -403,11 +403,13 @@ impl<T> ValueLikeItem<T> for ValueLane<T>
 where
     T: Clone + Send + 'static,
 {
-    type GetHandler<C> = ValueLaneGet<C, T>
+    type GetHandler<C>
+        = ValueLaneGet<C, T>
     where
         C: AgentDescription + 'static;
 
-    type WithValueHandler<'a, C, F, B, U> = ValueLaneWithValue<C, T, F, B>
+    type WithValueHandler<'a, C, F, B, U>
+        = ValueLaneWithValue<C, T, F, B>
     where
         Self: 'static,
         C: AgentDescription + 'a,
@@ -439,7 +441,8 @@ impl<T> MutableValueLikeItem<T> for ValueLane<T>
 where
     T: Send + 'static,
 {
-    type SetHandler<C> = ValueLaneSet<C, T>
+    type SetHandler<C>
+        = ValueLaneSet<C, T>
     where
         C: AgentDescription + 'static;
 

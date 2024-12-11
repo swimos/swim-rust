@@ -295,7 +295,8 @@ where
     FUnlinked: Send,
     FFailed: Send,
 {
-    type OnJoinMapLinkedHandler<'a> = FLinked::OnJoinMapLinkedHandler<'a>
+    type OnJoinMapLinkedHandler<'a>
+        = FLinked::OnJoinMapLinkedHandler<'a>
     where
         Self: 'a;
 
@@ -319,7 +320,8 @@ where
     FUnlinked: Send,
     FFailed: Send,
 {
-    type OnJoinMapSyncedHandler<'a> = FSynced::OnJoinMapSyncedHandler<'a>
+    type OnJoinMapSyncedHandler<'a>
+        = FSynced::OnJoinMapSyncedHandler<'a>
     where
         Self: 'a;
 
@@ -348,7 +350,8 @@ where
     FUnlinked: OnJoinMapUnlinkedShared<L, K, Context, State>,
     FFailed: Send,
 {
-    type OnJoinMapUnlinkedHandler<'a> = FUnlinked::OnJoinMapUnlinkedHandler<'a>
+    type OnJoinMapUnlinkedHandler<'a>
+        = FUnlinked::OnJoinMapUnlinkedHandler<'a>
     where
         Self: 'a;
 
@@ -377,7 +380,8 @@ where
     FUnlinked: Send,
     FFailed: OnJoinMapFailedShared<L, K, Context, State>,
 {
-    type OnJoinMapFailedHandler<'a> = FFailed::OnJoinMapFailedHandler<'a>
+    type OnJoinMapFailedHandler<'a>
+        = FFailed::OnJoinMapFailedHandler<'a>
     where
         Self: 'a;
 
@@ -407,19 +411,23 @@ where
     FUnlinked: OnJoinMapUnlinkedShared<L, K, Context, State> + Clone,
     FFailed: OnJoinMapFailedShared<L, K, Context, State> + Clone,
 {
-    type WithOnLinked<H> = StatefulJoinMapLaneLifecycle<Context, State, L, K, H, FSynced, FUnlinked, FFailed>
+    type WithOnLinked<H>
+        = StatefulJoinMapLaneLifecycle<Context, State, L, K, H, FSynced, FUnlinked, FFailed>
     where
         H: OnJoinMapLinkedShared<L, Context, State> + Clone;
 
-    type WithOnSynced<H> = StatefulJoinMapLaneLifecycle<Context, State, L, K, FLinked, H, FUnlinked, FFailed>
+    type WithOnSynced<H>
+        = StatefulJoinMapLaneLifecycle<Context, State, L, K, FLinked, H, FUnlinked, FFailed>
     where
         H: OnJoinMapSyncedShared<L, K, Context, State> + Clone;
 
-    type WithOnUnlinked<H> = StatefulJoinMapLaneLifecycle<Context, State, L, K, FLinked, FSynced, H, FFailed>
+    type WithOnUnlinked<H>
+        = StatefulJoinMapLaneLifecycle<Context, State, L, K, FLinked, FSynced, H, FFailed>
     where
         H: OnJoinMapUnlinkedShared<L, K, Context, State> + Clone;
 
-    type WithOnFailed<H> = StatefulJoinMapLaneLifecycle<Context, State, L, K, FLinked, FSynced, FUnlinked, H>
+    type WithOnFailed<H>
+        = StatefulJoinMapLaneLifecycle<Context, State, L, K, FLinked, FSynced, FUnlinked, H>
     where
         H: OnJoinMapFailedShared<L, K, Context, State> + Clone;
 
@@ -496,7 +504,8 @@ where
     FUnlinked: Send,
     FFailed: Send,
 {
-    type OnJoinMapLinkedHandler<'a> = FLinked::OnJoinMapLinkedHandler<'a>
+    type OnJoinMapLinkedHandler<'a>
+        = FLinked::OnJoinMapLinkedHandler<'a>
     where
         Self: 'a;
 
@@ -514,7 +523,8 @@ where
     FUnlinked: Send,
     FFailed: Send,
 {
-    type OnJoinMapSyncedHandler<'a> = FSynced::OnJoinMapSyncedHandler<'a>
+    type OnJoinMapSyncedHandler<'a>
+        = FSynced::OnJoinMapSyncedHandler<'a>
     where
         Self: 'a;
 
@@ -537,7 +547,8 @@ where
     FUnlinked: OnJoinMapUnlinked<L, K, Context>,
     FFailed: Send,
 {
-    type OnJoinMapUnlinkedHandler<'a> = FUnlinked::OnJoinMapUnlinkedHandler<'a>
+    type OnJoinMapUnlinkedHandler<'a>
+        = FUnlinked::OnJoinMapUnlinkedHandler<'a>
     where
         Self: 'a;
 
@@ -560,7 +571,8 @@ where
     FUnlinked: Send,
     FFailed: OnJoinMapFailed<L, K, Context>,
 {
-    type OnJoinMapFailedHandler<'a> = FFailed::OnJoinMapFailedHandler<'a>
+    type OnJoinMapFailedHandler<'a>
+        = FFailed::OnJoinMapFailedHandler<'a>
     where
         Self: 'a;
 
@@ -583,23 +595,28 @@ where
     FUnlinked: OnJoinMapUnlinked<L, K, Context> + Clone,
     FFailed: OnJoinMapFailed<L, K, Context> + Clone,
 {
-    type WithOnLinked<H> = StatelessJoinMapLaneLifecycle<Context, L, K, H, FSynced, FUnlinked, FFailed>
+    type WithOnLinked<H>
+        = StatelessJoinMapLaneLifecycle<Context, L, K, H, FSynced, FUnlinked, FFailed>
     where
         H: OnJoinMapLinked<L, Context> + Clone;
 
-    type WithOnSynced<H> = StatelessJoinMapLaneLifecycle<Context, L, K, FLinked, H, FUnlinked, FFailed>
+    type WithOnSynced<H>
+        = StatelessJoinMapLaneLifecycle<Context, L, K, FLinked, H, FUnlinked, FFailed>
     where
         H: OnJoinMapSynced<L, K, Context> + Clone;
 
-    type WithOnUnlinked<H> = StatelessJoinMapLaneLifecycle<Context, L, K, FLinked, FSynced, H, FFailed>
+    type WithOnUnlinked<H>
+        = StatelessJoinMapLaneLifecycle<Context, L, K, FLinked, FSynced, H, FFailed>
     where
         H: OnJoinMapUnlinked<L, K, Context> + Clone;
 
-    type WithOnFailed<H> = StatelessJoinMapLaneLifecycle<Context, L, K, FLinked, FSynced, FUnlinked, H>
+    type WithOnFailed<H>
+        = StatelessJoinMapLaneLifecycle<Context, L, K, FLinked, FSynced, FUnlinked, H>
     where
         H: OnJoinMapFailed<L, K, Context> + Clone;
 
-    type WithShared<Shared> = StatefulJoinMapLaneLifecycle<
+    type WithShared<Shared>
+        = StatefulJoinMapLaneLifecycle<
         Context,
         Shared,
         L,
@@ -607,7 +624,8 @@ where
         LiftShared<FLinked, Shared>,
         LiftShared<FSynced, Shared>,
         LiftShared<FUnlinked, Shared>,
-        LiftShared<FFailed, Shared>>
+        LiftShared<FFailed, Shared>,
+    >
     where
         Shared: Send + Clone;
 

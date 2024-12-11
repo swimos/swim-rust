@@ -92,7 +92,8 @@ impl<T, Context> OnGet<T, Context> for NoHandler
 where
     T: 'static,
 {
-    type OnGetHandler<'a> = GetUndefined<T>
+    type OnGetHandler<'a>
+        = GetUndefined<T>
     where
         Self: 'a;
 
@@ -105,7 +106,8 @@ impl<T, Context, Shared> OnGetShared<T, Context, Shared> for NoHandler
 where
     T: 'static,
 {
-    type OnGetHandler<'a> = GetUndefined<T>
+    type OnGetHandler<'a>
+        = GetUndefined<T>
     where
         Self: 'a,
         Shared: 'a;
@@ -126,7 +128,8 @@ where
     H: HandlerAction<Context, Completion = Response<T>> + 'static,
     T: 'static,
 {
-    type OnGetHandler<'a> = H
+    type OnGetHandler<'a>
+        = H
     where
         Self: 'a;
 
@@ -141,7 +144,8 @@ where
     T: 'static,
     F: for<'a> GetFn<'a, T, Context, Shared> + Send,
 {
-    type OnGetHandler<'a> = <F as GetFn<'a, T, Context, Shared>>::Handler
+    type OnGetHandler<'a>
+        = <F as GetFn<'a, T, Context, Shared>>::Handler
     where
         Self: 'a,
         Shared: 'a;

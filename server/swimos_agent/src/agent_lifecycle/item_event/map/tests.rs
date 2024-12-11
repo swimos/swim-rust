@@ -259,7 +259,8 @@ where
     K: Clone + Send + 'static,
     V: Clone + Send + 'static,
 {
-    type OnUpdateHandler<'a> = OnUpdateHandler<K, V>
+    type OnUpdateHandler<'a>
+        = OnUpdateHandler<K, V>
     where
         Self: 'a;
 
@@ -279,7 +280,8 @@ where
     K: Clone + Send + 'static,
     V: Clone + Send + 'static,
 {
-    type OnRemoveHandler<'a> = OnRemoveHandler<K, V>
+    type OnRemoveHandler<'a>
+        = OnRemoveHandler<K, V>
     where
         Self: 'a;
 
@@ -298,7 +300,8 @@ where
     K: Clone + Send + 'static,
     V: Clone + Send + 'static,
 {
-    type OnClearHandler<'a> = OnClearHandler<K, V>
+    type OnClearHandler<'a>
+        = OnClearHandler<K, V>
     where
         Self: 'a;
 

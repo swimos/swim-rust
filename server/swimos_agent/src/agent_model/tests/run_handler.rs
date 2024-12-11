@@ -165,7 +165,8 @@ fn chose_lane(lane_name: &str) -> Option<Lane> {
 }
 
 impl ItemEvent<TestAgent> for TestLifecycle {
-    type ItemEventHandler<'a> = Handler
+    type ItemEventHandler<'a>
+        = Handler
     where
         Self: 'a;
 

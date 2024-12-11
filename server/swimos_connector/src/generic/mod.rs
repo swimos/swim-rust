@@ -451,9 +451,10 @@ impl BorrowItem for BorrowedLane<'_> {
 }
 
 impl DynamicAgent for ConnectorAgent {
-    type Borrowed<'a> = BorrowedLane<'a>
-        where
-            Self: 'a;
+    type Borrowed<'a>
+        = BorrowedLane<'a>
+    where
+        Self: 'a;
 
     fn item<'a>(&'a self, name: &'a str) -> Option<Self::Borrowed<'a>> {
         let ConnectorAgent {

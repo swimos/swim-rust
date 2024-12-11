@@ -96,7 +96,8 @@ pub trait ItemEventShared<Context, Shared> {
 }
 
 impl<Context> ItemEvent<Context> for NoHandler {
-    type ItemEventHandler<'a> = UnitHandler
+    type ItemEventHandler<'a>
+        = UnitHandler
     where
         Self: 'a;
 
@@ -110,7 +111,8 @@ impl<Context> ItemEvent<Context> for NoHandler {
 }
 
 impl<Context, Shared> ItemEventShared<Context, Shared> for NoHandler {
-    type ItemEventHandler<'a> = UnitHandler
+    type ItemEventHandler<'a>
+        = UnitHandler
     where
         Self: 'a,
         Shared: 'a;
@@ -143,7 +145,8 @@ impl HTree for HLeaf {
 }
 
 impl<Context> ItemEvent<Context> for HLeaf {
-    type ItemEventHandler<'a> = UnitHandler
+    type ItemEventHandler<'a>
+        = UnitHandler
     where
         Self: 'a;
 
@@ -157,7 +160,8 @@ impl<Context> ItemEvent<Context> for HLeaf {
 }
 
 impl<Context, Shared> ItemEventShared<Context, Shared> for HLeaf {
-    type ItemEventHandler<'a> = UnitHandler
+    type ItemEventHandler<'a>
+        = UnitHandler
     where
         Self: 'a,
         Shared: 'a;

@@ -41,7 +41,8 @@ pub trait OnSyncedShared<T, Shared>: Send {
 }
 
 impl<T> OnSynced<T> for NoHandler {
-    type OnSyncedFut<'a> = Ready<()>
+    type OnSyncedFut<'a>
+        = Ready<()>
     where
         Self: 'a,
         T: 'a;
@@ -55,7 +56,8 @@ impl<T, F> OnSynced<T> for FnMutHandler<F>
 where
     F: for<'a> EventFn<'a, T> + Send,
 {
-    type OnSyncedFut<'a> = <F as EventFn<'a, T>>::Fut
+    type OnSyncedFut<'a>
+        = <F as EventFn<'a, T>>::Fut
     where
         Self: 'a,
         T: 'a;
@@ -67,7 +69,8 @@ where
 }
 
 impl<T, Shared> OnSyncedShared<T, Shared> for NoHandler {
-    type OnSyncedFut<'a> = Ready<()>
+    type OnSyncedFut<'a>
+        = Ready<()>
     where
         Self: 'a,
         T: 'a,
@@ -86,7 +89,8 @@ impl<T, Shared, F> OnSyncedShared<T, Shared> for FnMutHandler<F>
 where
     F: for<'a> SharedEventFn<'a, Shared, T> + Send,
 {
-    type OnSyncedFut<'a> = <F as SharedEventFn<'a, Shared, T>>::Fut
+    type OnSyncedFut<'a>
+        = <F as SharedEventFn<'a, Shared, T>>::Fut
     where
         Self: 'a,
         T: 'a,
@@ -102,7 +106,8 @@ impl<T, H, Shared> OnSyncedShared<T, Shared> for WithShared<H>
 where
     H: OnSynced<T>,
 {
-    type OnSyncedFut<'a> = H::OnSyncedFut<'a>
+    type OnSyncedFut<'a>
+        = H::OnSyncedFut<'a>
     where
         Self: 'a,
         T: 'a,
@@ -117,7 +122,8 @@ impl<F, T> OnSynced<T> for BlockingHandler<F>
 where
     F: FnMut(&T) + Send,
 {
-    type OnSyncedFut<'a> = Ready<()>
+    type OnSyncedFut<'a>
+        = Ready<()>
     where
         Self: 'a,
         T: 'a;
@@ -133,7 +139,8 @@ impl<F, T, Shared> OnSyncedShared<T, Shared> for BlockingHandler<F>
 where
     F: FnMut(&mut Shared, &T) + Send,
 {
-    type OnSyncedFut<'a> = Ready<()>
+    type OnSyncedFut<'a>
+        = Ready<()>
     where
         Self: 'a,
         T: 'a,

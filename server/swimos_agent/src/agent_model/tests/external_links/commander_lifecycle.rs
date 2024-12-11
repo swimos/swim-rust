@@ -98,7 +98,8 @@ impl OnTimer<EmptyAgent> for CommanderLifecycle {
 }
 
 impl ItemEvent<EmptyAgent> for CommanderLifecycle {
-    type ItemEventHandler<'a> = UnitHandler
+    type ItemEventHandler<'a>
+        = UnitHandler
     where
         Self: 'a;
 

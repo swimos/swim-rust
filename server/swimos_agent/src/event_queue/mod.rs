@@ -116,7 +116,8 @@ where
         EventQueue::push(self, action)
     }
 
-    type Output<'a> = StoreResponse<MapOperation<K, &'a V>>
+    type Output<'a>
+        = StoreResponse<MapOperation<K, &'a V>>
     where
         Self: 'a,
         K: 'a,

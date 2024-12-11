@@ -41,7 +41,8 @@ pub trait OnEventShared<T, Shared>: Send {
 }
 
 impl<T> OnEvent<T> for NoHandler {
-    type OnEventFut<'a> = Ready<()>
+    type OnEventFut<'a>
+        = Ready<()>
     where
         T: 'a,
         Self: 'a;
@@ -56,7 +57,8 @@ where
     T: 'static,
     F: for<'a> EventFn<'a, T> + Send,
 {
-    type OnEventFut<'a> = <F as EventFn<'a, T>>::Fut
+    type OnEventFut<'a>
+        = <F as EventFn<'a, T>>::Fut
     where
         Self: 'a;
 
@@ -67,7 +69,8 @@ where
 }
 
 impl<T, Shared> OnEventShared<T, Shared> for NoHandler {
-    type OnEventFut<'a> = Ready<()>
+    type OnEventFut<'a>
+        = Ready<()>
     where
         Self: 'a,
         Shared: 'a,
@@ -83,7 +86,8 @@ where
     T: 'static,
     F: for<'a> SharedEventFn<'a, Shared, T> + Send,
 {
-    type OnEventFut<'a> = <F as SharedEventFn<'a, Shared, T>>::Fut
+    type OnEventFut<'a>
+        = <F as SharedEventFn<'a, Shared, T>>::Fut
     where
         Self: 'a,
         Shared: 'a;
@@ -98,7 +102,8 @@ impl<T, H, Shared> OnEventShared<T, Shared> for WithShared<H>
 where
     H: OnEvent<T>,
 {
-    type OnEventFut<'a> = H::OnEventFut<'a>
+    type OnEventFut<'a>
+        = H::OnEventFut<'a>
     where
         Self: 'a,
         Shared: 'a,
@@ -114,7 +119,8 @@ where
     T: 'static,
     F: for<'a> FnMut(&'a T) + Send,
 {
-    type OnEventFut<'a> = Ready<()>
+    type OnEventFut<'a>
+        = Ready<()>
     where
         Self: 'a;
 
@@ -130,7 +136,8 @@ where
     T: 'static,
     F: for<'a> FnMut(&'a mut Shared, &'a T) + Send,
 {
-    type OnEventFut<'a> = Ready<()>
+    type OnEventFut<'a>
+        = Ready<()>
     where
         Self: 'a,
         Shared: 'a;

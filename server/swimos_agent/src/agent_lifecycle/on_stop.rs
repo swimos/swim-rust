@@ -48,7 +48,8 @@ impl<Context> OnStop<Context> for NoHandler {
 }
 
 impl<Context, Shared> OnStopShared<Context, Shared> for NoHandler {
-    type OnStopHandler<'a> = UnitHandler
+    type OnStopHandler<'a>
+        = UnitHandler
     where
         Self: 'a,
         Shared: 'a;
@@ -77,7 +78,8 @@ impl<Context, F, Shared> OnStopShared<Context, Shared> for FnHandler<F>
 where
     F: for<'a> HandlerFn0<'a, Context, Shared> + Send,
 {
-    type OnStopHandler<'a> = <F as HandlerFn0<'a, Context, Shared>>::Handler
+    type OnStopHandler<'a>
+        = <F as HandlerFn0<'a, Context, Shared>>::Handler
     where
         Self: 'a,
         Shared: 'a;

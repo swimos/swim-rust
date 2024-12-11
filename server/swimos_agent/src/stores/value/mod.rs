@@ -363,11 +363,13 @@ impl<T> ValueLikeItem<T> for ValueStore<T>
 where
     T: Clone + Send + 'static,
 {
-    type GetHandler<C> = ValueStoreGet<C, T>
+    type GetHandler<C>
+        = ValueStoreGet<C, T>
     where
         C: AgentDescription + 'static;
 
-    type WithValueHandler<'a, C, F, B, U> = ValueStoreWithValue<C, T, F, B>
+    type WithValueHandler<'a, C, F, B, U>
+        = ValueStoreWithValue<C, T, F, B>
     where
         Self: 'static,
         C: AgentDescription + 'a,
@@ -399,7 +401,8 @@ impl<T> MutableValueLikeItem<T> for ValueStore<T>
 where
     T: Send + 'static,
 {
-    type SetHandler<C> = ValueStoreSet<C, T>
+    type SetHandler<C>
+        = ValueStoreSet<C, T>
     where
         C: AgentDescription + 'static;
 

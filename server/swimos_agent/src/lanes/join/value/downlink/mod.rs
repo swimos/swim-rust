@@ -81,7 +81,8 @@ where
     K: Clone + Hash + Eq + Send,
     LC: OnJoinValueLinked<K, Context>,
 {
-    type OnLinkedHandler<'a> = FollowedBy<AlterKeyState<K, V, Context>, LC::OnJoinValueLinkedHandler<'a>>
+    type OnLinkedHandler<'a>
+        = FollowedBy<AlterKeyState<K, V, Context>, LC::OnJoinValueLinkedHandler<'a>>
     where
         Self: 'a;
 
@@ -104,10 +105,11 @@ where
     K: Clone + Hash + Eq + Send,
     LC: OnJoinValueSynced<K, V, Context>,
 {
-    type OnSyncedHandler<'a> = AndThenContextual<
+    type OnSyncedHandler<'a>
+        = AndThenContextual<
         ConstHandler<K>,
         LC::OnJoinValueSyncedHandler<'a>,
-        RetrieveSynced<'a, Context, K, V, LC>
+        RetrieveSynced<'a, Context, K, V, LC>,
     >
     where
         Self: 'a;
@@ -134,7 +136,12 @@ where
     V::Rec: Send,
     LC: OnJoinValueUnlinked<K, Context>,
 {
-    type OnUnlinkedHandler<'a> = AndThen<LC::OnJoinValueUnlinkedHandler<'a>, AfterClosed<'a, K, V, Context>, AfterClosedTrans<'a, K, V, Context>>
+    type OnUnlinkedHandler<'a>
+        = AndThen<
+        LC::OnJoinValueUnlinkedHandler<'a>,
+        AfterClosed<'a, K, V, Context>,
+        AfterClosedTrans<'a, K, V, Context>,
+    >
     where
         Self: 'a;
 
@@ -160,7 +167,12 @@ where
     V::Rec: Send,
     LC: OnJoinValueFailed<K, Context>,
 {
-    type OnFailedHandler<'a> = AndThen<LC::OnJoinValueFailedHandler<'a>, AfterClosed<'a, K, V, Context>, AfterClosedTrans<'a, K, V, Context>>
+    type OnFailedHandler<'a>
+        = AndThen<
+        LC::OnJoinValueFailedHandler<'a>,
+        AfterClosed<'a, K, V, Context>,
+        AfterClosedTrans<'a, K, V, Context>,
+    >
     where
         Self: 'a;
 
@@ -184,7 +196,8 @@ where
     LC: Send,
     K: Clone + Hash + Eq + Send,
 {
-    type OnEventHandler<'a> = JoinValueLaneUpdate<Context, K, V>
+    type OnEventHandler<'a>
+        = JoinValueLaneUpdate<Context, K, V>
     where
         Self: 'a;
 

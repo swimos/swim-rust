@@ -39,7 +39,8 @@ pub trait OnLinkedShared<Shared>: Send {
 }
 
 impl OnLinked for NoHandler {
-    type OnLinkedFut<'a> = Ready<()>
+    type OnLinkedFut<'a>
+        = Ready<()>
     where
         Self: 'a;
 
@@ -53,7 +54,8 @@ where
     F: FnMut() -> Fut + Send,
     Fut: Future<Output = ()> + Send + 'static,
 {
-    type OnLinkedFut<'a> = Fut
+    type OnLinkedFut<'a>
+        = Fut
     where
         Self: 'a;
 
@@ -64,7 +66,8 @@ where
 }
 
 impl<Shared> OnLinkedShared<Shared> for NoHandler {
-    type OnLinkedFut<'a> = Ready<()>
+    type OnLinkedFut<'a>
+        = Ready<()>
     where
         Self: 'a,
         Shared: 'a;
@@ -78,7 +81,8 @@ impl<F, Shared> OnLinkedShared<Shared> for FnMutHandler<F>
 where
     F: for<'a> SharedHandlerFn0<'a, Shared> + Send,
 {
-    type OnLinkedFut<'a> = <F as SharedHandlerFn0<'a, Shared>>::Fut
+    type OnLinkedFut<'a>
+        = <F as SharedHandlerFn0<'a, Shared>>::Fut
     where
         Self: 'a,
         Shared: 'a;
@@ -93,7 +97,8 @@ impl<H, Shared> OnLinkedShared<Shared> for WithShared<H>
 where
     H: OnLinked,
 {
-    type OnLinkedFut<'a> = H::OnLinkedFut<'a>
+    type OnLinkedFut<'a>
+        = H::OnLinkedFut<'a>
     where
         Self: 'a,
         Shared: 'a;
@@ -107,7 +112,8 @@ impl<F> OnLinked for BlockingHandler<F>
 where
     F: FnMut() + Send,
 {
-    type OnLinkedFut<'a> = Ready<()>
+    type OnLinkedFut<'a>
+        = Ready<()>
     where
         Self: 'a;
 
@@ -122,7 +128,8 @@ impl<Shared, F> OnLinkedShared<Shared> for BlockingHandler<F>
 where
     F: for<'a> FnMut(&'a mut Shared) + Send,
 {
-    type OnLinkedFut<'a> = Ready<()>
+    type OnLinkedFut<'a>
+        = Ready<()>
     where
         Self: 'a,
         Shared: 'a;

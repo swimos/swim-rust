@@ -136,7 +136,8 @@ where
 {
     type NodeStore = SwimNodeStore<Self>;
 
-    type RangeCon<'a> = PrefixStrippedRangeConsumer<<D as KeyspaceByteEngine>::RangeCon<'a>>
+    type RangeCon<'a>
+        = PrefixStrippedRangeConsumer<<D as KeyspaceByteEngine>::RangeCon<'a>>
     where
         Self: 'a;
 

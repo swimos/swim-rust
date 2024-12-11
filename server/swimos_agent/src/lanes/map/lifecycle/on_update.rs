@@ -68,7 +68,8 @@ pub trait OnUpdateShared<K, V, M, Context, Shared>: Send {
 }
 
 impl<K, V, M, Context> OnUpdate<K, V, M, Context> for NoHandler {
-    type OnUpdateHandler<'a> = UnitHandler
+    type OnUpdateHandler<'a>
+        = UnitHandler
     where
         Self: 'a;
 
@@ -84,7 +85,8 @@ impl<K, V, M, Context> OnUpdate<K, V, M, Context> for NoHandler {
 }
 
 impl<K, V, M, Context, Shared> OnUpdateShared<K, V, M, Context, Shared> for NoHandler {
-    type OnUpdateHandler<'a> = UnitHandler
+    type OnUpdateHandler<'a>
+        = UnitHandler
     where
         Self: 'a,
         Shared: 'a;
@@ -107,7 +109,8 @@ where
     F: Fn(&M, K, Option<V>, &V) -> H + Send,
     H: EventHandler<Context> + 'static,
 {
-    type OnUpdateHandler<'a> = H
+    type OnUpdateHandler<'a>
+        = H
     where
         Self: 'a;
 
@@ -127,7 +130,8 @@ impl<K, V, M, Context, Shared, F> OnUpdateShared<K, V, M, Context, Shared> for F
 where
     F: for<'a> MapUpdateFn<'a, Context, Shared, K, V, M> + Send,
 {
-    type OnUpdateHandler<'a> = <F as MapUpdateFn<'a, Context, Shared, K, V, M>>::Handler
+    type OnUpdateHandler<'a>
+        = <F as MapUpdateFn<'a, Context, Shared, K, V, M>>::Handler
     where
         Self: 'a,
         Shared: 'a;
@@ -153,7 +157,8 @@ where
     F: Fn(&M, K, Option<V>, &B) -> H + Send,
     H: EventHandler<Context> + 'static,
 {
-    type OnUpdateHandler<'a> = H
+    type OnUpdateHandler<'a>
+        = H
     where
         Self: 'a;
 
@@ -176,7 +181,8 @@ where
     V: Borrow<B>,
     F: for<'a> MapUpdateBorrowFn<'a, Context, Shared, K, V, M, B> + Send,
 {
-    type OnUpdateHandler<'a> = <F as MapUpdateBorrowFn<'a, Context, Shared, K, V, M, B>>::Handler
+    type OnUpdateHandler<'a>
+        = <F as MapUpdateBorrowFn<'a, Context, Shared, K, V, M, B>>::Handler
     where
         Self: 'a,
         Shared: 'a;

@@ -69,7 +69,8 @@ pub trait OnDownlinkUpdateShared<K, V, M, Context, Shared>: Send {
 }
 
 impl<K, V, M, Context> OnDownlinkUpdate<K, V, M, Context> for NoHandler {
-    type OnUpdateHandler<'a> = UnitHandler
+    type OnUpdateHandler<'a>
+        = UnitHandler
     where
         Self: 'a;
 
@@ -85,7 +86,8 @@ impl<K, V, M, Context> OnDownlinkUpdate<K, V, M, Context> for NoHandler {
 }
 
 impl<K, V, M, Context, Shared> OnDownlinkUpdateShared<K, V, M, Context, Shared> for NoHandler {
-    type OnUpdateHandler<'a> = UnitHandler
+    type OnUpdateHandler<'a>
+        = UnitHandler
     where
         Self: 'a,
         Shared: 'a;
@@ -108,7 +110,8 @@ where
     F: Fn(K, &M, Option<V>, &V) -> H + Send,
     H: EventHandler<Context> + 'static,
 {
-    type OnUpdateHandler<'a> = H
+    type OnUpdateHandler<'a>
+        = H
     where
         Self: 'a;
 
@@ -131,7 +134,8 @@ where
     F: Fn(K, &M, Option<V>, &B) -> H + Send + 'static,
     H: EventHandler<Context> + 'static,
 {
-    type OnUpdateHandler<'a> = H
+    type OnUpdateHandler<'a>
+        = H
     where
         Self: 'a;
 
@@ -151,7 +155,8 @@ where
     F: Fn(HandlerContext<Context>, K, &M, Option<V>, &V) -> H + Send,
     H: EventHandler<Context> + 'static,
 {
-    type OnUpdateHandler<'a> = H
+    type OnUpdateHandler<'a>
+        = H
     where
         Self: 'a;
 
@@ -175,7 +180,8 @@ where
     F: Fn(HandlerContext<Context>, K, &M, Option<V>, &B) -> H + Send,
     H: EventHandler<Context> + 'static,
 {
-    type OnUpdateHandler<'a> = H
+    type OnUpdateHandler<'a>
+        = H
     where
         Self: 'a;
 
@@ -195,7 +201,8 @@ impl<K, V, M, Context, Shared, F> OnDownlinkUpdateShared<K, V, M, Context, Share
 where
     F: for<'a> MapUpdateFn<'a, Context, Shared, K, V, M> + Send,
 {
-    type OnUpdateHandler<'a> = <F as MapUpdateFn<'a, Context, Shared, K, V, M>>::Handler
+    type OnUpdateHandler<'a>
+        = <F as MapUpdateFn<'a, Context, Shared, K, V, M>>::Handler
     where
         Self: 'a,
         Shared: 'a;
@@ -221,7 +228,8 @@ where
     V: Borrow<B>,
     F: for<'a> MapUpdateBorrowFn<'a, Context, Shared, K, V, M, B> + Send,
 {
-    type OnUpdateHandler<'a> = <F as MapUpdateBorrowFn<'a, Context, Shared, K, V, M, B>>::Handler
+    type OnUpdateHandler<'a>
+        = <F as MapUpdateBorrowFn<'a, Context, Shared, K, V, M, B>>::Handler
     where
         Self: 'a,
         Shared: 'a;
@@ -251,7 +259,8 @@ impl<K, V, M, Context, Shared, F> OnDownlinkUpdateShared<K, V, M, Context, Share
 where
     F: OnDownlinkUpdate<K, V, M, Context> + Send,
 {
-    type OnUpdateHandler<'a> = F::OnUpdateHandler<'a>
+    type OnUpdateHandler<'a>
+        = F::OnUpdateHandler<'a>
     where
         Self: 'a,
         Shared: 'a;

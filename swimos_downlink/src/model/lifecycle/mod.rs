@@ -345,7 +345,8 @@ where
     FSet: Send,
     FUnlinked: Send,
 {
-    type OnLinkedFut<'a> = FLinked::OnLinkedFut<'a>
+    type OnLinkedFut<'a>
+        = FLinked::OnLinkedFut<'a>
     where
         Self: 'a;
 
@@ -364,7 +365,8 @@ where
     FSet: Send,
     FUnlinked: Send,
 {
-    type OnSyncedFut<'a> = FSynced::OnSyncedFut<'a>
+    type OnSyncedFut<'a>
+        = FSynced::OnSyncedFut<'a>
     where
         Self: 'a,
         T: 'a;
@@ -384,7 +386,8 @@ where
     FSet: Send,
     FUnlinked: Send,
 {
-    type OnEventFut<'a> = FEv::OnEventFut<'a>
+    type OnEventFut<'a>
+        = FEv::OnEventFut<'a>
     where
         Self: 'a;
 
@@ -403,7 +406,8 @@ where
     FSet: OnSet<T>,
     FUnlinked: Send,
 {
-    type OnSetFut<'a> = FSet::OnSetFut<'a>
+    type OnSetFut<'a>
+        = FSet::OnSetFut<'a>
     where
         Self: 'a,
         T: 'a;
@@ -423,7 +427,8 @@ where
     FSet: Send,
     FUnlinked: OnUnlinked,
 {
-    type OnUnlinkedFut<'a> = FUnlinked::OnUnlinkedFut<'a>
+    type OnUnlinkedFut<'a>
+        = FUnlinked::OnUnlinkedFut<'a>
     where
         Self: 'a;
 
@@ -692,7 +697,8 @@ where
     FSet: Send,
     FUnlinked: Send,
 {
-    type OnLinkedFut<'a> = FLinked::OnLinkedFut<'a>
+    type OnLinkedFut<'a>
+        = FLinked::OnLinkedFut<'a>
     where
         Self: 'a,
         Shared: 'a;
@@ -716,7 +722,8 @@ where
     FSet: Send,
     FUnlinked: Send,
 {
-    type OnSyncedFut<'a> = FSynced::OnSyncedFut<'a>
+    type OnSyncedFut<'a>
+        = FSynced::OnSyncedFut<'a>
     where
         Self: 'a,
         T: 'a;
@@ -740,7 +747,8 @@ where
     FSet: Send,
     FUnlinked: Send,
 {
-    type OnEventFut<'a> = FEv::OnEventFut<'a>
+    type OnEventFut<'a>
+        = FEv::OnEventFut<'a>
     where
         Self: 'a,
         Shared: 'a;
@@ -764,7 +772,8 @@ where
     FSet: OnSetShared<T, Shared>,
     FUnlinked: Send,
 {
-    type OnSetFut<'a> = FSet::OnSetFut<'a>
+    type OnSetFut<'a>
+        = FSet::OnSetFut<'a>
     where
         Self: 'a,
         T: 'a;
@@ -786,7 +795,8 @@ where
     FSet: Send,
     FUnlinked: OnUnlinkedShared<Shared>,
 {
-    type OnUnlinkedFut<'a> = FUnlinked::OnUnlinkedFut<'a>
+    type OnUnlinkedFut<'a>
+        = FUnlinked::OnUnlinkedFut<'a>
     where
         Self: 'a;
 
@@ -949,7 +959,8 @@ where
     FEv: Send,
     FUnlinked: Send,
 {
-    type OnLinkedFut<'a> = FLinked::OnLinkedFut<'a>
+    type OnLinkedFut<'a>
+        = FLinked::OnLinkedFut<'a>
     where
         Self: 'a;
 
@@ -966,7 +977,8 @@ where
     FEv: OnEvent<T>,
     FUnlinked: Send,
 {
-    type OnEventFut<'a> = FEv::OnEventFut<'a>
+    type OnEventFut<'a>
+        = FEv::OnEventFut<'a>
     where
         Self: 'a;
 
@@ -983,7 +995,8 @@ where
     FEv: Send,
     FUnlinked: OnUnlinked,
 {
-    type OnUnlinkedFut<'a> = FUnlinked::OnUnlinkedFut<'a>
+    type OnUnlinkedFut<'a>
+        = FUnlinked::OnUnlinkedFut<'a>
     where
         Self: 'a;
 
@@ -1112,7 +1125,8 @@ where
     FEv: Send,
     FUnlinked: Send,
 {
-    type OnLinkedFut<'a> = FLinked::OnLinkedFut<'a>
+    type OnLinkedFut<'a>
+        = FLinked::OnLinkedFut<'a>
     where
         Self: 'a;
 
@@ -1133,7 +1147,8 @@ where
     FEv: OnEventShared<T, Shared>,
     FUnlinked: Send,
 {
-    type OnEventFut<'a> = FEv::OnEventFut<'a>
+    type OnEventFut<'a>
+        = FEv::OnEventFut<'a>
     where
         Self: 'a;
 
@@ -1154,7 +1169,8 @@ where
     FEv: Send,
     FUnlinked: OnUnlinkedShared<Shared>,
 {
-    type OnUnlinkedFut<'a> = FUnlinked::OnUnlinkedFut<'a>
+    type OnUnlinkedFut<'a>
+        = FUnlinked::OnUnlinkedFut<'a>
     where
         Self: 'a;
 
@@ -1200,9 +1216,10 @@ where
     FClear: Send,
     FUnlink: Send,
 {
-    type OnLinkedFut<'a> = FLinked::OnLinkedFut<'a>
+    type OnLinkedFut<'a>
+        = FLinked::OnLinkedFut<'a>
     where
-    Self: 'a;
+        Self: 'a;
 
     fn on_linked(&mut self) -> Self::OnLinkedFut<'_> {
         self.on_linked.on_linked()
@@ -1221,7 +1238,10 @@ where
     FClear: Send,
     FUnlink: Send,
 {
-    type OnSyncedFut<'a> = FSynced::OnSyncedFut<'a> where Self:'a;
+    type OnSyncedFut<'a>
+        = FSynced::OnSyncedFut<'a>
+    where
+        Self: 'a;
 
     fn on_synced<'a>(&'a mut self, value: &'a BTreeMap<K, V>) -> Self::OnSyncedFut<'a> {
         self.on_synced.on_synced(value)
@@ -1240,7 +1260,10 @@ where
     FClear: Send,
     FUnlink: Send,
 {
-    type OnUpdateFut<'a> = FUpdated::OnUpdateFut<'a> where Self: 'a;
+    type OnUpdateFut<'a>
+        = FUpdated::OnUpdateFut<'a>
+    where
+        Self: 'a;
 
     fn on_update<'a>(
         &'a mut self,
@@ -1265,7 +1288,10 @@ where
     FClear: Send,
     FUnlink: Send,
 {
-    type OnRemoveFut<'a> = FRemoved::OnRemoveFut<'a> where Self:'a;
+    type OnRemoveFut<'a>
+        = FRemoved::OnRemoveFut<'a>
+    where
+        Self: 'a;
 
     fn on_remove<'a>(
         &'a mut self,
@@ -1289,7 +1315,10 @@ where
     FClear: OnClear<K, V>,
     FUnlink: Send,
 {
-    type OnClearFut<'a> = FClear::OnClearFut<'a> where Self:'a;
+    type OnClearFut<'a>
+        = FClear::OnClearFut<'a>
+    where
+        Self: 'a;
 
     fn on_clear<'a>(&'a mut self, map: BTreeMap<K, V>) -> Self::OnClearFut<'a>
     where
@@ -1312,7 +1341,10 @@ where
     FClear: Send,
     FUnlink: OnUnlinked,
 {
-    type OnUnlinkedFut<'a> = FUnlink::OnUnlinkedFut<'a> where Self:'a;
+    type OnUnlinkedFut<'a>
+        = FUnlink::OnUnlinkedFut<'a>
+    where
+        Self: 'a;
 
     fn on_unlinked(&mut self) -> Self::OnUnlinkedFut<'_> {
         self.on_unlink.on_unlinked()
@@ -1755,7 +1787,10 @@ where
     FClear: Send,
     FUnlink: Send,
 {
-    type OnLinkedFut<'a> = FLinked::OnLinkedFut<'a> where Self:'a;
+    type OnLinkedFut<'a>
+        = FLinked::OnLinkedFut<'a>
+    where
+        Self: 'a;
 
     fn on_linked(&mut self) -> Self::OnLinkedFut<'_> {
         let StatefulMapDownlinkLifecycle {
@@ -1788,7 +1823,10 @@ where
     FClear: Send,
     FUnlink: Send,
 {
-    type OnSyncedFut<'a> = FSynced::OnSyncedFut<'a> where Self:'a;
+    type OnSyncedFut<'a>
+        = FSynced::OnSyncedFut<'a>
+    where
+        Self: 'a;
 
     fn on_synced<'a>(&'a mut self, value: &'a BTreeMap<K, V>) -> Self::OnSyncedFut<'a> {
         let StatefulMapDownlinkLifecycle {
@@ -1821,7 +1859,10 @@ where
     FClear: Send,
     FUnlink: Send,
 {
-    type OnUpdateFut<'a> = FUpdated::OnUpdateFut<'a> where Self: 'a;
+    type OnUpdateFut<'a>
+        = FUpdated::OnUpdateFut<'a>
+    where
+        Self: 'a;
 
     fn on_update<'a>(
         &'a mut self,
@@ -1860,7 +1901,10 @@ where
     FClear: Send,
     FUnlink: Send,
 {
-    type OnRemoveFut<'a> = FRemoved::OnRemoveFut<'a> where Self:'a;
+    type OnRemoveFut<'a>
+        = FRemoved::OnRemoveFut<'a>
+    where
+        Self: 'a;
 
     fn on_remove<'a>(
         &'a mut self,
@@ -1898,7 +1942,10 @@ where
     FClear: OnClearShared<K, V, Shared>,
     FUnlink: Send,
 {
-    type OnClearFut<'a> = FClear::OnClearFut<'a> where Self:'a;
+    type OnClearFut<'a>
+        = FClear::OnClearFut<'a>
+    where
+        Self: 'a;
 
     fn on_clear<'a>(&'a mut self, map: BTreeMap<K, V>) -> Self::OnClearFut<'a>
     where
@@ -1935,7 +1982,10 @@ where
     FClear: Send,
     FUnlink: OnUnlinkedShared<Shared>,
 {
-    type OnUnlinkedFut<'a> = FUnlink::OnUnlinkedFut<'a> where Self:'a;
+    type OnUnlinkedFut<'a>
+        = FUnlink::OnUnlinkedFut<'a>
+    where
+        Self: 'a;
 
     fn on_unlinked(&mut self) -> Self::OnUnlinkedFut<'_> {
         let StatefulMapDownlinkLifecycle {

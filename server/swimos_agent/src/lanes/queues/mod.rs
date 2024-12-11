@@ -192,9 +192,10 @@ impl<K, V> MapEventQueue<K, V> for WriteQueues<K>
 where
     K: Eq + Hash + Clone,
 {
-    type Output<'a> = LaneResponse<MapOperation<K, &'a V>>
+    type Output<'a>
+        = LaneResponse<MapOperation<K, &'a V>>
     where
-        K:'a,
+        K: 'a,
         V: 'a,
         Self: 'a;
 

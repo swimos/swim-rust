@@ -49,7 +49,8 @@ pub trait OnLinkedShared<Context, Shared>: Send {
 }
 
 impl<Context> OnLinked<Context> for NoHandler {
-    type OnLinkedHandler<'a> = UnitHandler
+    type OnLinkedHandler<'a>
+        = UnitHandler
     where
         Self: 'a;
 
@@ -59,7 +60,8 @@ impl<Context> OnLinked<Context> for NoHandler {
 }
 
 impl<Context, Shared> OnLinkedShared<Context, Shared> for NoHandler {
-    type OnLinkedHandler<'a> = UnitHandler
+    type OnLinkedHandler<'a>
+        = UnitHandler
     where
         Self: 'a,
         Shared: 'a;
@@ -78,7 +80,8 @@ where
     F: Fn() -> H + Send,
     H: EventHandler<Context> + 'static,
 {
-    type OnLinkedHandler<'a> = H
+    type OnLinkedHandler<'a>
+        = H
     where
         Self: 'a;
 
@@ -92,7 +95,8 @@ impl<Context, Shared, F> OnLinkedShared<Context, Shared> for FnHandler<F>
 where
     F: for<'a> HandlerFn0<'a, Context, Shared> + Send,
 {
-    type OnLinkedHandler<'a> = <F as HandlerFn0<'a, Context, Shared>>::Handler
+    type OnLinkedHandler<'a>
+        = <F as HandlerFn0<'a, Context, Shared>>::Handler
     where
         Self: 'a,
         Shared: 'a;
@@ -112,7 +116,8 @@ where
     F: Fn(HandlerContext<Context>) -> H + Send,
     H: EventHandler<Context> + 'static,
 {
-    type OnLinkedHandler<'a> = H
+    type OnLinkedHandler<'a>
+        = H
     where
         Self: 'a;
 
@@ -126,7 +131,8 @@ impl<Context, Shared, F> OnLinkedShared<Context, Shared> for LiftShared<F, Share
 where
     F: OnLinked<Context> + Send,
 {
-    type OnLinkedHandler<'a> = F::OnLinkedHandler<'a>
+    type OnLinkedHandler<'a>
+        = F::OnLinkedHandler<'a>
     where
         Self: 'a,
         Shared: 'a;

@@ -137,7 +137,8 @@ impl NodePersistence for StoreDisabled {
         Ok(())
     }
 
-    type MapCon<'a> = StoreDisabled
+    type MapCon<'a>
+        = StoreDisabled
     where
         Self: 'a;
 

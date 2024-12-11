@@ -57,7 +57,8 @@ pub trait OnPutShared<T, Context, Shared>: Send {
 }
 
 impl<T, Context> OnPut<T, Context> for NoHandler {
-    type OnPutHandler<'a> = UnsupportedHandler
+    type OnPutHandler<'a>
+        = UnsupportedHandler
     where
         Self: 'a;
 
@@ -67,7 +68,8 @@ impl<T, Context> OnPut<T, Context> for NoHandler {
 }
 
 impl<T, Context, Shared> OnPutShared<T, Context, Shared> for NoHandler {
-    type OnPutHandler<'a> = UnsupportedHandler
+    type OnPutHandler<'a>
+        = UnsupportedHandler
     where
         Self: 'a,
         Shared: 'a;
@@ -88,7 +90,8 @@ where
     F: Fn(HttpRequestContext, T) -> H + Send,
     H: HandlerAction<Context, Completion = UnitResponse> + 'static,
 {
-    type OnPutHandler<'a> = H
+    type OnPutHandler<'a>
+        = H
     where
         Self: 'a;
 
@@ -102,7 +105,8 @@ impl<T, Context, Shared, F> OnPutShared<T, Context, Shared> for FnHandler<F>
 where
     F: for<'a> RequestFn1<'a, T, Context, Shared> + Send,
 {
-    type OnPutHandler<'a> = <F as RequestFn1<'a, T, Context, Shared>>::Handler
+    type OnPutHandler<'a>
+        = <F as RequestFn1<'a, T, Context, Shared>>::Handler
     where
         Self: 'a,
         Shared: 'a;

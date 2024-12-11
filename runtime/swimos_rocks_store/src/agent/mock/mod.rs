@@ -34,7 +34,8 @@ impl MockNodeStore {
 impl NodeStore for MockNodeStore {
     type Delegate = MockPlaneStore;
 
-    type RangeCon<'a> = NoRange
+    type RangeCon<'a>
+        = NoRange
     where
         Self: 'a;
 

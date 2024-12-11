@@ -170,7 +170,8 @@ where
     FRem: Send,
     FClr: Send,
 {
-    type OnUpdateHandler<'a> = FUpd::OnUpdateHandler<'a>
+    type OnUpdateHandler<'a>
+        = FUpd::OnUpdateHandler<'a>
     where
         Self: 'a,
         Shared: 'a;
@@ -196,7 +197,8 @@ where
     FRem: OnRemoveShared<K, V, M, Context, Shared>,
     FClr: Send,
 {
-    type OnRemoveHandler<'a> = FRem::OnRemoveHandler<'a>
+    type OnRemoveHandler<'a>
+        = FRem::OnRemoveHandler<'a>
     where
         Self: 'a,
         Shared: 'a;
@@ -221,7 +223,8 @@ where
     FRem: Send,
     FClr: OnClearShared<M, Context, Shared>,
 {
-    type OnClearHandler<'a> = FClr::OnClearHandler<'a>
+    type OnClearHandler<'a>
+        = FClr::OnClearHandler<'a>
     where
         Self: 'a,
         Shared: 'a;

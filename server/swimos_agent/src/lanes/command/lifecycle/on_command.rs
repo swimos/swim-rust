@@ -53,7 +53,8 @@ pub trait OnCommandShared<T, Context, Shared>: Send {
 }
 
 impl<T, Context> OnCommand<T, Context> for NoHandler {
-    type OnCommandHandler<'a> = UnitHandler
+    type OnCommandHandler<'a>
+        = UnitHandler
     where
         Self: 'a;
 
@@ -63,7 +64,8 @@ impl<T, Context> OnCommand<T, Context> for NoHandler {
 }
 
 impl<T, Context, Shared> OnCommandShared<T, Context, Shared> for NoHandler {
-    type OnCommandHandler<'a> = UnitHandler
+    type OnCommandHandler<'a>
+        = UnitHandler
     where
         Self: 'a,
         Shared: 'a;
@@ -83,7 +85,8 @@ where
     F: Fn(&T) -> H + Send,
     H: EventHandler<Context> + 'static,
 {
-    type OnCommandHandler<'a> = H
+    type OnCommandHandler<'a>
+        = H
     where
         Self: 'a;
 
@@ -97,7 +100,8 @@ impl<T, Context, Shared, F> OnCommandShared<T, Context, Shared> for FnHandler<F>
 where
     F: for<'a> EventFn<'a, Context, Shared, T> + Send,
 {
-    type OnCommandHandler<'a> = <F as EventFn<'a, Context, Shared, T>>::Handler
+    type OnCommandHandler<'a>
+        = <F as EventFn<'a, Context, Shared, T>>::Handler
     where
         Self: 'a,
         Shared: 'a;
@@ -120,7 +124,8 @@ where
     F: Fn(&B) -> H + Send,
     H: EventHandler<Context> + 'static,
 {
-    type OnCommandHandler<'a> = H
+    type OnCommandHandler<'a>
+        = H
     where
         Self: 'a;
 
@@ -135,7 +140,8 @@ where
     T: Borrow<B>,
     F: for<'a> EventFn<'a, Context, Shared, B> + Send,
 {
-    type OnCommandHandler<'a> = <F as EventFn<'a, Context, Shared, B>>::Handler
+    type OnCommandHandler<'a>
+        = <F as EventFn<'a, Context, Shared, B>>::Handler
     where
         Self: 'a,
         Shared: 'a;

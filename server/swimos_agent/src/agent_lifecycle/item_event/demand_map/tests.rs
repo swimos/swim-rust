@@ -169,7 +169,8 @@ where
     K: Clone + Eq + Hash + Send,
     V: Send,
 {
-    type KeysHandler<'a> = KeysHandler<K>
+    type KeysHandler<'a>
+        = KeysHandler<K>
     where
         Self: 'a;
 
@@ -186,7 +187,8 @@ where
     K: Clone + Eq + Hash + Send,
     V: Clone + Send,
 {
-    type OnCueKeyHandler<'a> = OnCueKeyHandler<V>
+    type OnCueKeyHandler<'a>
+        = OnCueKeyHandler<V>
     where
         Self: 'a;
 

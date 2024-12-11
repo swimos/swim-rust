@@ -164,7 +164,8 @@ impl OnTimer<TestAgent> for TestLifecycle {
 }
 
 impl ItemEvent<TestAgent> for TestLifecycle {
-    type ItemEventHandler<'a> = LifecycleHandler
+    type ItemEventHandler<'a>
+        = LifecycleHandler
     where
         Self: 'a;
 

@@ -83,7 +83,8 @@ impl<T, Context, Shared, OnCmd> OnCommandShared<T, Context, Shared>
 where
     OnCmd: OnCommandShared<T, Context, Shared>,
 {
-    type OnCommandHandler<'a> = OnCmd::OnCommandHandler<'a>
+    type OnCommandHandler<'a>
+        = OnCmd::OnCommandHandler<'a>
     where
         Self: 'a,
         Shared: 'a;

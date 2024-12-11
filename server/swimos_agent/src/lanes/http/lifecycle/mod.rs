@@ -295,7 +295,8 @@ where
     FPut: Send,
     FDel: Send,
 {
-    type OnGetHandler<'a> = <FGet as OnGetShared<Get, Context, Shared>>::OnGetHandler<'a>
+    type OnGetHandler<'a>
+        = <FGet as OnGetShared<Get, Context, Shared>>::OnGetHandler<'a>
     where
         Self: 'a;
 
@@ -317,7 +318,8 @@ where
     FPut: Send,
     FDel: Send,
 {
-    type OnPostHandler<'a> = <FPost as OnPostShared<Post, Context, Shared>>::OnPostHandler<'a>
+    type OnPostHandler<'a>
+        = <FPost as OnPostShared<Post, Context, Shared>>::OnPostHandler<'a>
     where
         Self: 'a,
         Shared: 'a;
@@ -342,7 +344,8 @@ where
     FPut: OnPutShared<Put, Context, Shared>,
     FDel: Send,
 {
-    type OnPutHandler<'a> = <FPut as OnPutShared<Put, Context, Shared>>::OnPutHandler<'a>
+    type OnPutHandler<'a>
+        = <FPut as OnPutShared<Put, Context, Shared>>::OnPutHandler<'a>
     where
         Self: 'a,
         Shared: 'a;
@@ -367,7 +370,8 @@ where
     FPut: Send,
     FDel: OnDeleteShared<Context, Shared>,
 {
-    type OnDeleteHandler<'a> = <FDel as OnDeleteShared<Context, Shared>>::OnDeleteHandler<'a>
+    type OnDeleteHandler<'a>
+        = <FDel as OnDeleteShared<Context, Shared>>::OnDeleteHandler<'a>
     where
         Self: 'a,
         Shared: 'a;

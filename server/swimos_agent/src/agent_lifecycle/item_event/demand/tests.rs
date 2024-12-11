@@ -131,7 +131,8 @@ impl<T: Clone> FakeLifecycle<T> {
 }
 
 impl<T: Clone + Send + 'static> OnCue<T, TestAgent> for FakeLifecycle<T> {
-    type OnCueHandler<'a> = OnCueHandler<T>
+    type OnCueHandler<'a>
+        = OnCueHandler<T>
     where
         Self: 'a;
 

@@ -145,7 +145,8 @@ where
     L: HTree + ItemEvent<Context>,
     R: HTree + ItemEvent<Context>,
 {
-    type ItemEventHandler<'a> = DemandBranchHandler<'a, Context, T, LC, L, R>
+    type ItemEventHandler<'a>
+        = DemandBranchHandler<'a, Context, T, LC, L, R>
     where
         Self: 'a;
 
@@ -182,7 +183,8 @@ where
     L: HTree + ItemEventShared<Context, Shared>,
     R: HTree + ItemEventShared<Context, Shared>,
 {
-    type ItemEventHandler<'a> = DemandBranchHandlerShared<'a, Context, Shared, T, LC, L, R>
+    type ItemEventHandler<'a>
+        = DemandBranchHandlerShared<'a, Context, Shared, T, LC, L, R>
     where
         Self: 'a,
         Shared: 'a;

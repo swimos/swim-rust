@@ -32,7 +32,8 @@ use super::lifecycle::{
 pub struct DefaultJoinMapLifecycle;
 
 impl<L, Context> OnJoinMapLinked<L, Context> for DefaultJoinMapLifecycle {
-    type OnJoinMapLinkedHandler<'a> = UnitHandler
+    type OnJoinMapLinkedHandler<'a>
+        = UnitHandler
     where
         Self: 'a;
 
@@ -46,7 +47,8 @@ impl<L, Context> OnJoinMapLinked<L, Context> for DefaultJoinMapLifecycle {
 }
 
 impl<L, K, Context> OnJoinMapSynced<L, K, Context> for DefaultJoinMapLifecycle {
-    type OnJoinMapSyncedHandler<'a> = UnitHandler
+    type OnJoinMapSyncedHandler<'a>
+        = UnitHandler
     where
         Self: 'a;
 
@@ -61,7 +63,8 @@ impl<L, K, Context> OnJoinMapSynced<L, K, Context> for DefaultJoinMapLifecycle {
 }
 
 impl<L, K, Context> OnJoinMapUnlinked<L, K, Context> for DefaultJoinMapLifecycle {
-    type OnJoinMapUnlinkedHandler<'a> = ConstHandler<LinkClosedResponse>
+    type OnJoinMapUnlinkedHandler<'a>
+        = ConstHandler<LinkClosedResponse>
     where
         Self: 'a;
 
@@ -76,7 +79,8 @@ impl<L, K, Context> OnJoinMapUnlinked<L, K, Context> for DefaultJoinMapLifecycle
 }
 
 impl<L, K, Context> OnJoinMapFailed<L, K, Context> for DefaultJoinMapLifecycle {
-    type OnJoinMapFailedHandler<'a> = ConstHandler<LinkClosedResponse>
+    type OnJoinMapFailedHandler<'a>
+        = ConstHandler<LinkClosedResponse>
     where
         Self: 'a;
 

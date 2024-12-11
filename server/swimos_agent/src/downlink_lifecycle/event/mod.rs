@@ -136,9 +136,10 @@ where
     FFailed: Send,
     FEv: Send,
 {
-    type OnLinkedHandler<'a> = FLinked::OnLinkedHandler<'a>
+    type OnLinkedHandler<'a>
+        = FLinked::OnLinkedHandler<'a>
     where
-    Self: 'a;
+        Self: 'a;
 
     fn on_linked(&self) -> Self::OnLinkedHandler<'_> {
         let StatefulEventDownlinkLifecycle {
@@ -161,9 +162,10 @@ where
     FFailed: Send,
     FEv: Send,
 {
-    type OnSyncedHandler<'a> = FSynced::OnSyncedHandler<'a>
+    type OnSyncedHandler<'a>
+        = FSynced::OnSyncedHandler<'a>
     where
-    Self: 'a;
+        Self: 'a;
 
     fn on_synced<'a>(&'a self, value: &()) -> Self::OnSyncedHandler<'a> {
         let StatefulEventDownlinkLifecycle {
@@ -186,9 +188,10 @@ where
     FFailed: Send,
     FEv: Send,
 {
-    type OnUnlinkedHandler<'a> = FUnlinked::OnUnlinkedHandler<'a>
+    type OnUnlinkedHandler<'a>
+        = FUnlinked::OnUnlinkedHandler<'a>
     where
-    Self: 'a;
+        Self: 'a;
 
     fn on_unlinked(&self) -> Self::OnUnlinkedHandler<'_> {
         let StatefulEventDownlinkLifecycle {
@@ -211,9 +214,10 @@ where
     FFailed: OnFailedShared<Context, State>,
     FEv: Send,
 {
-    type OnFailedHandler<'a> = FFailed::OnFailedHandler<'a>
+    type OnFailedHandler<'a>
+        = FFailed::OnFailedHandler<'a>
     where
-    Self: 'a;
+        Self: 'a;
 
     fn on_failed(&self) -> Self::OnFailedHandler<'_> {
         let StatefulEventDownlinkLifecycle {
@@ -236,9 +240,10 @@ where
     FFailed: Send,
     FEv: OnConsumeEventShared<T, Context, State>,
 {
-    type OnEventHandler<'a> = FEv::OnEventHandler<'a>
+    type OnEventHandler<'a>
+        = FEv::OnEventHandler<'a>
     where
-    Self: 'a;
+        Self: 'a;
 
     fn on_event(&self, value: T) -> Self::OnEventHandler<'_> {
         let StatefulEventDownlinkLifecycle {
@@ -262,68 +267,28 @@ where
     FFailed: OnFailedShared<Context, State>,
     FEv: OnConsumeEventShared<T, Context, State>,
 {
-    type WithOnLinked<H> = StatefulEventDownlinkLifecycle<
-    Context,
-    State,
-    T,
-    H,
-    FSynced,
-    FUnlinked,
-    FFailed,
-    FEv,
-    >
+    type WithOnLinked<H>
+        = StatefulEventDownlinkLifecycle<Context, State, T, H, FSynced, FUnlinked, FFailed, FEv>
     where
         H: OnLinkedShared<Context, State>;
 
-    type WithOnSynced<H> = StatefulEventDownlinkLifecycle<
-    Context,
-    State,
-    T,
-    FLinked,
-    H,
-    FUnlinked,
-    FFailed,
-    FEv,
-    >
+    type WithOnSynced<H>
+        = StatefulEventDownlinkLifecycle<Context, State, T, FLinked, H, FUnlinked, FFailed, FEv>
     where
         H: OnSyncedShared<(), Context, State>;
 
-    type WithOnUnlinked<H> = StatefulEventDownlinkLifecycle<
-    Context,
-    State,
-    T,
-    FLinked,
-    FSynced,
-    H,
-    FFailed,
-    FEv,
-    >
+    type WithOnUnlinked<H>
+        = StatefulEventDownlinkLifecycle<Context, State, T, FLinked, FSynced, H, FFailed, FEv>
     where
         H: OnUnlinkedShared<Context, State>;
 
-    type WithOnFailed<H> = StatefulEventDownlinkLifecycle<
-    Context,
-    State,
-    T,
-    FLinked,
-    FSynced,
-    FUnlinked,
-    H,
-    FEv,
-    >
+    type WithOnFailed<H>
+        = StatefulEventDownlinkLifecycle<Context, State, T, FLinked, FSynced, FUnlinked, H, FEv>
     where
         H: OnFailedShared<Context, State>;
 
-    type WithOnEvent<H> = StatefulEventDownlinkLifecycle<
-    Context,
-    State,
-    T,
-    FLinked,
-    FSynced,
-    FUnlinked,
-    FFailed,
-    H,
-    >
+    type WithOnEvent<H>
+        = StatefulEventDownlinkLifecycle<Context, State, T, FLinked, FSynced, FUnlinked, FFailed, H>
     where
         H: OnConsumeEventShared<T, Context, State>;
 
@@ -580,9 +545,10 @@ where
     FFailed: Send,
     FEv: Send,
 {
-    type OnLinkedHandler<'a> = FLinked::OnLinkedHandler<'a>
+    type OnLinkedHandler<'a>
+        = FLinked::OnLinkedHandler<'a>
     where
-    Self: 'a;
+        Self: 'a;
 
     fn on_linked(&self) -> Self::OnLinkedHandler<'_> {
         let StatelessEventDownlinkLifecycle { on_linked, .. } = self;
@@ -599,9 +565,10 @@ where
     FFailed: Send,
     FEv: Send,
 {
-    type OnSyncedHandler<'a> = FSynced::OnSyncedHandler<'a>
+    type OnSyncedHandler<'a>
+        = FSynced::OnSyncedHandler<'a>
     where
-    Self: 'a;
+        Self: 'a;
 
     fn on_synced<'a>(&'a self, value: &()) -> Self::OnSyncedHandler<'a> {
         let StatelessEventDownlinkLifecycle { on_synced, .. } = self;
@@ -618,9 +585,10 @@ where
     FFailed: Send,
     FEv: Send,
 {
-    type OnUnlinkedHandler<'a> = FUnlinked::OnUnlinkedHandler<'a>
+    type OnUnlinkedHandler<'a>
+        = FUnlinked::OnUnlinkedHandler<'a>
     where
-    Self: 'a;
+        Self: 'a;
 
     fn on_unlinked(&self) -> Self::OnUnlinkedHandler<'_> {
         let StatelessEventDownlinkLifecycle { on_unlinked, .. } = self;
@@ -638,9 +606,10 @@ where
     FFailed: Send,
     FEv: Send,
 {
-    type OnFailedHandler<'a> = FFailed::OnFailedHandler<'a>
+    type OnFailedHandler<'a>
+        = FFailed::OnFailedHandler<'a>
     where
-    Self: 'a;
+        Self: 'a;
 
     fn on_failed(&self) -> Self::OnFailedHandler<'_> {
         let StatelessEventDownlinkLifecycle { on_failed, .. } = self;
@@ -657,9 +626,10 @@ where
     FFailed: Send,
     FEv: OnConsumeEvent<T, Context>,
 {
-    type OnEventHandler<'a> = FEv::OnEventHandler<'a>
+    type OnEventHandler<'a>
+        = FEv::OnEventHandler<'a>
     where
-    Self: 'a;
+        Self: 'a;
 
     fn on_event(&self, value: T) -> Self::OnEventHandler<'_> {
         let StatelessEventDownlinkLifecycle { on_event, .. } = self;
@@ -689,27 +659,33 @@ where
     FFailed: OnFailed<Context>,
     FEv: OnConsumeEvent<T, Context>,
 {
-    type WithOnLinked<H> = StatelessEventDownlinkLifecycle<Context, T, H, FSynced, FUnlinked, FFailed, FEv>
+    type WithOnLinked<H>
+        = StatelessEventDownlinkLifecycle<Context, T, H, FSynced, FUnlinked, FFailed, FEv>
     where
-    H: OnLinked<Context>;
+        H: OnLinked<Context>;
 
-    type WithOnSynced<H> = StatelessEventDownlinkLifecycle<Context, T, FLinked, H, FUnlinked, FFailed, FEv>
+    type WithOnSynced<H>
+        = StatelessEventDownlinkLifecycle<Context, T, FLinked, H, FUnlinked, FFailed, FEv>
     where
-    H: OnSynced<(), Context>;
+        H: OnSynced<(), Context>;
 
-    type WithOnUnlinked<H> = StatelessEventDownlinkLifecycle<Context, T, FLinked, FSynced, H, FFailed, FEv>
+    type WithOnUnlinked<H>
+        = StatelessEventDownlinkLifecycle<Context, T, FLinked, FSynced, H, FFailed, FEv>
     where
-    H: OnUnlinked<Context>;
+        H: OnUnlinked<Context>;
 
-    type WithOnFailed<H> = StatelessEventDownlinkLifecycle<Context, T, FLinked, FSynced, FUnlinked, H, FEv>
+    type WithOnFailed<H>
+        = StatelessEventDownlinkLifecycle<Context, T, FLinked, FSynced, FUnlinked, H, FEv>
     where
-    H: OnFailed<Context>;
+        H: OnFailed<Context>;
 
-    type WithOnEvent<H> = StatelessEventDownlinkLifecycle<Context, T, FLinked, FSynced, FUnlinked, FFailed, H>
+    type WithOnEvent<H>
+        = StatelessEventDownlinkLifecycle<Context, T, FLinked, FSynced, FUnlinked, FFailed, H>
     where
-    H: OnConsumeEvent<T, Context>;
+        H: OnConsumeEvent<T, Context>;
 
-    type WithShared<Shared> = StatefulEventDownlinkLifecycle<
+    type WithShared<Shared>
+        = StatefulEventDownlinkLifecycle<
         Context,
         Shared,
         T,

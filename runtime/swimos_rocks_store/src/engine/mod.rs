@@ -105,7 +105,8 @@ where
 }
 
 impl KeyspaceByteEngine for RocksEngine {
-    type RangeCon<'a> = RocksRawPrefixIterator<'a>
+    type RangeCon<'a>
+        = RocksRawPrefixIterator<'a>
     where
         Self: 'a;
 

@@ -58,7 +58,8 @@ pub trait OnJoinMapSyncedShared<L, K, Context, Shared>: Send {
 }
 
 impl<L, K, Context> OnJoinMapSynced<L, K, Context> for NoHandler {
-    type OnJoinMapSyncedHandler<'a> = UnitHandler
+    type OnJoinMapSyncedHandler<'a>
+        = UnitHandler
     where
         Self: 'a;
 
@@ -73,7 +74,8 @@ impl<L, K, Context> OnJoinMapSynced<L, K, Context> for NoHandler {
 }
 
 impl<L, K, Context, Shared> OnJoinMapSyncedShared<L, K, Context, Shared> for NoHandler {
-    type OnJoinMapSyncedHandler<'a> = UnitHandler
+    type OnJoinMapSyncedHandler<'a>
+        = UnitHandler
     where
         Self: 'a,
         Shared: 'a;
@@ -95,7 +97,8 @@ where
     F: Fn(L, Address<&str>, &HashSet<K>) -> H + Send,
     H: EventHandler<Context> + 'static,
 {
-    type OnJoinMapSyncedHandler<'a> = H
+    type OnJoinMapSyncedHandler<'a>
+        = H
     where
         Self: 'a;
 
@@ -114,7 +117,8 @@ impl<L, K, Context, Shared, F> OnJoinMapSyncedShared<L, K, Context, Shared> for 
 where
     F: for<'a> JoinMapHandlerSyncedFn<'a, Context, Shared, L, K, ()> + Send,
 {
-    type OnJoinMapSyncedHandler<'a> = <F as JoinMapHandlerSyncedFn<'a, Context, Shared, L, K, ()>>::Handler
+    type OnJoinMapSyncedHandler<'a>
+        = <F as JoinMapHandlerSyncedFn<'a, Context, Shared, L, K, ()>>::Handler
     where
         Self: 'a,
         Shared: 'a;
@@ -137,7 +141,8 @@ where
     F: Fn(HandlerContext<Context>, L, Address<&str>, &HashSet<K>) -> H + Send,
     H: EventHandler<Context> + 'static,
 {
-    type OnJoinMapSyncedHandler<'a> = H
+    type OnJoinMapSyncedHandler<'a>
+        = H
     where
         Self: 'a;
 
@@ -157,7 +162,8 @@ impl<L, K, Context, Shared, F> OnJoinMapSyncedShared<L, K, Context, Shared>
 where
     F: OnJoinMapSynced<L, K, Context> + Send,
 {
-    type OnJoinMapSyncedHandler<'a> = F::OnJoinMapSyncedHandler<'a>
+    type OnJoinMapSyncedHandler<'a>
+        = F::OnJoinMapSyncedHandler<'a>
     where
         Self: 'a,
         Shared: 'a;

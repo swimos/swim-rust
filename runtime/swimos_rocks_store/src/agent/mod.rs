@@ -112,7 +112,8 @@ impl<D: PlaneStore> StoreEngine for SwimNodeStore<D> {
 impl<D: PlaneStore> NodeStore for SwimNodeStore<D> {
     type Delegate = D;
 
-    type RangeCon<'a> = D::RangeCon<'a>
+    type RangeCon<'a>
+        = D::RangeCon<'a>
     where
         Self: 'a;
 
@@ -212,7 +213,8 @@ where
         store.delete(StoreKey::Value { lane_id })
     }
 
-    type MapCon<'a> = <S as NodeStore>::RangeCon<'a>
+    type MapCon<'a>
+        = <S as NodeStore>::RangeCon<'a>
     where
         Self: 'a;
 

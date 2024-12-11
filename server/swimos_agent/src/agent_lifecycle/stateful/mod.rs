@@ -191,7 +191,8 @@ where
     FTime: Send,
     ItemEv: ItemEventShared<Context, State>,
 {
-    type ItemEventHandler<'a> = ItemEv::ItemEventHandler<'a>
+    type ItemEventHandler<'a>
+        = ItemEv::ItemEventHandler<'a>
     where
         Self: 'a;
 

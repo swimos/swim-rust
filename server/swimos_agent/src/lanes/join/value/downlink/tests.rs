@@ -127,7 +127,8 @@ impl TestLifecycle {
 }
 
 impl OnJoinValueLinked<i32, TestAgent> for TestLifecycle {
-    type OnJoinValueLinkedHandler<'a> = LocalBoxEventHandler<'a, TestAgent>
+    type OnJoinValueLinkedHandler<'a>
+        = LocalBoxEventHandler<'a, TestAgent>
     where
         Self: 'a;
 
@@ -148,7 +149,8 @@ impl OnJoinValueLinked<i32, TestAgent> for TestLifecycle {
 }
 
 impl OnJoinValueSynced<i32, String, TestAgent> for TestLifecycle {
-    type OnJoinValueSyncedHandler<'a> = LocalBoxEventHandler<'a, TestAgent>
+    type OnJoinValueSyncedHandler<'a>
+        = LocalBoxEventHandler<'a, TestAgent>
     where
         Self: 'a;
 
@@ -172,7 +174,8 @@ impl OnJoinValueSynced<i32, String, TestAgent> for TestLifecycle {
 }
 
 impl OnJoinValueUnlinked<i32, TestAgent> for TestLifecycle {
-    type OnJoinValueUnlinkedHandler<'a> = LocalBoxHandlerAction<'a, TestAgent, LinkClosedResponse>
+    type OnJoinValueUnlinkedHandler<'a>
+        = LocalBoxHandlerAction<'a, TestAgent, LinkClosedResponse>
     where
         Self: 'a;
 
@@ -197,7 +200,8 @@ impl OnJoinValueUnlinked<i32, TestAgent> for TestLifecycle {
 }
 
 impl OnJoinValueFailed<i32, TestAgent> for TestLifecycle {
-    type OnJoinValueFailedHandler<'a> = LocalBoxHandlerAction<'a, TestAgent, LinkClosedResponse>
+    type OnJoinValueFailedHandler<'a>
+        = LocalBoxHandlerAction<'a, TestAgent, LinkClosedResponse>
     where
         Self: 'a;
 

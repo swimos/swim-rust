@@ -30,7 +30,8 @@ use super::lifecycle::{
 pub struct DefaultJoinValueLifecycle;
 
 impl<Context, K> OnJoinValueLinked<K, Context> for DefaultJoinValueLifecycle {
-    type OnJoinValueLinkedHandler<'a> = UnitHandler
+    type OnJoinValueLinkedHandler<'a>
+        = UnitHandler
     where
         Self: 'a;
 
@@ -44,7 +45,8 @@ impl<Context, K> OnJoinValueLinked<K, Context> for DefaultJoinValueLifecycle {
 }
 
 impl<Context, K, V> OnJoinValueSynced<K, V, Context> for DefaultJoinValueLifecycle {
-    type OnJoinValueSyncedHandler<'a> = UnitHandler
+    type OnJoinValueSyncedHandler<'a>
+        = UnitHandler
     where
         Self: 'a;
 
@@ -59,7 +61,8 @@ impl<Context, K, V> OnJoinValueSynced<K, V, Context> for DefaultJoinValueLifecyc
 }
 
 impl<Context, K> OnJoinValueUnlinked<K, Context> for DefaultJoinValueLifecycle {
-    type OnJoinValueUnlinkedHandler<'a> = ConstHandler<LinkClosedResponse>
+    type OnJoinValueUnlinkedHandler<'a>
+        = ConstHandler<LinkClosedResponse>
     where
         Self: 'a;
 
@@ -73,7 +76,8 @@ impl<Context, K> OnJoinValueUnlinked<K, Context> for DefaultJoinValueLifecycle {
 }
 
 impl<Context, K> OnJoinValueFailed<K, Context> for DefaultJoinValueLifecycle {
-    type OnJoinValueFailedHandler<'a> = ConstHandler<LinkClosedResponse>
+    type OnJoinValueFailedHandler<'a>
+        = ConstHandler<LinkClosedResponse>
     where
         Self: 'a;
 
