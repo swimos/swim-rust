@@ -173,7 +173,7 @@ impl OnSynced<HashMap<i32, Text>, FakeAgent> for FakeLifecycle {
     }
 }
 
-impl OnDownlinkUpdate<i32, Text, FakeAgent> for FakeLifecycle {
+impl OnDownlinkUpdate<i32, Text, HashMap<i32, Text>, FakeAgent> for FakeLifecycle {
     type OnUpdateHandler<'a> = LocalBoxEventHandler<'a, FakeAgent>
     where
         Self: 'a;
@@ -196,7 +196,7 @@ impl OnDownlinkUpdate<i32, Text, FakeAgent> for FakeLifecycle {
     }
 }
 
-impl OnDownlinkRemove<i32, Text, FakeAgent> for FakeLifecycle {
+impl OnDownlinkRemove<i32, Text, HashMap<i32, Text>, FakeAgent> for FakeLifecycle {
     type OnRemoveHandler<'a> = LocalBoxEventHandler<'a, FakeAgent>
     where
         Self: 'a;
@@ -215,7 +215,7 @@ impl OnDownlinkRemove<i32, Text, FakeAgent> for FakeLifecycle {
     }
 }
 
-impl OnDownlinkClear<i32, Text, FakeAgent> for FakeLifecycle {
+impl OnDownlinkClear<HashMap<i32, Text>, FakeAgent> for FakeLifecycle {
     type OnClearHandler<'a> = LocalBoxEventHandler<'a, FakeAgent>
     where
         Self: 'a;

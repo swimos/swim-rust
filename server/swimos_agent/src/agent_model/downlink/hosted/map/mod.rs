@@ -14,7 +14,8 @@
 
 use std::{
     cell::RefCell,
-    collections::{BTreeSet, HashMap},
+    collections::HashMap,
+    marker::PhantomData,
     pin::{pin, Pin},
     sync::{atomic::AtomicU8, Arc},
     task::{Context, Poll},
@@ -45,7 +46,11 @@ use tokio::sync::mpsc;
 use tokio_util::codec::{FramedRead, FramedWrite};
 use tracing::{debug, error, info, trace};
 
-use crate::{agent_model::downlink::DownlinkChannelFactory, event_handler::LocalBoxEventHandler};
+use crate::{
+    agent_model::downlink::DownlinkChannelFactory,
+    event_handler::LocalBoxEventHandler,
+    map_storage::{drop_or_take, DropOrTake, MapOpsWithEntry},
+};
 use crate::{
     agent_model::downlink::{
         BoxDownlinkChannel, DownlinkChannel, DownlinkChannelError, DownlinkChannelEvent,
@@ -62,16 +67,16 @@ use super::{DlState, DlStateObserver, DlStateTracker, OutputWriter, RestartableO
 mod tests;
 
 #[derive(Debug)]
-struct MapDlStateInner<K, V> {
-    map: HashMap<K, V>,
-    order: Option<BTreeSet<K>>,
+struct MapDlStateInner<K, V, M = HashMap<K, V>> {
+    _value_type: PhantomData<(K, V)>,
+    map: M,
 }
 
-impl<K, V> Default for MapDlStateInner<K, V> {
+impl<K, V, M: Default> Default for MapDlStateInner<K, V, M> {
     fn default() -> Self {
         Self {
+            _value_type: PhantomData,
             map: Default::default(),
-            order: Default::default(),
         }
     }
 }
@@ -80,9 +85,9 @@ impl<K, V> Default for MapDlStateInner<K, V> {
 /// accesses). To support the (infrequently used) take and drop operations, it will generate a
 /// separate ordered set of the keys which will then be kept up to date with the map.
 #[derive(Debug)]
-struct MapDlState<K, V>(RefCell<MapDlStateInner<K, V>>);
+struct MapDlState<K, V, M = HashMap<K, V>>(RefCell<MapDlStateInner<K, V, M>>);
 
-impl<K, V> Default for MapDlState<K, V> {
+impl<K, V, M: Default> Default for MapDlState<K, V, M> {
     fn default() -> Self {
         Self(Default::default())
     }
@@ -91,14 +96,17 @@ impl<K, V> Default for MapDlState<K, V> {
 /// Operations that need to be supported by the state store of a map downlink. The intention
 /// of this trait is to abstract over a self contained store a store contained within the field
 /// of an agent. In both cases, the store itself will a [`RefCell`] containing a [`MapDlState`].
-impl<K, V> MapDlState<K, V> {
-    fn clear(&self) -> HashMap<K, V> {
+impl<K, V, M> MapDlState<K, V, M>
+where
+    M: Default + MapOpsWithEntry<K, V, K>,
+{
+    fn clear(&self) -> M {
         self.0.replace(MapDlStateInner::default()).map
     }
     // Perform an operation in a context with access to the state.
     fn with<F, T>(&self, f: F) -> T
     where
-        F: FnOnce(&mut MapDlStateInner<K, V>) -> T,
+        F: FnOnce(&mut MapDlStateInner<K, V, M>) -> T,
     {
         f(&mut *self.0.borrow_mut())
     }
@@ -110,17 +118,11 @@ impl<K, V> MapDlState<K, V> {
         lifecycle: Option<&'a LC>,
     ) -> Option<LocalBoxEventHandler<'a, Context>>
     where
-        K: Eq + Hash + Clone + Ord,
-        LC: MapDownlinkLifecycle<K, V, Context>,
+        K: Eq + Hash + Clone,
+        LC: MapDownlinkLifecycle<K, V, M, Context>,
     {
-        self.with(move |MapDlStateInner { map, order }| {
+        self.with(move |MapDlStateInner { map, .. }| {
             let old = map.insert(key.clone(), value);
-            match order {
-                Some(ord) if old.is_some() => {
-                    ord.insert(key.clone());
-                }
-                _ => {}
-            }
             let new_value = &map[&key];
             lifecycle.map(|lifecycle| {
                 lifecycle
@@ -136,14 +138,11 @@ impl<K, V> MapDlState<K, V> {
         lifecycle: Option<&'a LC>,
     ) -> Option<LocalBoxEventHandler<'a, Context>>
     where
-        K: Eq + Hash + Ord,
-        LC: MapDownlinkLifecycle<K, V, Context>,
+        K: Eq + Hash,
+        LC: MapDownlinkLifecycle<K, V, M, Context>,
     {
-        self.with(move |MapDlStateInner { map, order }| {
+        self.with(move |MapDlStateInner { map, .. }| {
             map.remove(&key).and_then(move |old| {
-                if let Some(ord) = order {
-                    ord.remove(&key);
-                }
                 lifecycle.map(|lifecycle| lifecycle.on_remove(key, &*map, old).boxed_local())
             })
         })
@@ -155,25 +154,20 @@ impl<K, V> MapDlState<K, V> {
         lifecycle: Option<&'a LC>,
     ) -> Option<LocalBoxEventHandler<'a, Context>>
     where
-        K: Eq + Hash + Ord + Clone,
-        LC: MapDownlinkLifecycle<K, V, Context>,
+        K: StructuralWritable + Eq + Hash + Clone,
+        LC: MapDownlinkLifecycle<K, V, M, Context>,
     {
-        self.with(move |MapDlStateInner { map, order }| {
+        self.with(move |MapDlStateInner { map, .. }| {
             if n >= map.len() {
-                *order = None;
                 let old = std::mem::take(map);
                 lifecycle.map(move |lifecycle| lifecycle.on_clear(old).boxed_local())
             } else {
-                let ord = order.get_or_insert_with(|| map.keys().cloned().collect());
-
-                //Decompose the take into a sequence of removals.
-                let to_remove: Vec<_> = ord.iter().take(n).cloned().collect();
+                let to_remove = drop_or_take(map, DropOrTake::Drop, n);
                 if let Some(lifecycle) = lifecycle {
                     let expected = n.min(map.len());
                     let mut removed = Vec::with_capacity(expected);
 
                     for k in to_remove {
-                        ord.remove(&k);
                         if let Some(v) = map.remove(&k) {
                             removed.push(lifecycle.on_remove(k, map, v));
                         }
@@ -185,7 +179,6 @@ impl<K, V> MapDlState<K, V> {
                     }
                 } else {
                     for k in to_remove {
-                        ord.remove(&k);
                         map.remove(&k);
                     }
                     None
@@ -200,21 +193,17 @@ impl<K, V> MapDlState<K, V> {
         lifecycle: Option<&'a LC>,
     ) -> Option<LocalBoxEventHandler<'a, Context>>
     where
-        K: Eq + Hash + Ord + Clone,
-        LC: MapDownlinkLifecycle<K, V, Context>,
+        K: StructuralWritable + Eq + Hash + Clone,
+        LC: MapDownlinkLifecycle<K, V, M, Context>,
     {
-        self.with(move |MapDlStateInner { map, order }| {
+        self.with(move |MapDlStateInner { map, .. }| {
             let to_drop = map.len().saturating_sub(n);
             if to_drop > 0 {
-                let ord = order.get_or_insert_with(|| map.keys().cloned().collect());
-
-                //Decompose the drop into a sequence of removals.
-                let to_remove: Vec<_> = ord.iter().rev().take(to_drop).cloned().collect();
+                let to_remove = drop_or_take(map, DropOrTake::Take, n);
                 if let Some(lifecycle) = lifecycle {
                     let mut removed = Vec::with_capacity(to_drop);
 
-                    for k in to_remove.into_iter().rev() {
-                        ord.remove(&k);
+                    for k in to_remove.into_iter() {
                         if let Some(v) = map.remove(&k) {
                             removed.push(lifecycle.on_remove(k, map, v));
                         }
@@ -226,7 +215,6 @@ impl<K, V> MapDlState<K, V> {
                     }
                 } else {
                     for k in to_remove {
-                        ord.remove(&k);
                         map.remove(&k);
                     }
                     None
@@ -238,9 +226,9 @@ impl<K, V> MapDlState<K, V> {
     }
 }
 
-pub struct MapDownlinkFactory<K, V, LC> {
+pub struct MapDownlinkFactory<K, V, M, LC> {
     address: Address<Text>,
-    state: MapDlState<K, V>,
+    state: MapDlState<K, V, M>,
     lifecycle: LC,
     config: MapDownlinkConfig,
     dl_state: Arc<AtomicU8>,
@@ -248,10 +236,11 @@ pub struct MapDownlinkFactory<K, V, LC> {
     op_rx: mpsc::UnboundedReceiver<MapOperation<K, V>>,
 }
 
-impl<K, V, LC> MapDownlinkFactory<K, V, LC>
+impl<K, V, M, LC> MapDownlinkFactory<K, V, M, LC>
 where
-    K: Hash + Eq + Ord + Clone + Form + Send + 'static,
+    K: Hash + Eq + Clone + Form + Send + 'static,
     V: Form + Send + 'static,
+    M: Default,
     K::Rec: Send,
     V::Rec: Send,
 {
@@ -278,13 +267,14 @@ where
     }
 }
 
-impl<K, V, LC, Context> DownlinkChannelFactory<Context> for MapDownlinkFactory<K, V, LC>
+impl<K, V, M, LC, Context> DownlinkChannelFactory<Context> for MapDownlinkFactory<K, V, M, LC>
 where
-    K: Hash + Eq + Ord + Clone + Form + Send + 'static,
+    K: Hash + Eq + Clone + Form + Send + 'static,
     V: Form + Send + 'static,
     K::Rec: Send,
     V::Rec: Send,
-    LC: MapDownlinkLifecycle<K, V, Context> + 'static,
+    M: Default + MapOpsWithEntry<K, V, K> + Send + 'static,
+    LC: MapDownlinkLifecycle<K, V, M, Context> + 'static,
 {
     fn create(
         self,
@@ -334,11 +324,11 @@ type Writes<K, V> = OutputWriter<MapWriteStream<K, V>>;
 
 /// An implementation of [`DownlinkChannel`] to allow a map downlink to be driven by an agent
 /// task.
-pub struct HostedMapDownlink<K: RecognizerReadable, V: RecognizerReadable, LC> {
+pub struct HostedMapDownlink<K: RecognizerReadable, V: RecognizerReadable, M, LC> {
     address: Address<Text>,
     receiver: Option<FramedRead<ByteReader, MapNotificationDecoder<K, V>>>,
     write_stream: Writes<K, V>,
-    state: MapDlState<K, V>,
+    state: MapDlState<K, V, M>,
     next: Option<Result<DownlinkNotification<MapMessage<K, V>>, FrameIoError>>,
     lifecycle: LC,
     config: MapDownlinkConfig,
@@ -352,9 +342,9 @@ impl<K: StructuralWritable, V: StructuralWritable> MapWriteStream<K, V> {
     }
 }
 
-impl<K, V, LC> HostedMapDownlink<K, V, LC>
+impl<K, V, M, LC> HostedMapDownlink<K, V, M, LC>
 where
-    K: Hash + Eq + Ord + Clone + Form + Send + 'static,
+    K: Hash + Eq + Clone + Form + Send + 'static,
     V: Form + Send + 'static,
     K::Rec: Send,
     V::Rec: Send,
@@ -444,13 +434,14 @@ where
     }
 }
 
-impl<K, V, LC, Context> DownlinkChannel<Context> for HostedMapDownlink<K, V, LC>
+impl<K, V, M, LC, Context> DownlinkChannel<Context> for HostedMapDownlink<K, V, M, LC>
 where
-    K: Hash + Eq + Ord + Clone + Form + Send + 'static,
+    K: Hash + Eq + Clone + Form + Send + 'static,
     V: Form + Send + 'static,
     K::Rec: Send,
     V::Rec: Send,
-    LC: MapDownlinkLifecycle<K, V, Context> + 'static,
+    M: Default + MapOpsWithEntry<K, V, K> + Send,
+    LC: MapDownlinkLifecycle<K, V, M, Context> + 'static,
 {
     fn kind(&self) -> DownlinkKind {
         DownlinkKind::Map
