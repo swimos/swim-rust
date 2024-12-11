@@ -20,6 +20,7 @@ use std::{
 
 use crate::config::KafkaLogLevel;
 use futures::{Future, FutureExt};
+use rdkafka::consumer::BaseConsumer;
 use rdkafka::{
     config::RDKafkaLogLevel,
     consumer::{CommitMode, Consumer, ConsumerContext, Rebalance, StreamConsumer},
@@ -146,11 +147,11 @@ impl ClientContext for KafkaClientContext {
 }
 
 impl ConsumerContext for KafkaClientContext {
-    fn pre_rebalance(&self, rebalance: &Rebalance) {
+    fn pre_rebalance(&self, _base_consumer: &BaseConsumer<Self>, rebalance: &Rebalance) {
         info!("Pre rebalance {:?}", rebalance);
     }
 
-    fn post_rebalance(&self, rebalance: &Rebalance) {
+    fn post_rebalance(&self, _base_consumer: &BaseConsumer<Self>, rebalance: &Rebalance) {
         info!("Post rebalance {:?}", rebalance);
     }
 
