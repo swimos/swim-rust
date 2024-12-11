@@ -67,7 +67,7 @@ where
 
 struct NotificationDebugFormatter<'a, T, U>(&'a Notification<T, U>);
 
-impl<'a, T, U> Debug for NotificationDebugFormatter<'a, T, U>
+impl<T, U> Debug for NotificationDebugFormatter<'_, T, U>
 where
     T: AsRef<[u8]>,
     U: AsRef<[u8]>,

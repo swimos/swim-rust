@@ -247,7 +247,7 @@ where
     match segment_iter.next() {
         Some(segment) => {
             // Does the current segment exist in the tree?
-            return match current_node.get_descendant_mut(segment) {
+            match current_node.get_descendant_mut(segment) {
                 // It does. Scan ahead to see if there is another segment in the URI
                 Some(descendant) => match segment_iter.peek() {
                     // There is another segment in the URI. We will recursively call ourself if the
@@ -287,7 +287,7 @@ where
                     // The requested node does not exist in the tree
                     None
                 }
-            };
+            }
         }
         None => None,
     }

@@ -62,7 +62,7 @@ struct TestContext<'a> {
     agent: &'a ConnectorAgent,
 }
 
-impl<'a> IngressContext for TestContext<'a> {
+impl IngressContext for TestContext<'_> {
     fn open_lane(&mut self, name: &str, kind: WarpLaneKind) {
         let TestContext { agent } = self;
         agent

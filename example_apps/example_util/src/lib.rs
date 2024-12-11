@@ -48,7 +48,7 @@ pub fn format_map<K: Display, V: Display>(map: &HashMap<K, V>) -> impl Display +
     FormatMap(map)
 }
 
-impl<'a, K: Display, V: Display> Display for FormatMap<'a, K, V> {
+impl<K: Display, V: Display> Display for FormatMap<'_, K, V> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{{")?;
         let mut it = self.0.iter();

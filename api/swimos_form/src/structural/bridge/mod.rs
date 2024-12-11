@@ -52,7 +52,7 @@ impl<R: Recognizer> RecognizerBridge<R> {
     }
 }
 
-impl<'a, R: Recognizer> SubRecognizerBridge<'a, R> {
+impl<R: Recognizer> SubRecognizerBridge<'_, R> {
     fn feed_single(self, event: ReadEvent<'_>) -> Result<(), ReadError> {
         let SubRecognizerBridge(rec) = self;
         if let Some(Err(e)) = rec.feed_event(event) {
@@ -116,7 +116,7 @@ impl<R: Recognizer> PrimitiveWriter for RecognizerBridge<R> {
     }
 }
 
-impl<'a, R: Recognizer> PrimitiveWriter for SubRecognizerBridge<'a, R> {
+impl<R: Recognizer> PrimitiveWriter for SubRecognizerBridge<'_, R> {
     type Repr = ();
     type Error = ReadError;
 
@@ -300,7 +300,7 @@ impl<R: Recognizer> BodyWriter for RecognizerBridge<R> {
     }
 }
 
-impl<'a, R: Recognizer> StructuralWriter for SubRecognizerBridge<'a, R> {
+impl<R: Recognizer> StructuralWriter for SubRecognizerBridge<'_, R> {
     type Header = Self;
     type Body = Self;
 
@@ -309,7 +309,7 @@ impl<'a, R: Recognizer> StructuralWriter for SubRecognizerBridge<'a, R> {
     }
 }
 
-impl<'a, R: Recognizer> HeaderWriter for SubRecognizerBridge<'a, R> {
+impl<R: Recognizer> HeaderWriter for SubRecognizerBridge<'_, R> {
     type Repr = ();
     type Error = ReadError;
     type Body = Self;
@@ -369,7 +369,7 @@ impl<'a, R: Recognizer> HeaderWriter for SubRecognizerBridge<'a, R> {
     }
 }
 
-impl<'a, R: Recognizer> BodyWriter for SubRecognizerBridge<'a, R> {
+impl<R: Recognizer> BodyWriter for SubRecognizerBridge<'_, R> {
     type Repr = ();
     type Error = ReadError;
 

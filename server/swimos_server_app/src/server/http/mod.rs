@@ -554,7 +554,7 @@ impl<Ext> Clone for WebSocketSpec<Ext> {
     }
 }
 
-impl<'a, Ext, Sock> Service<Request<Incoming>> for &'a UpgradeService<Ext, Sock>
+impl<Ext, Sock> Service<Request<Incoming>> for &UpgradeService<Ext, Sock>
 where
     Sock: AsyncRead + AsyncWrite + Unpin + Send + 'static,
     Ext: ExtensionProvider,

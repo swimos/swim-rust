@@ -73,6 +73,12 @@ pub struct TransportHandle {
     tx: mpsc::Sender<TransportRequest>,
 }
 
+impl From<io::Error> for DownlinkRuntimeError {
+    fn from(e: io::Error) -> Self {
+        DownlinkRuntimeError::with_cause(DownlinkErrorKind::Unresolvable, e)
+    }
+}
+
 impl TransportHandle {
     pub fn new(tx: mpsc::Sender<TransportRequest>) -> TransportHandle {
         TransportHandle { tx }
@@ -98,12 +104,6 @@ impl TransportHandle {
         &self,
         shp: SchemeHostPort,
     ) -> Result<Vec<SocketAddr>, DownlinkRuntimeError> {
-        impl From<io::Error> for DownlinkRuntimeError {
-            fn from(e: io::Error) -> Self {
-                DownlinkRuntimeError::with_cause(DownlinkErrorKind::Unresolvable, e)
-            }
-        }
-
         self.exec(|tx| TransportRequest::Resolve(shp, tx)).await
     }
 

@@ -89,7 +89,7 @@ pub enum StructTransform<'a> {
     Newtype(Option<FieldSelector<'a>>),
 }
 
-impl<'a> Default for StructTransform<'a> {
+impl Default for StructTransform<'_> {
     fn default() -> Self {
         StructTransform::Standard {
             rename: Default::default(),

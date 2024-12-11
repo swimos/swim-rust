@@ -42,7 +42,7 @@ pub enum ReadEvent<'a> {
     EndRecord,
 }
 
-impl<'a> ReadEvent<'a> {
+impl ReadEvent<'_> {
     pub fn kind_error(&self, expected: ExpectedEvent) -> ReadError {
         let expected = Some(expected);
         match self {
@@ -189,73 +189,73 @@ impl PartialEq for NumericValue {
     }
 }
 
-impl<'a> From<u8> for ReadEvent<'a> {
+impl From<u8> for ReadEvent<'_> {
     fn from(n: u8) -> Self {
         ReadEvent::Number(NumericValue::Int(n.into()))
     }
 }
 
-impl<'a> From<i16> for ReadEvent<'a> {
+impl From<i16> for ReadEvent<'_> {
     fn from(n: i16) -> Self {
         ReadEvent::Number(NumericValue::Int(n.into()))
     }
 }
 
-impl<'a> From<u16> for ReadEvent<'a> {
+impl From<u16> for ReadEvent<'_> {
     fn from(n: u16) -> Self {
         ReadEvent::Number(NumericValue::UInt(n.into()))
     }
 }
 
-impl<'a> From<i8> for ReadEvent<'a> {
+impl From<i8> for ReadEvent<'_> {
     fn from(n: i8) -> Self {
         ReadEvent::Number(NumericValue::Int(n.into()))
     }
 }
 
-impl<'a> From<i32> for ReadEvent<'a> {
+impl From<i32> for ReadEvent<'_> {
     fn from(n: i32) -> Self {
         ReadEvent::Number(NumericValue::Int(n.into()))
     }
 }
 
-impl<'a> From<i64> for ReadEvent<'a> {
+impl From<i64> for ReadEvent<'_> {
     fn from(n: i64) -> Self {
         ReadEvent::Number(NumericValue::Int(n))
     }
 }
 
-impl<'a> From<u32> for ReadEvent<'a> {
+impl From<u32> for ReadEvent<'_> {
     fn from(n: u32) -> Self {
         ReadEvent::Number(NumericValue::UInt(n.into()))
     }
 }
 
-impl<'a> From<u64> for ReadEvent<'a> {
+impl From<u64> for ReadEvent<'_> {
     fn from(n: u64) -> Self {
         ReadEvent::Number(NumericValue::UInt(n))
     }
 }
 
-impl<'a> From<f64> for ReadEvent<'a> {
+impl From<f64> for ReadEvent<'_> {
     fn from(x: f64) -> Self {
         ReadEvent::Number(NumericValue::Float(x))
     }
 }
 
-impl<'a> From<f32> for ReadEvent<'a> {
+impl From<f32> for ReadEvent<'_> {
     fn from(x: f32) -> Self {
         ReadEvent::Number(NumericValue::Float(x.into()))
     }
 }
 
-impl<'a> From<BigInt> for ReadEvent<'a> {
+impl From<BigInt> for ReadEvent<'_> {
     fn from(n: BigInt) -> Self {
         ReadEvent::Number(NumericValue::BigInt(n))
     }
 }
 
-impl<'a> From<BigUint> for ReadEvent<'a> {
+impl From<BigUint> for ReadEvent<'_> {
     fn from(n: BigUint) -> Self {
         ReadEvent::Number(NumericValue::BigUint(n))
     }
@@ -267,7 +267,7 @@ impl<'a> From<&'a str> for ReadEvent<'a> {
     }
 }
 
-impl<'a> From<String> for ReadEvent<'a> {
+impl From<String> for ReadEvent<'_> {
     fn from(s: String) -> Self {
         ReadEvent::TextValue(Cow::Owned(s))
     }
@@ -279,19 +279,19 @@ impl<'a> From<Cow<'a, str>> for ReadEvent<'a> {
     }
 }
 
-impl<'a> From<Text> for ReadEvent<'a> {
+impl From<Text> for ReadEvent<'_> {
     fn from(s: Text) -> Self {
         ReadEvent::TextValue(Cow::Owned(s.to_string()))
     }
 }
 
-impl<'a> From<bool> for ReadEvent<'a> {
+impl From<bool> for ReadEvent<'_> {
     fn from(p: bool) -> Self {
         ReadEvent::Boolean(p)
     }
 }
 
-impl<'a> From<Vec<u8>> for ReadEvent<'a> {
+impl From<Vec<u8>> for ReadEvent<'_> {
     fn from(blob: Vec<u8>) -> Self {
         ReadEvent::Blob(blob)
     }

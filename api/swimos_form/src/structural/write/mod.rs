@@ -586,7 +586,7 @@ impl StructuralWritable for String {
     }
 }
 
-impl<'a> StructuralWritable for &'a str {
+impl StructuralWritable for &str {
     fn num_attributes(&self) -> usize {
         0
     }

@@ -72,7 +72,7 @@ struct TestContext<'a> {
     agent: &'a ConnectorAgent,
 }
 
-impl<'a> EgressContext for TestContext<'a> {
+impl EgressContext for TestContext<'_> {
     fn open_lane(&mut self, name: &str, kind: WarpLaneKind) {
         self.agent
             .register_dynamic_item(

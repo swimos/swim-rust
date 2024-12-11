@@ -129,7 +129,7 @@ pub struct ActionContext<'a, Context> {
     command_buffer: &'a mut BytesMut,
 }
 
-impl<'a, Context> Spawner<Context> for ActionContext<'a, Context> {
+impl<Context> Spawner<Context> for ActionContext<'_, Context> {
     fn spawn_suspend(&self, fut: HandlerFuture<Context>) {
         self.spawner.spawn_suspend(fut);
     }
@@ -364,7 +364,7 @@ pub type BoxEventHandler<'a, Context> = BoxHandlerAction<'a, Context, ()>;
 
 impl<Context, H> EventHandler<Context> for H where H: HandlerAction<Context, Completion = ()> {}
 
-impl<'a, H, Context> HandlerAction<Context> for &'a mut H
+impl<H, Context> HandlerAction<Context> for &mut H
 where
     H: HandlerAction<Context>,
 {
@@ -830,7 +830,7 @@ impl<'a, Context, H> Described<'a, Context, H> {
     }
 }
 
-impl<'a, Context, H> std::fmt::Debug for Described<'a, Context, H>
+impl<Context, H> std::fmt::Debug for Described<'_, Context, H>
 where
     H: HandlerAction<Context>,
 {

@@ -35,7 +35,7 @@ impl<'a> Headers<'a> {
 #[derive(Debug)]
 pub struct InvalidHeader;
 
-impl<'a> Headers<'a> {
+impl Headers<'_> {
     /// Get the content type specified for a request, if present.
     pub fn content_type(&self) -> Result<Option<Mime>, InvalidHeader> {
         let Headers { headers } = self;

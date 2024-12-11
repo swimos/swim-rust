@@ -484,8 +484,8 @@ macro_rules! step {
     };
 }
 
-impl<'a, Context, Get, Post, Put, Codec, LC> HandlerAction<Context>
-    for HttpLifecycleHandler<'a, Context, Get, Post, Put, Codec, LC>
+impl<Context, Get, Post, Put, Codec, LC> HandlerAction<Context>
+    for HttpLifecycleHandler<'_, Context, Get, Post, Put, Codec, LC>
 where
     Context: AgentDescription,
     Codec: HttpLaneCodec<Get>,
@@ -773,8 +773,8 @@ where
     }
 }
 
-impl<'a, Context, Shared, Get, Post, Put, Codec, LC> HandlerAction<Context>
-    for HttpLifecycleHandlerShared<'a, Context, Shared, Get, Post, Put, Codec, LC>
+impl<Context, Shared, Get, Post, Put, Codec, LC> HandlerAction<Context>
+    for HttpLifecycleHandlerShared<'_, Context, Shared, Get, Post, Put, Codec, LC>
 where
     Context: AgentDescription,
     Codec: HttpLaneCodec<Get>,

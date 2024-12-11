@@ -578,7 +578,7 @@ pub enum AfterClosed<'a, L, K, V, Context> {
     Done,
 }
 
-impl<'a, L, K, V, Context> HandlerAction<Context> for AfterClosed<'a, L, K, V, Context>
+impl<L, K, V, Context> HandlerAction<Context> for AfterClosed<'_, L, K, V, Context>
 where
     Context: AgentDescription + 'static,
     L: Clone + Hash + Eq + Send + 'static,

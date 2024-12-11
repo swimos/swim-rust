@@ -92,7 +92,7 @@ impl<'a, W> MsgPackInterpreter<'a, W> {
     }
 }
 
-impl<'a, W> MsgPackBodyInterpreter<'a, W> {
+impl<W> MsgPackBodyInterpreter<'_, W> {
     fn child(&mut self) -> MsgPackInterpreter<'_, W> {
         let MsgPackBodyInterpreter { writer, .. } = self;
         MsgPackInterpreter::new(*writer)
@@ -193,7 +193,7 @@ impl Display for MsgPackWriteError {
 
 impl std::error::Error for MsgPackWriteError {}
 
-impl<'a, W: Write> PrimitiveWriter for MsgPackInterpreter<'a, W> {
+impl<W: Write> PrimitiveWriter for MsgPackInterpreter<'_, W> {
     type Repr = ();
     type Error = MsgPackWriteError;
 
@@ -348,7 +348,7 @@ impl<'a, W: Write> HeaderWriter for MsgPackInterpreter<'a, W> {
     }
 }
 
-impl<'a, W: Write> BodyWriter for MsgPackBodyInterpreter<'a, W> {
+impl<W: Write> BodyWriter for MsgPackBodyInterpreter<'_, W> {
     type Repr = ();
     type Error = MsgPackWriteError;
 

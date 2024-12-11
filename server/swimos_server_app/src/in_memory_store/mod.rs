@@ -116,7 +116,7 @@ type MapIt<'a> = std::collections::btree_map::Iter<'a, Vec<u8>, Vec<u8>>;
 
 pub struct InMemRangeConsumer<'a>(Option<MapIt<'a>>);
 
-impl<'a> RangeConsumer for InMemRangeConsumer<'a> {
+impl RangeConsumer for InMemRangeConsumer<'_> {
     fn consume_next(&mut self) -> Result<Option<KeyValue<'_>>, StoreError> {
         let InMemRangeConsumer(inner) = self;
         Ok(inner

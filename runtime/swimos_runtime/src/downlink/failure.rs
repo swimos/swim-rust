@@ -119,7 +119,7 @@ where
 #[doc(hidden)]
 pub type BoxedReportStrategy<'a, E> = Box<dyn BadFrameStrategy<E, Report = ErrReport> + Send + 'a>;
 
-impl<'a, E> BadFrameStrategy<E> for BoxedReportStrategy<'a, E> {
+impl<E> BadFrameStrategy<E> for BoxedReportStrategy<'_, E> {
     type Report = ErrReport;
 
     fn failed_with(&mut self, error: E) -> BadFrameResponse<Self::Report> {

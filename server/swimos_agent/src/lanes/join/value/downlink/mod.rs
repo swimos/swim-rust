@@ -302,7 +302,7 @@ impl<'a, K, V, Context> AfterClosed<'a, K, V, Context> {
     }
 }
 
-impl<'a, K, V, Context> HandlerAction<Context> for AfterClosed<'a, K, V, Context>
+impl<K, V, Context> HandlerAction<Context> for AfterClosed<'_, K, V, Context>
 where
     Context: AgentDescription + 'static,
     K: Hash + Eq + Clone + Send + 'static,

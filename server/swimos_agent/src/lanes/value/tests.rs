@@ -498,7 +498,7 @@ impl SelectorFn<TestAgent> for TestSelectorFn {
 
 struct TestSelector<'a>(&'a TestAgent, bool);
 
-impl<'a> Selector for TestSelector<'a> {
+impl Selector for TestSelector<'_> {
     type Target = ValueLane<i32>;
 
     fn select(&self) -> Option<&Self::Target> {

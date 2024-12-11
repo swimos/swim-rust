@@ -78,7 +78,7 @@ enum State<T> {
 
 struct ShowState<'a, T>(&'a State<T>);
 
-impl<'a, T: StructuralWritable> Display for ShowState<'a, T> {
+impl<T: StructuralWritable> Display for ShowState<'_, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let ShowState(inner) = self;
         match *inner {

@@ -329,7 +329,7 @@ fn calculate_body_kind() {
         Item::slot(2, "second"),
         Item::slot(true, false),
     ];
-    let mixed = vec![Item::of(1), Item::slot("second", 2)];
+    let mixed = [Item::of(1), Item::slot("second", 2)];
 
     assert_eq!(
         RecordBodyKind::of_iter(array_like.iter()),

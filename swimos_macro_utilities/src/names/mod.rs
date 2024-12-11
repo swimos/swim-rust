@@ -238,7 +238,7 @@ impl<'a> From<NameTransformError<'a>> for syn::Error {
     }
 }
 
-impl<'a> std::fmt::Debug for NameTransformError<'a> {
+impl std::fmt::Debug for NameTransformError<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::NonStringName(arg0) => f.debug_tuple("NonStringName").field(arg0).finish(),
@@ -281,7 +281,7 @@ impl<'a> TypeLevelNameTransformConsumer<'a> {
     }
 }
 
-impl<'a> NestedMetaConsumer<CaseConvention> for TypeLevelNameTransformConsumer<'a> {
+impl NestedMetaConsumer<CaseConvention> for TypeLevelNameTransformConsumer<'_> {
     fn try_consume(&self, meta: &syn::NestedMeta) -> Result<Option<CaseConvention>, syn::Error> {
         let TypeLevelNameTransformConsumer { convention_tag } = self;
         match meta {
@@ -320,7 +320,7 @@ impl<'a> NameTransformConsumer<'a> {
     }
 }
 
-impl<'a> NestedMetaConsumer<Transformation> for NameTransformConsumer<'a> {
+impl NestedMetaConsumer<Transformation> for NameTransformConsumer<'_> {
     fn try_consume(&self, meta: &syn::NestedMeta) -> Result<Option<Transformation>, syn::Error> {
         let NameTransformConsumer {
             rename_tag,

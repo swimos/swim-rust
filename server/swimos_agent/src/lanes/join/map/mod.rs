@@ -813,14 +813,13 @@ impl<C, L, K, V, F, B: ?Sized> JoinMapLaneWithEntry<C, L, K, V, F, B> {
     }
 }
 
-impl<'a, C, L, K, V, F, B, U> HandlerAction<C> for JoinMapLaneWithEntry<C, L, K, V, F, B>
+impl<C, L, K, V, F, B, U> HandlerAction<C> for JoinMapLaneWithEntry<C, L, K, V, F, B>
 where
     C: AgentDescription,
     K: Eq + Hash + 'static,
-    C: 'a,
     B: ?Sized + 'static,
     V: Borrow<B>,
-    F: FnOnce(Option<&B>) -> U + Send + 'a,
+    F: FnOnce(Option<&B>) -> U + Send,
 {
     type Completion = U;
 
@@ -860,11 +859,13 @@ where
     K: Clone + Eq + Hash + Send + 'static,
     V: Clone + Send + 'static,
 {
-    type GetHandler<C> = JoinMapLaneGet<C, L, K, V>
+    type GetHandler<C>
+        = JoinMapLaneGet<C, L, K, V>
     where
         C: AgentDescription + 'static;
 
-    type GetMapHandler<C> = JoinMapLaneGetMap<C, L, K, V>
+    type GetMapHandler<C>
+        = JoinMapLaneGetMap<C, L, K, V>
     where
         C: AgentDescription + 'static;
 
@@ -889,7 +890,8 @@ where
     V: Borrow<B> + Send + 'static,
     B: ?Sized + 'static,
 {
-    type WithEntryHandler<'a, C, F, U> = JoinMapLaneWithEntry<C, L, K, V, F, B>
+    type WithEntryHandler<'a, C, F, U>
+        = JoinMapLaneWithEntry<C, L, K, V, F, B>
     where
         Self: 'static,
         C: AgentDescription + 'a,
@@ -986,7 +988,8 @@ where
     K: Eq + Clone + Hash + 'static,
     V: 'static,
 {
-    type RemoveDownlinkHandler<C> = JoinMapRemoveDownlink<L, C, K, V>
+    type RemoveDownlinkHandler<C>
+        = JoinMapRemoveDownlink<L, C, K, V>
     where
         C: AgentDescription + 'static;
 

@@ -2012,7 +2012,7 @@ pub enum ItemLifecycle<'a> {
     Map(MapLifecycleDescriptor<'a>),
 }
 
-impl<'a> ItemLifecycle<'a> {
+impl ItemLifecycle<'_> {
     fn item_name(&self) -> &str {
         let name = match self {
             ItemLifecycle::Value(ValueLifecycleDescriptor { name, .. }) => name,
