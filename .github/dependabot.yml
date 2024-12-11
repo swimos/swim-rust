@@ -7,7 +7,6 @@ updates:
       interval: "daily"
     reviewers:
       - "SirCipher"
-      - "horned-sphere"
   - package-ecosystem: "npm"
     directory: "/"
     schedule:
@@ -15,4 +14,3 @@ updates:
     open-pull-requests-limit: 0
     reviewers:
       - "SirCipher"
-      - "horned-sphere"
