@@ -217,7 +217,8 @@ where
     R: HTree + ItemEvent<Context>,
     M: MapOpsWithEntry<K, V, K>,
 {
-    type ItemEventHandler<'a> = MapBranchHandler<'a, Context, K, V, M, LC, L, R>
+    type ItemEventHandler<'a>
+        = MapBranchHandler<'a, Context, K, V, M, LC, L, R>
     where
         Self: 'a;
 
@@ -259,7 +260,8 @@ where
     R: HTree + ItemEventShared<Context, Shared>,
     M: MapOpsWithEntry<K, V, K>,
 {
-    type ItemEventHandler<'a> = MapBranchHandlerShared<'a, Context, Shared, K, V, M, LC, L, R>
+    type ItemEventHandler<'a>
+        = MapBranchHandlerShared<'a, Context, Shared, K, V, M, LC, L, R>
     where
         Self: 'a,
         Shared: 'a;

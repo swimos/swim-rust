@@ -113,7 +113,7 @@ pub struct RouteUriParts<'a> {
     pub fragment: Option<Span<'a>>,
 }
 
-impl<'a> RouteUriParts<'a> {
+impl RouteUriParts<'_> {
     pub fn scheme_len(&self) -> Option<usize> {
         self.scheme.map(|span| span.len())
     }

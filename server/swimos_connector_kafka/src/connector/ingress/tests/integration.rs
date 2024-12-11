@@ -227,7 +227,8 @@ impl KafkaMessage for IndexedMockMessage {
 }
 
 impl KafkaConsumer for MockConsumer {
-    type Msg<'a> = IndexedMockMessage
+    type Msg<'a>
+        = IndexedMockMessage
     where
         Self: 'a;
 

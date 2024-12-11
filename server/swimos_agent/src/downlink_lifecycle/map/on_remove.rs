@@ -58,7 +58,8 @@ pub trait OnDownlinkRemoveShared<K, V, M, Context, Shared>: Send {
 }
 
 impl<K, V, M, Context> OnDownlinkRemove<K, V, M, Context> for NoHandler {
-    type OnRemoveHandler<'a> = UnitHandler
+    type OnRemoveHandler<'a>
+        = UnitHandler
     where
         Self: 'a;
 
@@ -68,7 +69,8 @@ impl<K, V, M, Context> OnDownlinkRemove<K, V, M, Context> for NoHandler {
 }
 
 impl<K, V, M, Context, Shared> OnDownlinkRemoveShared<K, V, M, Context, Shared> for NoHandler {
-    type OnRemoveHandler<'a> = UnitHandler
+    type OnRemoveHandler<'a>
+        = UnitHandler
     where
         Self: 'a,
         Shared: 'a;
@@ -90,7 +92,8 @@ where
     F: Fn(K, &M, V) -> H + Send,
     H: EventHandler<Context> + 'static,
 {
-    type OnRemoveHandler<'a> = H
+    type OnRemoveHandler<'a>
+        = H
     where
         Self: 'a;
 
@@ -104,7 +107,8 @@ impl<K, V, M, Context, Shared, F> OnDownlinkRemoveShared<K, V, M, Context, Share
 where
     F: for<'a> MapRemoveFn<'a, Context, Shared, K, V, M> + Send,
 {
-    type OnRemoveHandler<'a> = <F as MapRemoveFn<'a, Context, Shared, K, V, M>>::Handler
+    type OnRemoveHandler<'a>
+        = <F as MapRemoveFn<'a, Context, Shared, K, V, M>>::Handler
     where
         Self: 'a,
         Shared: 'a;
@@ -127,7 +131,8 @@ where
     F: Fn(HandlerContext<Context>, K, &M, V) -> H + Send,
     H: EventHandler<Context> + 'static,
 {
-    type OnRemoveHandler<'a> = H
+    type OnRemoveHandler<'a>
+        = H
     where
         Self: 'a;
 
@@ -142,7 +147,8 @@ impl<K, V, M, Context, Shared, F> OnDownlinkRemoveShared<K, V, M, Context, Share
 where
     F: OnDownlinkRemove<K, V, M, Context> + Send,
 {
-    type OnRemoveHandler<'a> = F::OnRemoveHandler<'a>
+    type OnRemoveHandler<'a>
+        = F::OnRemoveHandler<'a>
     where
         Self: 'a,
         Shared: 'a;

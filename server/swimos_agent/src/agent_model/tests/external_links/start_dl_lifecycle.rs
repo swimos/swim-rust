@@ -87,7 +87,8 @@ impl OnTimer<EmptyAgent> for StartDownlinkLifecycle {
 }
 
 impl ItemEvent<EmptyAgent> for StartDownlinkLifecycle {
-    type ItemEventHandler<'a> = UnitHandler
+    type ItemEventHandler<'a>
+        = UnitHandler
     where
         Self: 'a;
 

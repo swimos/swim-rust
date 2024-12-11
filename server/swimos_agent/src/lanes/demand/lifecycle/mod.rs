@@ -83,7 +83,8 @@ where
     OnCue: OnCueShared<T, Context, Shared>,
     T: 'static,
 {
-    type OnCueHandler<'a> = OnCue::OnCueHandler<'a>
+    type OnCueHandler<'a>
+        = OnCue::OnCueHandler<'a>
     where
         Self: 'a,
         Shared: 'a;

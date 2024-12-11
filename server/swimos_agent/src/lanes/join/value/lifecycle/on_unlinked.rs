@@ -55,7 +55,8 @@ pub trait OnJoinValueUnlinkedShared<K, Context, Shared>: Send {
 }
 
 impl<K, Context> OnJoinValueUnlinked<K, Context> for NoHandler {
-    type OnJoinValueUnlinkedHandler<'a> = ConstHandler<LinkClosedResponse>
+    type OnJoinValueUnlinkedHandler<'a>
+        = ConstHandler<LinkClosedResponse>
     where
         Self: 'a;
 
@@ -73,7 +74,8 @@ where
     F: Fn(K, Address<&str>) -> H + Send,
     H: HandlerAction<Context, Completion = LinkClosedResponse> + 'static,
 {
-    type OnJoinValueUnlinkedHandler<'a> = H
+    type OnJoinValueUnlinkedHandler<'a>
+        = H
     where
         Self: 'a;
 
@@ -88,7 +90,8 @@ where
 }
 
 impl<K, Context, Shared> OnJoinValueUnlinkedShared<K, Context, Shared> for NoHandler {
-    type OnJoinValueUnlinkedHandler<'a> = ConstHandler<LinkClosedResponse>
+    type OnJoinValueUnlinkedHandler<'a>
+        = ConstHandler<LinkClosedResponse>
     where
         Self: 'a,
         Shared: 'a;
@@ -108,7 +111,8 @@ impl<K, Context, Shared, F> OnJoinValueUnlinkedShared<K, Context, Shared> for Fn
 where
     F: for<'a> JoinHandlerFn<'a, Context, Shared, K, LinkClosedResponse> + Send,
 {
-    type OnJoinValueUnlinkedHandler<'a> = <F as JoinHandlerFn<'a, Context, Shared, K, LinkClosedResponse>>::Handler
+    type OnJoinValueUnlinkedHandler<'a>
+        = <F as JoinHandlerFn<'a, Context, Shared, K, LinkClosedResponse>>::Handler
     where
         Self: 'a,
         Shared: 'a;
@@ -130,7 +134,8 @@ where
     F: Fn(HandlerContext<Context>, K, Address<&str>) -> H + Send,
     H: HandlerAction<Context, Completion = LinkClosedResponse> + 'static,
 {
-    type OnJoinValueUnlinkedHandler<'a> = H
+    type OnJoinValueUnlinkedHandler<'a>
+        = H
     where
         Self: 'a;
 
@@ -148,7 +153,8 @@ impl<K, Context, Shared, F> OnJoinValueUnlinkedShared<K, Context, Shared> for Li
 where
     F: OnJoinValueUnlinked<K, Context> + Send,
 {
-    type OnJoinValueUnlinkedHandler<'a> = F::OnJoinValueUnlinkedHandler<'a>
+    type OnJoinValueUnlinkedHandler<'a>
+        = F::OnJoinValueUnlinkedHandler<'a>
     where
         Self: 'a,
         Shared: 'a;

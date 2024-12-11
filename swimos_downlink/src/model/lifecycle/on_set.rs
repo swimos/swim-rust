@@ -53,7 +53,8 @@ pub trait OnSetShared<T, Shared>: Send {
 }
 
 impl<T> OnSet<T> for NoHandler {
-    type OnSetFut<'a> = Ready<()>
+    type OnSetFut<'a>
+        = Ready<()>
     where
         Self: 'a,
         T: 'a;
@@ -67,7 +68,8 @@ impl<T, F> OnSet<T> for FnMutHandler<F>
 where
     F: for<'a> SetFn<'a, T> + Send,
 {
-    type OnSetFut<'a> = <F as SetFn<'a, T>>::Fut
+    type OnSetFut<'a>
+        = <F as SetFn<'a, T>>::Fut
     where
         Self: 'a,
         T: 'a;
@@ -79,7 +81,8 @@ where
 }
 
 impl<T, Shared> OnSetShared<T, Shared> for NoHandler {
-    type OnSetFut<'a> = Ready<()>
+    type OnSetFut<'a>
+        = Ready<()>
     where
         Self: 'a,
         Shared: 'a,
@@ -99,7 +102,8 @@ impl<T, Shared, F> OnSetShared<T, Shared> for FnMutHandler<F>
 where
     F: for<'a> SharedSetFn<'a, Shared, T> + Send,
 {
-    type OnSetFut<'a> = <F as SharedSetFn<'a, Shared, T>>::Fut
+    type OnSetFut<'a>
+        = <F as SharedSetFn<'a, Shared, T>>::Fut
     where
         Self: 'a,
         Shared: 'a,
@@ -120,7 +124,8 @@ impl<T, H, Shared> OnSetShared<T, Shared> for WithShared<H>
 where
     H: OnSet<T>,
 {
-    type OnSetFut<'a> = H::OnSetFut<'a>
+    type OnSetFut<'a>
+        = H::OnSetFut<'a>
     where
         Self: 'a,
         Shared: 'a,
@@ -140,7 +145,8 @@ impl<F, T> OnSet<T> for BlockingHandler<F>
 where
     F: FnMut(Option<&T>, &T) + Send,
 {
-    type OnSetFut<'a> = Ready<()>
+    type OnSetFut<'a>
+        = Ready<()>
     where
         Self: 'a,
         T: 'a;
@@ -156,7 +162,8 @@ impl<T, F, Shared> OnSetShared<T, Shared> for BlockingHandler<F>
 where
     F: FnMut(&mut Shared, Option<&T>, &T) + Send,
 {
-    type OnSetFut<'a> = Ready<()>
+    type OnSetFut<'a>
+        = Ready<()>
     where
         Self: 'a,
         Shared: 'a,

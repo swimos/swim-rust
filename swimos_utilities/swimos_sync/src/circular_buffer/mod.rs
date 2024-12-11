@@ -234,7 +234,7 @@ where
     }
 }
 
-impl<'a, T: Send> Future for Recv<'a, T> {
+impl<T: Send> Future for Recv<'_, T> {
     type Output = Result<T, error::RecvError>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {

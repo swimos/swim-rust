@@ -54,7 +54,8 @@ pub trait OnDeleteShared<Context, Shared>: Send {
 }
 
 impl<Context> OnDelete<Context> for NoHandler {
-    type OnDeleteHandler<'a> = UnsupportedHandler
+    type OnDeleteHandler<'a>
+        = UnsupportedHandler
     where
         Self: 'a;
 
@@ -64,7 +65,8 @@ impl<Context> OnDelete<Context> for NoHandler {
 }
 
 impl<Context, Shared> OnDeleteShared<Context, Shared> for NoHandler {
-    type OnDeleteHandler<'a> = UnsupportedHandler
+    type OnDeleteHandler<'a>
+        = UnsupportedHandler
     where
         Self: 'a,
         Shared: 'a;
@@ -84,7 +86,8 @@ where
     F: Fn(HttpRequestContext) -> H + Send,
     H: HandlerAction<Context, Completion = UnitResponse> + 'static,
 {
-    type OnDeleteHandler<'a> = H
+    type OnDeleteHandler<'a>
+        = H
     where
         Self: 'a;
 
@@ -98,7 +101,8 @@ impl<Context, Shared, F> OnDeleteShared<Context, Shared> for FnHandler<F>
 where
     F: for<'a> RequestFn0<'a, Context, Shared> + Send,
 {
-    type OnDeleteHandler<'a> = <F as RequestFn0<'a, Context, Shared>>::Handler
+    type OnDeleteHandler<'a>
+        = <F as RequestFn0<'a, Context, Shared>>::Handler
     where
         Self: 'a,
         Shared: 'a;

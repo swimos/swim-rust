@@ -54,7 +54,8 @@ pub trait OnDownlinkEventShared<T, Context, Shared>: Send {
 }
 
 impl<T, Context> OnDownlinkEvent<T, Context> for NoHandler {
-    type OnEventHandler<'a> = UnitHandler
+    type OnEventHandler<'a>
+        = UnitHandler
     where
         Self: 'a;
 
@@ -64,7 +65,8 @@ impl<T, Context> OnDownlinkEvent<T, Context> for NoHandler {
 }
 
 impl<T, Context, Shared> OnDownlinkEventShared<T, Context, Shared> for NoHandler {
-    type OnEventHandler<'a> = UnitHandler
+    type OnEventHandler<'a>
+        = UnitHandler
     where
         Self: 'a,
         Shared: 'a;
@@ -84,7 +86,9 @@ where
     F: Fn(&T) -> H + Send,
     H: EventHandler<Context> + 'static,
 {
-    type OnEventHandler<'a> = H where
+    type OnEventHandler<'a>
+        = H
+    where
         Self: 'a;
 
     fn on_event(&self, value: &T) -> Self::OnEventHandler<'_> {
@@ -97,7 +101,8 @@ impl<T, Context, Shared, F> OnDownlinkEventShared<T, Context, Shared> for FnHand
 where
     F: for<'a> EventFn<'a, Context, Shared, T> + Send,
 {
-    type OnEventHandler<'a> = <F as EventFn<'a, Context, Shared, T>>::Handler
+    type OnEventHandler<'a>
+        = <F as EventFn<'a, Context, Shared, T>>::Handler
     where
         Self: 'a,
         Shared: 'a;
@@ -118,7 +123,8 @@ where
     F: Fn(HandlerContext<Context>, &T) -> H + Send,
     H: EventHandler<Context> + 'static,
 {
-    type OnEventHandler<'a> = H
+    type OnEventHandler<'a>
+        = H
     where
         Self: 'a;
 
@@ -132,7 +138,8 @@ impl<T, Context, Shared, F> OnDownlinkEventShared<T, Context, Shared> for LiftSh
 where
     F: OnDownlinkEvent<T, Context> + Send,
 {
-    type OnEventHandler<'a> = F::OnEventHandler<'a>
+    type OnEventHandler<'a>
+        = F::OnEventHandler<'a>
     where
         Self: 'a,
         Shared: 'a;
@@ -155,7 +162,8 @@ where
     F: Fn(&B) -> H + Send,
     H: EventHandler<Context> + 'static,
 {
-    type OnEventHandler<'a> = H
+    type OnEventHandler<'a>
+        = H
     where
         Self: 'a;
 
@@ -171,7 +179,8 @@ where
     F: Fn(HandlerContext<Context>, &B) -> H + Send,
     H: EventHandler<Context> + 'static,
 {
-    type OnEventHandler<'a> = H
+    type OnEventHandler<'a>
+        = H
     where
         Self: 'a;
 
@@ -187,7 +196,8 @@ where
     T: Borrow<B>,
     F: for<'a> EventFn<'a, Context, Shared, B> + Send,
 {
-    type OnEventHandler<'a> = <F as EventFn<'a, Context, Shared, B>>::Handler
+    type OnEventHandler<'a>
+        = <F as EventFn<'a, Context, Shared, B>>::Handler
     where
         Self: 'a,
         Shared: 'a;

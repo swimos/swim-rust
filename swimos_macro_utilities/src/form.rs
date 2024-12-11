@@ -96,13 +96,13 @@ pub struct FormField<'a> {
     pub kind: FieldKind,
 }
 
-impl<'a> SynOriginal for FormField<'a> {
+impl SynOriginal for FormField<'_> {
     fn original(&self) -> &Field {
         self.original
     }
 }
 
-impl<'a> FormField<'a> {
+impl FormField<'_> {
     pub fn is_skipped(&self) -> bool {
         self.kind == FieldKind::Skip && !self.label.is_foreign()
     }

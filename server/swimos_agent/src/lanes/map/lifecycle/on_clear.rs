@@ -51,7 +51,8 @@ pub trait OnClearShared<M, Context, Shared>: Send {
 }
 
 impl<M, Context> OnClear<M, Context> for NoHandler {
-    type OnClearHandler<'a> = UnitHandler
+    type OnClearHandler<'a>
+        = UnitHandler
     where
         Self: 'a;
 
@@ -61,7 +62,8 @@ impl<M, Context> OnClear<M, Context> for NoHandler {
 }
 
 impl<M, Context, Shared> OnClearShared<M, Context, Shared> for NoHandler {
-    type OnClearHandler<'a> = UnitHandler
+    type OnClearHandler<'a>
+        = UnitHandler
     where
         Self: 'a,
         Shared: 'a;
@@ -81,7 +83,8 @@ where
     F: Fn(M) -> H + Send,
     H: EventHandler<Context> + 'static,
 {
-    type OnClearHandler<'a> = H
+    type OnClearHandler<'a>
+        = H
     where
         Self: 'a;
 
@@ -95,7 +98,8 @@ impl<M, Context, Shared, F> OnClearShared<M, Context, Shared> for FnHandler<F>
 where
     F: for<'a> TakeFn<'a, Context, Shared, M> + Send,
 {
-    type OnClearHandler<'a> = <F as TakeFn<'a, Context, Shared, M>>::Handler
+    type OnClearHandler<'a>
+        = <F as TakeFn<'a, Context, Shared, M>>::Handler
     where
         Self: 'a,
         Shared: 'a;

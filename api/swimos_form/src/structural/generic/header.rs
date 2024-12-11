@@ -19,7 +19,7 @@ use swimos_model::Value;
 
 pub struct WritableRef<'a, T>(&'a T);
 
-impl<'a, T: StructuralWritable> StructuralWritable for WritableRef<'a, T> {
+impl<T: StructuralWritable> StructuralWritable for WritableRef<'_, T> {
     fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
         self.0.write_with(writer)
     }

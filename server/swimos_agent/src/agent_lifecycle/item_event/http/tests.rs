@@ -169,7 +169,8 @@ impl<T, Shared> OnGetShared<T, TestAgent, Shared> for FakeLifecycle<T>
 where
     T: Clone + Send,
 {
-    type OnGetHandler<'a> = GetHandler<T>
+    type OnGetHandler<'a>
+        = GetHandler<T>
     where
         Self: 'a,
         Shared: 'a;
@@ -190,7 +191,8 @@ impl<T, Shared> OnPostShared<T, TestAgent, Shared> for FakeLifecycle<T>
 where
     T: Send,
 {
-    type OnPostHandler<'a> = OtherHandler<T>
+    type OnPostHandler<'a>
+        = OtherHandler<T>
     where
         Self: 'a,
         Shared: 'a;
@@ -213,7 +215,8 @@ impl<T, Shared> OnPutShared<T, TestAgent, Shared> for FakeLifecycle<T>
 where
     T: Send,
 {
-    type OnPutHandler<'a> = OtherHandler<T>
+    type OnPutHandler<'a>
+        = OtherHandler<T>
     where
         Self: 'a,
         Shared: 'a;
@@ -236,7 +239,8 @@ impl<T, Shared> OnDeleteShared<TestAgent, Shared> for FakeLifecycle<T>
 where
     T: Send,
 {
-    type OnDeleteHandler<'a> = OtherHandler<T>
+    type OnDeleteHandler<'a>
+        = OtherHandler<T>
     where
         Self: 'a,
         Shared: 'a;

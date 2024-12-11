@@ -29,7 +29,7 @@ impl<'a> ProjectionsImpl<'a> {
     }
 }
 
-impl<'a> ToTokens for ProjectionsImpl<'a> {
+impl ToTokens for ProjectionsImpl<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let ProjectionsImpl(AgentFields {
             agent_name,

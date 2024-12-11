@@ -54,7 +54,8 @@ impl<K, V, Context> OnCueKey<K, V, Context> for NoHandler
 where
     V: 'static,
 {
-    type OnCueKeyHandler<'a> = ConstHandler<Option<V>>
+    type OnCueKeyHandler<'a>
+        = ConstHandler<Option<V>>
     where
         Self: 'a;
 
@@ -67,7 +68,8 @@ impl<K, V, Context, Shared> OnCueKeyShared<K, V, Context, Shared> for NoHandler
 where
     V: 'static,
 {
-    type OnCueKeyHandler<'a> = ConstHandler<Option<V>>
+    type OnCueKeyHandler<'a>
+        = ConstHandler<Option<V>>
     where
         Self: 'a,
         Shared: 'a;
@@ -88,7 +90,8 @@ where
     H: HandlerAction<Context, Completion = Option<V>> + 'static,
     V: 'static,
 {
-    type OnCueKeyHandler<'a> = H
+    type OnCueKeyHandler<'a>
+        = H
     where
         Self: 'a;
 
@@ -103,7 +106,8 @@ where
     V: 'static,
     F: for<'a> CueFn1<'a, K, Option<V>, Context, Shared> + Send,
 {
-    type OnCueKeyHandler<'a> = <F as CueFn1<'a, K, Option<V>, Context, Shared>>::Handler
+    type OnCueKeyHandler<'a>
+        = <F as CueFn1<'a, K, Option<V>, Context, Shared>>::Handler
     where
         Self: 'a,
         Shared: 'a;

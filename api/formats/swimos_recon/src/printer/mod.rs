@@ -50,7 +50,7 @@ pub fn print_recon_pretty<T: StructuralWritable>(value: &T) -> impl Display + '_
 
 struct ReconPrint<'a, T, S>(&'a T, S);
 
-impl<'a, T: StructuralWritable, S: PrintStrategy + Copy> Display for ReconPrint<'a, T, S> {
+impl<T: StructuralWritable, S: PrintStrategy + Copy> Display for ReconPrint<'_, T, S> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let ReconPrint(inner, strategy) = self;
         let printer = StructurePrinter::new(f, *strategy);
@@ -68,7 +68,7 @@ struct StructurePrinter<'a, 'b, S> {
     delegated: bool,
 }
 
-impl<'a, 'b, S: Debug> Debug for StructurePrinter<'a, 'b, S> {
+impl<S: Debug> Debug for StructurePrinter<'_, '_, S> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("StructurePrinter")
             .field("strategy", &self.strategy)
@@ -129,7 +129,7 @@ impl<'a, 'b, S> AttributePrinter<'a, 'b, S> {
     }
 }
 
-impl<'a, 'b, S> PrimitiveWriter for StructurePrinter<'a, 'b, S>
+impl<S> PrimitiveWriter for StructurePrinter<'_, '_, S>
 where
     S: PrintStrategy + Copy,
 {
@@ -241,7 +241,7 @@ where
     }
 }
 
-impl<'a, 'b, S> StructuralWriter for StructurePrinter<'a, 'b, S>
+impl<S> StructuralWriter for StructurePrinter<'_, '_, S>
 where
     S: PrintStrategy + Copy,
 {
@@ -253,7 +253,7 @@ where
     }
 }
 
-impl<'a, 'b, S> HeaderWriter for StructurePrinter<'a, 'b, S>
+impl<S> HeaderWriter for StructurePrinter<'_, '_, S>
 where
     S: PrintStrategy + Copy,
 {
@@ -329,7 +329,7 @@ where
     }
 }
 
-impl<'a, 'b, S> BodyWriter for StructurePrinter<'a, 'b, S>
+impl<S> BodyWriter for StructurePrinter<'_, '_, S>
 where
     S: PrintStrategy + Copy,
 {
@@ -457,7 +457,7 @@ fn write_attr_body_val<T: Display>(
     }
 }
 
-impl<'a, 'b, S> PrimitiveWriter for AttributePrinter<'a, 'b, S>
+impl<S> PrimitiveWriter for AttributePrinter<'_, '_, S>
 where
     S: PrintStrategy + Copy,
 {
@@ -642,7 +642,7 @@ where
     }
 }
 
-impl<'a, 'b, S> StructuralWriter for AttributePrinter<'a, 'b, S>
+impl<S> StructuralWriter for AttributePrinter<'_, '_, S>
 where
     S: PrintStrategy + Copy,
 {
@@ -656,7 +656,7 @@ where
     }
 }
 
-impl<'a, 'b, S> HeaderWriter for AttributePrinter<'a, 'b, S>
+impl<S> HeaderWriter for AttributePrinter<'_, '_, S>
 where
     S: PrintStrategy + Copy,
 {
@@ -738,7 +738,7 @@ where
     }
 }
 
-impl<'a, 'b, S> BodyWriter for AttributePrinter<'a, 'b, S>
+impl<S> BodyWriter for AttributePrinter<'_, '_, S>
 where
     S: PrintStrategy + Copy,
 {
@@ -848,7 +848,7 @@ const SINGLE_SPACE: Padding = Padding::Simple(" ");
 const PRETTY_INDENT: &str = "    ";
 const NEW_LINE: &str = "\n";
 
-impl<'a> Display for Padding<'a> {
+impl Display for Padding<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Padding::Simple(padding) => f.write_str(padding)?,

@@ -52,7 +52,8 @@ impl<K, Context> Keys<K, Context> for NoHandler
 where
     K: 'static,
 {
-    type KeysHandler<'a> = ConstHandler<HashSet<K>>
+    type KeysHandler<'a>
+        = ConstHandler<HashSet<K>>
     where
         Self: 'a;
 
@@ -65,7 +66,8 @@ impl<K, Context, Shared> KeysShared<K, Context, Shared> for NoHandler
 where
     K: 'static,
 {
-    type KeysHandler<'a> = ConstHandler<HashSet<K>>
+    type KeysHandler<'a>
+        = ConstHandler<HashSet<K>>
     where
         Self: 'a,
         Shared: 'a;
@@ -85,7 +87,8 @@ where
     F: Fn() -> H + Send + 'static,
     H: HandlerAction<Context, Completion = HashSet<K>> + 'static,
 {
-    type KeysHandler<'a> = H
+    type KeysHandler<'a>
+        = H
     where
         Self: 'a;
 
@@ -100,7 +103,8 @@ where
     K: 'static,
     F: for<'a> CueFn0<'a, HashSet<K>, Context, Shared> + Send,
 {
-    type KeysHandler<'a> = <F as CueFn0<'a, HashSet<K>, Context, Shared>>::Handler
+    type KeysHandler<'a>
+        = <F as CueFn0<'a, HashSet<K>, Context, Shared>>::Handler
     where
         Self: 'a,
         Shared: 'a;

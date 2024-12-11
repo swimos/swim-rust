@@ -59,7 +59,8 @@ where
 }
 
 impl<Context, Shared> OnStartShared<Context, Shared> for NoHandler {
-    type OnStartHandler<'a> = UnitHandler
+    type OnStartHandler<'a>
+        = UnitHandler
     where
         Self: 'a,
         Shared: 'a;
@@ -77,7 +78,8 @@ impl<Context, Shared, F> OnStartShared<Context, Shared> for FnHandler<F>
 where
     F: for<'a> HandlerFn0<'a, Context, Shared> + Send,
 {
-    type OnStartHandler<'a> = <F as HandlerFn0<'a, Context, Shared>>::Handler
+    type OnStartHandler<'a>
+        = <F as HandlerFn0<'a, Context, Shared>>::Handler
     where
         Self: 'a,
         Shared: 'a;

@@ -53,7 +53,7 @@ impl<'a> DeriveAgentLaneModel<'a> {
     }
 }
 
-impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
+impl ToTokens for DeriveAgentLaneModel<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let DeriveAgentLaneModel {
             ref root,
@@ -403,7 +403,7 @@ impl<'a> OrdinalItemModel<'a> {
 
 struct FieldInitializer<'a>(OrdinalItemModel<'a>);
 
-impl<'a> FieldInitializer<'a> {
+impl FieldInitializer<'_> {
     fn into_tokens(self, root: &syn::Path) -> impl ToTokens {
         let FieldInitializer(OrdinalItemModel {
             ordinal,
@@ -455,7 +455,7 @@ struct SyncHandlerType<'a>(OrdinalWarpLaneModel<'a>);
 
 struct HttpHandlerType<'a>(OrdinalHttpLaneModel<'a>);
 
-impl<'a> HandlerType<'a> {
+impl HandlerType<'_> {
     fn into_tokens(self, root: &syn::Path) -> impl ToTokens {
         let HandlerType(OrdinalWarpLaneModel {
             agent_name,
@@ -488,7 +488,7 @@ impl<'a> HandlerType<'a> {
     }
 }
 
-impl<'a> SyncHandlerType<'a> {
+impl SyncHandlerType<'_> {
     fn into_tokens(self, root: &syn::Path) -> impl ToTokens {
         let SyncHandlerType(OrdinalWarpLaneModel {
             agent_name,
@@ -527,7 +527,7 @@ impl<'a> SyncHandlerType<'a> {
     }
 }
 
-impl<'a> HttpHandlerType<'a> {
+impl HttpHandlerType<'_> {
     fn into_tokens(self, root: &syn::Path) -> impl ToTokens {
         let HttpHandlerType(OrdinalHttpLaneModel {
             agent_name,
@@ -657,7 +657,7 @@ impl<'a> SyncHandlerMatch<'a> {
     }
 }
 
-impl<'a> SyncHandlerMatch<'a> {
+impl SyncHandlerMatch<'_> {
     fn into_tokens(self) -> impl ToTokens {
         let SyncHandlerMatch {
             root,
@@ -712,7 +712,7 @@ impl<'a> SyncHandlerMatch<'a> {
 
 struct WriteToBufferMatch<'a>(ItemModel<'a>);
 
-impl<'a> WriteToBufferMatch<'a> {
+impl WriteToBufferMatch<'_> {
     fn into_tokens(self, root: &syn::Path) -> impl ToTokens {
         let WriteToBufferMatch(model) = self;
         let name_lit = model.external_literal();
@@ -746,7 +746,7 @@ impl<'a> ValueItemInitMatch<'a> {
     }
 }
 
-impl<'a> ValueItemInitMatch<'a> {
+impl ValueItemInitMatch<'_> {
     fn into_tokens(self, root: &syn::Path) -> impl ToTokens {
         let ValueItemInitMatch {
             agent_name,
@@ -792,7 +792,7 @@ impl<'a> MapItemInitMatch<'a> {
     }
 }
 
-impl<'a> MapItemInitMatch<'a> {
+impl MapItemInitMatch<'_> {
     fn into_tokens(self, root: &syn::Path) -> impl ToTokens {
         let MapItemInitMatch {
             agent_name,
@@ -813,7 +813,7 @@ impl<'a> MapItemInitMatch<'a> {
 
 struct LaneSpecInsert<'a>(u64, ItemModel<'a>);
 
-impl<'a> LaneSpecInsert<'a> {
+impl LaneSpecInsert<'_> {
     fn into_tokens(self, root: &syn::Path) -> impl ToTokens {
         let LaneSpecInsert(ordinal, model) = self;
 
@@ -865,7 +865,7 @@ impl<'a> LaneSpecInsert<'a> {
 
 struct ItemNameCase<'a>(u64, ItemModel<'a>);
 
-impl<'a> ToTokens for ItemNameCase<'a> {
+impl ToTokens for ItemNameCase<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let ItemNameCase(ordinal, model) = self;
         let external_lane_name = model.external_literal();

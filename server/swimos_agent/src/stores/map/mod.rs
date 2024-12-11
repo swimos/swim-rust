@@ -585,7 +585,8 @@ where
     V: Clone + 'static,
     M: MapOpsWithEntry<K, V, K> + Clone + 'static,
 {
-    type GetHandler<C> = MapStoreGet<C, K, V, M>
+    type GetHandler<C>
+        = MapStoreGet<C, K, V, M>
     where
         C: AgentDescription + 'static;
 
@@ -596,7 +597,8 @@ where
         MapStoreGet::new(projection, key)
     }
 
-    type GetMapHandler<C> = MapStoreGetMap<C, K, V, M>
+    type GetMapHandler<C>
+        = MapStoreGetMap<C, K, V, M>
     where
         C: AgentDescription + 'static;
 
@@ -614,7 +616,8 @@ where
     B: ?Sized + 'static,
     M: MapOpsWithEntry<K, V, K>,
 {
-    type WithEntryHandler<'a, C, F, U> = MapStoreWithEntry<C, K, V, F, B, M>
+    type WithEntryHandler<'a, C, F, U>
+        = MapStoreWithEntry<C, K, V, F, B, M>
     where
         Self: 'static,
         C: AgentDescription + 'a,
@@ -640,15 +643,18 @@ where
     V: Send + 'static,
     M: MapOps<K, V> + 'static,
 {
-    type UpdateHandler<C> = MapStoreUpdate<C, K, V, M>
+    type UpdateHandler<C>
+        = MapStoreUpdate<C, K, V, M>
     where
         C: AgentDescription + 'static;
 
-    type RemoveHandler<C> = MapStoreRemove<C, K, V, M>
+    type RemoveHandler<C>
+        = MapStoreRemove<C, K, V, M>
     where
         C: AgentDescription + 'static;
 
-    type ClearHandler<C> = MapStoreClear<C, K, V, M>
+    type ClearHandler<C>
+        = MapStoreClear<C, K, V, M>
     where
         C: AgentDescription + 'static;
 
@@ -673,7 +679,8 @@ where
         MapStoreClear::new(projection)
     }
 
-    type TransformEntryHandler<'a, C, F> = MapStoreTransformEntry<C, K, V, F, M>
+    type TransformEntryHandler<'a, C, F>
+        = MapStoreTransformEntry<C, K, V, F, M>
     where
         Self: 'static,
         C: AgentDescription + 'a,

@@ -277,7 +277,8 @@ impl NodePersistence for FakeStore {
         }
     }
 
-    type MapCon<'a> = FakeConsumer
+    type MapCon<'a>
+        = FakeConsumer
     where
         Self: 'a;
 

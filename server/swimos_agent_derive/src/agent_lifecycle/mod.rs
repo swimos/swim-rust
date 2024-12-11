@@ -209,7 +209,7 @@ impl<'a> LifecycleTree<'a> {
     }
 }
 
-impl<'a> ToTokens for LifecycleTree<'a> {
+impl ToTokens for LifecycleTree<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let LifecycleTree {
             root,
@@ -241,7 +241,7 @@ impl<'a> ToTokens for LifecycleTree<'a> {
     }
 }
 
-impl<'a> ToTokens for ImplAgentLifecycle<'a> {
+impl ToTokens for ImplAgentLifecycle<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let ImplAgentLifecycle {
             descriptor:

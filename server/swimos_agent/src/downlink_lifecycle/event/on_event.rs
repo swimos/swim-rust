@@ -52,7 +52,8 @@ pub trait OnConsumeEventShared<T, Context, Shared>: Send {
 }
 
 impl<T, Context> OnConsumeEvent<T, Context> for NoHandler {
-    type OnEventHandler<'a> = UnitHandler
+    type OnEventHandler<'a>
+        = UnitHandler
     where
         Self: 'a;
 
@@ -62,7 +63,8 @@ impl<T, Context> OnConsumeEvent<T, Context> for NoHandler {
 }
 
 impl<T, Context, Shared> OnConsumeEventShared<T, Context, Shared> for NoHandler {
-    type OnEventHandler<'a> = UnitHandler
+    type OnEventHandler<'a>
+        = UnitHandler
     where
         Self: 'a,
         Shared: 'a;
@@ -82,7 +84,9 @@ where
     F: Fn(T) -> H + Send,
     H: EventHandler<Context> + 'static,
 {
-    type OnEventHandler<'a> = H where
+    type OnEventHandler<'a>
+        = H
+    where
         Self: 'a;
 
     fn on_event(&self, value: T) -> Self::OnEventHandler<'_> {
@@ -95,7 +99,8 @@ impl<T, Context, Shared, F> OnConsumeEventShared<T, Context, Shared> for FnHandl
 where
     F: for<'a> EventConsumeFn<'a, Context, Shared, T> + Send,
 {
-    type OnEventHandler<'a> = <F as EventConsumeFn<'a, Context, Shared, T>>::Handler
+    type OnEventHandler<'a>
+        = <F as EventConsumeFn<'a, Context, Shared, T>>::Handler
     where
         Self: 'a,
         Shared: 'a;
@@ -116,7 +121,8 @@ where
     F: Fn(HandlerContext<Context>, T) -> H + Send,
     H: EventHandler<Context> + 'static,
 {
-    type OnEventHandler<'a> = H
+    type OnEventHandler<'a>
+        = H
     where
         Self: 'a;
 
@@ -130,7 +136,8 @@ impl<T, Context, Shared, F> OnConsumeEventShared<T, Context, Shared> for LiftSha
 where
     F: OnConsumeEvent<T, Context> + Send,
 {
-    type OnEventHandler<'a> = F::OnEventHandler<'a>
+    type OnEventHandler<'a>
+        = F::OnEventHandler<'a>
     where
         Self: 'a,
         Shared: 'a;

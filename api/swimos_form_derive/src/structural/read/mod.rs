@@ -371,7 +371,7 @@ impl<'a> RecognizerState<'a> {
     }
 }
 
-impl<'a> ToTokens for RecognizerState<'a> {
+impl ToTokens for RecognizerState<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let RecognizerState {
             target,
@@ -490,7 +490,7 @@ struct HeaderFieldsState<'a> {
     header_fields: &'a [&'a FieldModel<'a>],
 }
 
-impl<'a> ToTokens for HeaderFieldsState<'a> {
+impl ToTokens for HeaderFieldsState<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let HeaderFieldsState {
             tag_body,
@@ -536,7 +536,7 @@ impl<'a> HeaderRecognizerState<'a> {
     }
 }
 
-impl<'a> ToTokens for HeaderRecognizerState<'a> {
+impl ToTokens for HeaderRecognizerState<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let HeaderRecognizerState {
             root,
@@ -636,7 +636,7 @@ fn select_var_name() -> syn::Ident {
 const BUILDER_NAME: &str = "Builder";
 const HEADER_BUILDER_NAME: &str = "HeaderBuilder";
 
-impl<'a> ToTokens for SelectIndexFnLabelled<'a> {
+impl ToTokens for SelectIndexFnLabelled<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let SelectIndexFnLabelled {
             fields,
@@ -739,7 +739,7 @@ impl<'a> SelectIndexFnOrdinal<'a> {
     }
 }
 
-impl<'a> ToTokens for SelectIndexFnOrdinal<'a> {
+impl ToTokens for SelectIndexFnOrdinal<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let SelectIndexFnOrdinal { fields, variant } = self;
         let SegregatedStructModel {
@@ -880,7 +880,7 @@ fn enumerate_fields<'a>(
         .chain(body_fields.into_iter())
 }
 
-impl<'a> ToTokens for SelectFeedFn<'a> {
+impl ToTokens for SelectFeedFn<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let SelectFeedFn { fields } = self;
         let SegregatedStructModel {
@@ -931,7 +931,7 @@ impl<'a> OnDoneFn<'a> {
     }
 }
 
-impl<'a> ToTokens for OnDoneFn<'a> {
+impl ToTokens for OnDoneFn<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let OnDoneFn {
             fields,
@@ -1119,7 +1119,7 @@ impl<'a> ResetFn<'a> {
     }
 }
 
-impl<'a> ToTokens for ResetFn<'a> {
+impl ToTokens for ResetFn<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let ResetFn { root, num_fields } = self;
 
@@ -1144,7 +1144,7 @@ struct ConstructFieldRecognizers<'a> {
     variant: Option<usize>,
 }
 
-impl<'a> ToTokens for ConstructFieldRecognizers<'a> {
+impl ToTokens for ConstructFieldRecognizers<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let ConstructFieldRecognizers { fields, variant } = self;
         let SegregatedStructModel {
@@ -1268,7 +1268,7 @@ fn compound_recognizer(
     (recog_ty, vtable_ty)
 }
 
-impl<'a> ToTokens for StructReadableImpl<'a> {
+impl ToTokens for StructReadableImpl<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let StructReadableImpl { fields, gen_params } = self;
         let name = fields.inner.name;
@@ -1365,7 +1365,7 @@ impl<'a> SelectVariantFn<'a> {
     }
 }
 
-impl<'a> ToTokens for SelectVariantFn<'a> {
+impl ToTokens for SelectVariantFn<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let SelectVariantFn {
             model: SegregatedEnumModel { inner, variants },
@@ -1433,7 +1433,7 @@ impl<'a> EnumState<'a> {
     }
 }
 
-impl<'a> ToTokens for EnumState<'a> {
+impl ToTokens for EnumState<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let EnumState {
             model: SegregatedEnumModel { inner, variants },
@@ -1521,7 +1521,7 @@ impl<'a> HeaderFeedFn<'a> {
     }
 }
 
-impl<'a> ToTokens for HeaderSelectIndexFn<'a> {
+impl ToTokens for HeaderSelectIndexFn<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let HeaderSelectIndexFn {
             root,
@@ -1569,7 +1569,7 @@ impl<'a> ToTokens for HeaderSelectIndexFn<'a> {
     }
 }
 
-impl<'a> ToTokens for HeaderFeedFn<'a> {
+impl ToTokens for HeaderFeedFn<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let HeaderFeedFn {
             root,
@@ -1666,7 +1666,7 @@ fn header_identifiers(variant: Option<usize>) -> (syn::Ident, syn::Ident, syn::I
     }
 }
 
-impl<'a> ToTokens for HeaderRecognizerFns<'a> {
+impl ToTokens for HeaderRecognizerFns<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let HeaderRecognizerFns {
             root,

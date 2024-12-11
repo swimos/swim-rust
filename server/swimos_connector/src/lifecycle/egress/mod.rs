@@ -170,7 +170,8 @@ impl<C> ItemEvent<ConnectorAgent> for EgressConnectorLifecycle<C>
 where
     C: EgressConnector,
 {
-    type ItemEventHandler<'a> = DynamicHandler<'a, ConnectorAgent, Self>
+    type ItemEventHandler<'a>
+        = DynamicHandler<'a, ConnectorAgent, Self>
     where
         Self: 'a;
 
@@ -191,11 +192,13 @@ impl<C> DynamicLifecycle<ConnectorAgent> for EgressConnectorLifecycle<C>
 where
     C: EgressConnector,
 {
-    type ValueHandler<'a> = LocalBoxHandlerAction<'a, ConnectorAgent, ()>
+    type ValueHandler<'a>
+        = LocalBoxHandlerAction<'a, ConnectorAgent, ()>
     where
         Self: 'a;
 
-    type MapHandler<'a> = LocalBoxHandlerAction<'a, ConnectorAgent, ()>
+    type MapHandler<'a>
+        = LocalBoxHandlerAction<'a, ConnectorAgent, ()>
     where
         Self: 'a;
 

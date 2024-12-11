@@ -124,7 +124,7 @@ impl<'f> PendingConnections<'f> {
     }
 }
 
-impl<'f> Stream for PendingConnections<'f> {
+impl Stream for PendingConnections<'_> {
     type Item = Either<PendingDns, PendingHandshake>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {

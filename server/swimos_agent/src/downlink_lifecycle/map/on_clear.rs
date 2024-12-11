@@ -52,7 +52,8 @@ pub trait OnDownlinkClearShared<M, Context, Shared>: Send {
 }
 
 impl<M, Context> OnDownlinkClear<M, Context> for NoHandler {
-    type OnClearHandler<'a> = UnitHandler
+    type OnClearHandler<'a>
+        = UnitHandler
     where
         Self: 'a;
 
@@ -62,7 +63,8 @@ impl<M, Context> OnDownlinkClear<M, Context> for NoHandler {
 }
 
 impl<M, Context, Shared> OnDownlinkClearShared<M, Context, Shared> for NoHandler {
-    type OnClearHandler<'a> = UnitHandler
+    type OnClearHandler<'a>
+        = UnitHandler
     where
         Self: 'a,
         Shared: 'a;
@@ -82,7 +84,8 @@ where
     F: Fn(M) -> H + Send,
     H: EventHandler<Context> + 'static,
 {
-    type OnClearHandler<'a> = H
+    type OnClearHandler<'a>
+        = H
     where
         Self: 'a;
 
@@ -96,7 +99,8 @@ impl<M, Context, Shared, F> OnDownlinkClearShared<M, Context, Shared> for FnHand
 where
     F: for<'a> TakeFn<'a, Context, Shared, M> + Send,
 {
-    type OnClearHandler<'a> = <F as TakeFn<'a, Context, Shared, M>>::Handler
+    type OnClearHandler<'a>
+        = <F as TakeFn<'a, Context, Shared, M>>::Handler
     where
         Self: 'a,
         Shared: 'a;
@@ -117,7 +121,8 @@ where
     F: Fn(HandlerContext<Context>, M) -> H + Send,
     H: EventHandler<Context> + 'static,
 {
-    type OnClearHandler<'a> = H
+    type OnClearHandler<'a>
+        = H
     where
         Self: 'a;
 
@@ -131,7 +136,8 @@ impl<M, Context, Shared, F> OnDownlinkClearShared<M, Context, Shared> for LiftSh
 where
     F: OnDownlinkClear<M, Context> + Send,
 {
-    type OnClearHandler<'a> = F::OnClearHandler<'a>
+    type OnClearHandler<'a>
+        = F::OnClearHandler<'a>
     where
         Self: 'a,
         Shared: 'a;

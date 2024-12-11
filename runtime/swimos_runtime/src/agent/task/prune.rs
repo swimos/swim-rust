@@ -62,7 +62,7 @@ impl<'a> PruneRemotes<'a> {
     }
 }
 
-impl<'a> Stream for PruneRemotes<'a> {
+impl Stream for PruneRemotes<'_> {
     type Item = Uuid;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {

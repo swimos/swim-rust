@@ -132,7 +132,8 @@ where
     FSet: Send,
     FEv: OnEventShared<T, Context, Shared>,
 {
-    type OnEventHandler<'a> = FEv::OnEventHandler<'a>
+    type OnEventHandler<'a>
+        = FEv::OnEventHandler<'a>
     where
         Self: 'a,
         Shared: 'a;
@@ -153,7 +154,8 @@ where
     FEv: Send,
     FSet: OnSetShared<T, Context, Shared>,
 {
-    type OnSetHandler<'a> = FSet::OnSetHandler<'a>
+    type OnSetHandler<'a>
+        = FSet::OnSetHandler<'a>
     where
         Self: 'a,
         Shared: 'a;

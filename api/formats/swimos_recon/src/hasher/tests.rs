@@ -40,19 +40,19 @@ impl<'a> ReconStr<'a> {
     }
 }
 
-impl<'a> Hash for ReconStr<'a> {
+impl Hash for ReconStr<'_> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         recon_hash(self.0, state)
     }
 }
 
-impl<'a> PartialEq<Self> for ReconStr<'a> {
+impl PartialEq<Self> for ReconStr<'_> {
     fn eq(&self, other: &Self) -> bool {
         compare_recon_values(self.0, other.0)
     }
 }
 
-impl<'a> Eq for ReconStr<'a> {}
+impl Eq for ReconStr<'_> {}
 
 fn value_from_string(rep: &str) -> Result<Value, ParseError> {
     parse_recognize(rep, false)

@@ -57,7 +57,8 @@ pub trait OnDownlinkSetShared<T, Context, Shared>: Send {
 }
 
 impl<T, Context> OnDownlinkSet<T, Context> for NoHandler {
-    type OnSetHandler<'a> = UnitHandler
+    type OnSetHandler<'a>
+        = UnitHandler
     where
         Self: 'a;
 
@@ -67,7 +68,8 @@ impl<T, Context> OnDownlinkSet<T, Context> for NoHandler {
 }
 
 impl<T, Context, Shared> OnDownlinkSetShared<T, Context, Shared> for NoHandler {
-    type OnSetHandler<'a> = UnitHandler
+    type OnSetHandler<'a>
+        = UnitHandler
     where
         Self: 'a,
         Shared: 'a;
@@ -88,7 +90,8 @@ where
     F: Fn(Option<T>, &T) -> H + Send,
     H: EventHandler<Context> + 'static,
 {
-    type OnSetHandler<'a> = H
+    type OnSetHandler<'a>
+        = H
     where
         Self: 'a;
 
@@ -105,7 +108,8 @@ where
     F: Fn(Option<T>, &B) -> H + Send,
     H: EventHandler<Context> + 'static,
 {
-    type OnSetHandler<'a> = H
+    type OnSetHandler<'a>
+        = H
     where
         Self: 'a;
 
@@ -118,7 +122,8 @@ impl<T, Context, Shared, F> OnDownlinkSetShared<T, Context, Shared> for FnHandle
 where
     F: for<'a> UpdateFn<'a, Context, Shared, T> + Send,
 {
-    type OnSetHandler<'a> = <F as UpdateFn<'a, Context, Shared, T>>::Handler
+    type OnSetHandler<'a>
+        = <F as UpdateFn<'a, Context, Shared, T>>::Handler
     where
         Self: 'a,
         Shared: 'a;
@@ -141,7 +146,8 @@ where
     T: Borrow<B>,
     F: for<'a> UpdateBorrowFn<'a, Context, Shared, T, B> + Send,
 {
-    type OnSetHandler<'a> = <F as UpdateBorrowFn<'a, Context, Shared, T, B>>::Handler
+    type OnSetHandler<'a>
+        = <F as UpdateBorrowFn<'a, Context, Shared, T, B>>::Handler
     where
         Self: 'a,
         Shared: 'a;
@@ -162,7 +168,8 @@ where
     F: Fn(HandlerContext<Context>, Option<T>, &T) -> H + Send,
     H: EventHandler<Context> + 'static,
 {
-    type OnSetHandler<'a> = H
+    type OnSetHandler<'a>
+        = H
     where
         Self: 'a;
 
@@ -179,7 +186,8 @@ where
     F: Fn(HandlerContext<Context>, Option<T>, &B) -> H + Send,
     H: EventHandler<Context> + 'static,
 {
-    type OnSetHandler<'a> = H
+    type OnSetHandler<'a>
+        = H
     where
         Self: 'a;
 
@@ -193,7 +201,8 @@ impl<T, Context, Shared, F> OnDownlinkSetShared<T, Context, Shared> for LiftShar
 where
     F: OnDownlinkSet<T, Context> + Send,
 {
-    type OnSetHandler<'a> = F::OnSetHandler<'a>
+    type OnSetHandler<'a>
+        = F::OnSetHandler<'a>
     where
         Self: 'a,
         Shared: 'a;

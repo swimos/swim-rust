@@ -56,7 +56,8 @@ pub trait OnJoinValueSyncedShared<K, V, Context, Shared>: Send {
 }
 
 impl<K, V, Context> OnJoinValueSynced<K, V, Context> for NoHandler {
-    type OnJoinValueSyncedHandler<'a> = UnitHandler
+    type OnJoinValueSyncedHandler<'a>
+        = UnitHandler
     where
         Self: 'a;
 
@@ -77,7 +78,8 @@ where
     F: Fn(K, Address<&str>, Option<&B>) -> H + Send,
     H: EventHandler<Context> + 'static,
 {
-    type OnJoinValueSyncedHandler<'a> = H
+    type OnJoinValueSyncedHandler<'a>
+        = H
     where
         Self: 'a;
 
@@ -98,7 +100,8 @@ where
     F: Fn(HandlerContext<Context>, K, Address<&str>, Option<&B>) -> H + Send,
     H: EventHandler<Context> + 'static,
 {
-    type OnJoinValueSyncedHandler<'a> = H
+    type OnJoinValueSyncedHandler<'a>
+        = H
     where
         Self: 'a;
 
@@ -123,7 +126,8 @@ impl<K, V, Context, Shared, F> OnJoinValueSyncedShared<K, V, Context, Shared>
 where
     F: OnJoinValueSynced<K, V, Context> + Send,
 {
-    type OnJoinValueSyncedHandler<'a> = F::OnJoinValueSyncedHandler<'a>
+    type OnJoinValueSyncedHandler<'a>
+        = F::OnJoinValueSyncedHandler<'a>
     where
         Self: 'a,
         Shared: 'a;

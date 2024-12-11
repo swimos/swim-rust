@@ -155,7 +155,8 @@ impl<T> FakeLifecycle<T> {
 }
 
 impl<T: Clone + Send + 'static> OnEvent<T, TestAgent> for FakeLifecycle<T> {
-    type OnEventHandler<'a> = OnEventHandler<T>
+    type OnEventHandler<'a>
+        = OnEventHandler<T>
     where
         Self: 'a;
 
@@ -165,7 +166,8 @@ impl<T: Clone + Send + 'static> OnEvent<T, TestAgent> for FakeLifecycle<T> {
 }
 
 impl<T: Clone + Send + 'static> OnSet<T, TestAgent> for FakeLifecycle<T> {
-    type OnSetHandler<'a> = OnSetHandler<T>
+    type OnSetHandler<'a>
+        = OnSetHandler<T>
     where
         Self: 'a;
 

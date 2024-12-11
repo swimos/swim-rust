@@ -167,7 +167,7 @@ pub struct HttpLaneSpec<'a> {
     pub codec: Option<&'a Type>,
 }
 
-impl<'a> ItemSpec<'a> {
+impl ItemSpec<'_> {
     pub fn is_stateful(&self) -> bool {
         !matches!(
             self,
@@ -245,7 +245,7 @@ pub struct HttpLaneModel<'a> {
     pub transform: NameTransform,
 }
 
-impl<'a> WarpLaneModel<'a> {
+impl WarpLaneModel<'_> {
     /// The name of the lane as a string literal.
     pub fn literal(&self) -> proc_macro2::Literal {
         self.transform.transform(|| self.name.to_string())
@@ -288,7 +288,7 @@ impl<'a> ItemModel<'a> {
     }
 }
 
-impl<'a> HttpLaneModel<'a> {
+impl HttpLaneModel<'_> {
     /// The name of the lane as a string literal.
     pub fn literal(&self) -> proc_macro2::Literal {
         self.transform.transform(|| self.name.to_string())

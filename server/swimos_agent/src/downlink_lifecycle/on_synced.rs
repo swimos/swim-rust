@@ -55,7 +55,8 @@ pub trait OnSyncedShared<T, Context, Shared>: Send {
 }
 
 impl<T, Context> OnSynced<T, Context> for NoHandler {
-    type OnSyncedHandler<'a> = UnitHandler
+    type OnSyncedHandler<'a>
+        = UnitHandler
     where
         Self: 'a;
 
@@ -65,7 +66,8 @@ impl<T, Context> OnSynced<T, Context> for NoHandler {
 }
 
 impl<T, Context, Shared> OnSyncedShared<T, Context, Shared> for NoHandler {
-    type OnSyncedHandler<'a> = UnitHandler
+    type OnSyncedHandler<'a>
+        = UnitHandler
     where
         Self: 'a,
         Shared: 'a;
@@ -85,7 +87,8 @@ where
     F: Fn(&T) -> H + Send,
     H: EventHandler<Context> + 'static,
 {
-    type OnSyncedHandler<'a> = H
+    type OnSyncedHandler<'a>
+        = H
     where
         Self: 'a;
 
@@ -102,7 +105,8 @@ where
     F: Fn(&B) -> H + Send,
     H: EventHandler<Context> + 'static,
 {
-    type OnSyncedHandler<'a> = H
+    type OnSyncedHandler<'a>
+        = H
     where
         Self: 'a;
 
@@ -115,7 +119,8 @@ impl<T, Context, Shared, F> OnSyncedShared<T, Context, Shared> for FnHandler<F>
 where
     F: for<'a> EventFn<'a, Context, Shared, T> + Send,
 {
-    type OnSyncedHandler<'a> = <F as EventFn<'a, Context, Shared, T>>::Handler
+    type OnSyncedHandler<'a>
+        = <F as EventFn<'a, Context, Shared, T>>::Handler
     where
         Self: 'a,
         Shared: 'a;
@@ -137,7 +142,8 @@ where
     T: Borrow<B>,
     F: for<'a> EventFn<'a, Context, Shared, B> + Send,
 {
-    type OnSyncedHandler<'a> = <F as EventFn<'a, Context, Shared, B>>::Handler
+    type OnSyncedHandler<'a>
+        = <F as EventFn<'a, Context, Shared, B>>::Handler
     where
         Self: 'a,
         Shared: 'a;
@@ -157,7 +163,8 @@ where
     F: Fn(HandlerContext<Context>, &T) -> H + Send,
     H: EventHandler<Context> + 'static,
 {
-    type OnSyncedHandler<'a> = H
+    type OnSyncedHandler<'a>
+        = H
     where
         Self: 'a;
 
@@ -174,7 +181,8 @@ where
     F: Fn(HandlerContext<Context>, &B) -> H + Send,
     H: EventHandler<Context> + 'static,
 {
-    type OnSyncedHandler<'a> = H
+    type OnSyncedHandler<'a>
+        = H
     where
         Self: 'a;
 
@@ -188,7 +196,8 @@ impl<T, Context, Shared, F> OnSyncedShared<T, Context, Shared> for LiftShared<F,
 where
     F: OnSynced<T, Context> + Send,
 {
-    type OnSyncedHandler<'a> = F::OnSyncedHandler<'a>
+    type OnSyncedHandler<'a>
+        = F::OnSyncedHandler<'a>
     where
         Self: 'a,
         Shared: 'a;

@@ -76,7 +76,8 @@ struct TestOtherHandler {
 const GET_VALUE: i32 = 56;
 
 impl OnGetShared<i32, TestAgent, TestLifecycleState> for TestLifecycle {
-    type OnGetHandler<'a> = TestGetHandler<i32>
+    type OnGetHandler<'a>
+        = TestGetHandler<i32>
     where
         Self: 'a,
         TestLifecycleState: 'a;
@@ -95,7 +96,8 @@ impl OnGetShared<i32, TestAgent, TestLifecycleState> for TestLifecycle {
 }
 
 impl OnPostShared<i32, TestAgent, TestLifecycleState> for TestLifecycle {
-    type OnPostHandler<'a> = TestOtherHandler
+    type OnPostHandler<'a>
+        = TestOtherHandler
     where
         Self: 'a,
         TestLifecycleState: 'a;
@@ -115,7 +117,8 @@ impl OnPostShared<i32, TestAgent, TestLifecycleState> for TestLifecycle {
 }
 
 impl OnPutShared<i32, TestAgent, TestLifecycleState> for TestLifecycle {
-    type OnPutHandler<'a> = TestOtherHandler
+    type OnPutHandler<'a>
+        = TestOtherHandler
     where
         Self: 'a,
         TestLifecycleState: 'a;
@@ -135,7 +138,8 @@ impl OnPutShared<i32, TestAgent, TestLifecycleState> for TestLifecycle {
 }
 
 impl OnDeleteShared<TestAgent, TestLifecycleState> for TestLifecycle {
-    type OnDeleteHandler<'a> = TestOtherHandler
+    type OnDeleteHandler<'a>
+        = TestOtherHandler
     where
         Self: 'a,
         TestLifecycleState: 'a;

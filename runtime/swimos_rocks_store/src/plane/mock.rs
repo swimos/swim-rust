@@ -26,7 +26,8 @@ pub struct MockPlaneStore;
 impl PlaneStore for MockPlaneStore {
     type NodeStore = SwimNodeStore<MockPlaneStore>;
 
-    type RangeCon<'a> = NoRange
+    type RangeCon<'a>
+        = NoRange
     where
         Self: 'a;
 

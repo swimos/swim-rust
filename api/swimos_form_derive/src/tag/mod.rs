@@ -48,7 +48,7 @@ impl<'a> UnitEnum<'a> {
 /// Derives the `Tag` trait or a type.
 pub struct DeriveTag<T>(pub T);
 
-impl<'a> ToTokens for DeriveTag<UnitEnum<'a>> {
+impl ToTokens for DeriveTag<UnitEnum<'_>> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let DeriveTag(UnitEnum {
             root,
@@ -122,7 +122,7 @@ impl<'a> ToTokens for DeriveTag<UnitEnum<'a>> {
 /// Format the variants of an enumeration into a string for the failed parse error message.
 struct Variants<'a>(&'a [(&'a syn::Ident, NameTransform)]);
 
-impl<'a> Display for Variants<'a> {
+impl Display for Variants<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let Variants(names) = self;
         let mut it = names.iter();

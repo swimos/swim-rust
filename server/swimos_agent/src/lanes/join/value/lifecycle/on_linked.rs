@@ -50,7 +50,8 @@ pub trait OnJoinValueLinkedShared<K, Context, Shared>: Send {
 }
 
 impl<K, Context> OnJoinValueLinked<K, Context> for NoHandler {
-    type OnJoinValueLinkedHandler<'a> = UnitHandler
+    type OnJoinValueLinkedHandler<'a>
+        = UnitHandler
     where
         Self: 'a;
 
@@ -68,7 +69,8 @@ where
     F: Fn(K, Address<&str>) -> H + Send,
     H: EventHandler<Context> + 'static,
 {
-    type OnJoinValueLinkedHandler<'a> = H
+    type OnJoinValueLinkedHandler<'a>
+        = H
     where
         Self: 'a;
 
@@ -83,7 +85,8 @@ where
 }
 
 impl<K, Context, Shared> OnJoinValueLinkedShared<K, Context, Shared> for NoHandler {
-    type OnJoinValueLinkedHandler<'a> = UnitHandler
+    type OnJoinValueLinkedHandler<'a>
+        = UnitHandler
     where
         Self: 'a,
         Shared: 'a;
@@ -103,7 +106,8 @@ impl<K, Context, Shared, F> OnJoinValueLinkedShared<K, Context, Shared> for FnHa
 where
     F: for<'a> JoinHandlerFn<'a, Context, Shared, K, ()> + Send,
 {
-    type OnJoinValueLinkedHandler<'a> = <F as JoinHandlerFn<'a, Context, Shared, K, ()>>::Handler
+    type OnJoinValueLinkedHandler<'a>
+        = <F as JoinHandlerFn<'a, Context, Shared, K, ()>>::Handler
     where
         Self: 'a,
         Shared: 'a;
@@ -125,7 +129,8 @@ where
     F: Fn(HandlerContext<Context>, K, Address<&str>) -> H + Send,
     H: EventHandler<Context> + 'static,
 {
-    type OnJoinValueLinkedHandler<'a> = H
+    type OnJoinValueLinkedHandler<'a>
+        = H
     where
         Self: 'a;
 
@@ -143,7 +148,8 @@ impl<K, Context, Shared, F> OnJoinValueLinkedShared<K, Context, Shared> for Lift
 where
     F: OnJoinValueLinked<K, Context> + Send,
 {
-    type OnJoinValueLinkedHandler<'a> = F::OnJoinValueLinkedHandler<'a>
+    type OnJoinValueLinkedHandler<'a>
+        = F::OnJoinValueLinkedHandler<'a>
     where
         Self: 'a,
         Shared: 'a;

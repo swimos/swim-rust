@@ -81,7 +81,7 @@ enum State<K, V> {
 
 struct ShowState<'a, K, V>(&'a State<K, V>);
 
-impl<'a, K, V> Display for ShowState<'a, K, V>
+impl<K, V> Display for ShowState<'_, K, V>
 where
     K: StructuralWritable,
     V: StructuralWritable,

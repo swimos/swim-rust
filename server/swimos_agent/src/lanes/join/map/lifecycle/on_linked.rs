@@ -49,7 +49,8 @@ pub trait OnJoinMapLinkedShared<L, Context, Shared>: Send {
 }
 
 impl<L, Context> OnJoinMapLinked<L, Context> for NoHandler {
-    type OnJoinMapLinkedHandler<'a> = UnitHandler
+    type OnJoinMapLinkedHandler<'a>
+        = UnitHandler
     where
         Self: 'a;
 
@@ -67,7 +68,8 @@ where
     F: Fn(L, Address<&str>) -> H + Send,
     H: EventHandler<Context> + 'static,
 {
-    type OnJoinMapLinkedHandler<'a> = H
+    type OnJoinMapLinkedHandler<'a>
+        = H
     where
         Self: 'a;
 
@@ -78,7 +80,8 @@ where
 }
 
 impl<L, Context, Shared> OnJoinMapLinkedShared<L, Context, Shared> for NoHandler {
-    type OnJoinMapLinkedHandler<'a> = UnitHandler
+    type OnJoinMapLinkedHandler<'a>
+        = UnitHandler
     where
         Self: 'a,
         Shared: 'a;
@@ -98,7 +101,8 @@ impl<L, Context, Shared, F> OnJoinMapLinkedShared<L, Context, Shared> for FnHand
 where
     F: for<'a> JoinHandlerFn<'a, Context, Shared, L, ()> + Send,
 {
-    type OnJoinMapLinkedHandler<'a> = <F as JoinHandlerFn<'a, Context, Shared, L, ()>>::Handler
+    type OnJoinMapLinkedHandler<'a>
+        = <F as JoinHandlerFn<'a, Context, Shared, L, ()>>::Handler
     where
         Self: 'a,
         Shared: 'a;
@@ -120,7 +124,8 @@ where
     F: Fn(HandlerContext<Context>, L, Address<&str>) -> H + Send,
     H: EventHandler<Context> + 'static,
 {
-    type OnJoinMapLinkedHandler<'a> = H
+    type OnJoinMapLinkedHandler<'a>
+        = H
     where
         Self: 'a;
 
@@ -134,7 +139,8 @@ impl<L, Context, Shared, F> OnJoinMapLinkedShared<L, Context, Shared> for LiftSh
 where
     F: OnJoinMapLinked<L, Context> + Send,
 {
-    type OnJoinMapLinkedHandler<'a> = F::OnJoinMapLinkedHandler<'a>
+    type OnJoinMapLinkedHandler<'a>
+        = F::OnJoinMapLinkedHandler<'a>
     where
         Self: 'a,
         Shared: 'a;

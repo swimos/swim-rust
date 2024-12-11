@@ -297,7 +297,7 @@ fn compute_num_slots(root: &syn::Path, fields: &[&FieldModel], by_ref: bool) -> 
     }
 }
 
-impl<'a> ToTokens for WriteWithFn<'a> {
+impl ToTokens for WriteWithFn<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let WriteWithFn(model) = self;
         let SegregatedStructModel { inner, fields } = model;
@@ -419,7 +419,7 @@ fn make_header(
     }
 }
 
-impl<'a> ToTokens for WriteIntoFn<'a> {
+impl ToTokens for WriteIntoFn<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let WriteIntoFn(model) = self;
         let SegregatedStructModel { inner, fields } = model;
@@ -504,7 +504,7 @@ impl<'a> ToTokens for WriteIntoFn<'a> {
     }
 }
 
-impl<'a> ToTokens for Destructure<'a> {
+impl ToTokens for Destructure<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let Destructure(
             StructModel {
@@ -572,7 +572,7 @@ fn num_attributes_case<'a>(model: &'a SegregatedStructModel<'a>, by_ref: bool) -
 
 pub struct NumAttrsEnum<'a>(&'a SegregatedEnumModel<'a>);
 
-impl<'a> ToTokens for NumAttrsEnum<'a> {
+impl ToTokens for NumAttrsEnum<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let NumAttrsEnum(SegregatedEnumModel {
             inner, variants, ..

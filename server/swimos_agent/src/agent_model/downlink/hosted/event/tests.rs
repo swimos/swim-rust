@@ -52,7 +52,8 @@ struct FakeLifecycle {
 }
 
 impl OnLinked<FakeAgent> for FakeLifecycle {
-    type OnLinkedHandler<'a> = LocalBoxEventHandler<'a, FakeAgent>
+    type OnLinkedHandler<'a>
+        = LocalBoxEventHandler<'a, FakeAgent>
     where
         Self: 'a;
 
@@ -66,7 +67,8 @@ impl OnLinked<FakeAgent> for FakeLifecycle {
 }
 
 impl OnUnlinked<FakeAgent> for FakeLifecycle {
-    type OnUnlinkedHandler<'a> = LocalBoxEventHandler<'a, FakeAgent>
+    type OnUnlinkedHandler<'a>
+        = LocalBoxEventHandler<'a, FakeAgent>
     where
         Self: 'a;
 
@@ -80,7 +82,8 @@ impl OnUnlinked<FakeAgent> for FakeLifecycle {
 }
 
 impl OnFailed<FakeAgent> for FakeLifecycle {
-    type OnFailedHandler<'a> = LocalBoxEventHandler<'a, FakeAgent>
+    type OnFailedHandler<'a>
+        = LocalBoxEventHandler<'a, FakeAgent>
     where
         Self: 'a;
 
@@ -94,7 +97,8 @@ impl OnFailed<FakeAgent> for FakeLifecycle {
 }
 
 impl OnSynced<(), FakeAgent> for FakeLifecycle {
-    type OnSyncedHandler<'a> = LocalBoxEventHandler<'a, FakeAgent>
+    type OnSyncedHandler<'a>
+        = LocalBoxEventHandler<'a, FakeAgent>
     where
         Self: 'a;
 
@@ -108,7 +112,8 @@ impl OnSynced<(), FakeAgent> for FakeLifecycle {
 }
 
 impl OnConsumeEvent<i32, FakeAgent> for FakeLifecycle {
-    type OnEventHandler<'a> = LocalBoxEventHandler<'a, FakeAgent>
+    type OnEventHandler<'a>
+        = LocalBoxEventHandler<'a, FakeAgent>
     where
         Self: 'a;
 

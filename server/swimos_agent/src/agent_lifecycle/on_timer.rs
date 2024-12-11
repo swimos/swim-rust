@@ -63,7 +63,8 @@ where
 }
 
 impl<Context, Shared> OnTimerShared<Context, Shared> for NoHandler {
-    type OnTimerHandler<'a> = UnitHandler
+    type OnTimerHandler<'a>
+        = UnitHandler
     where
         Self: 'a,
         Shared: 'a;
@@ -82,7 +83,8 @@ impl<Context, Shared, F> OnTimerShared<Context, Shared> for FnHandler<F>
 where
     F: for<'a> EventConsumeFn<'a, Context, Shared, u64> + Send,
 {
-    type OnTimerHandler<'a> = <F as EventConsumeFn<'a, Context, Shared, u64>>::Handler
+    type OnTimerHandler<'a>
+        = <F as EventConsumeFn<'a, Context, Shared, u64>>::Handler
     where
         Self: 'a,
         Shared: 'a;

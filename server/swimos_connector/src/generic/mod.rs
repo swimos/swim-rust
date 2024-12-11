@@ -136,7 +136,7 @@ struct LaneRef<'a, L> {
     key: &'a str,
 }
 
-impl<'a, L> Deref for LaneRef<'a, L> {
+impl<L> Deref for LaneRef<'_, L> {
     type Target = L;
 
     fn deref(&self) -> &Self::Target {
@@ -331,7 +331,7 @@ impl<'a, L> LaneSelector<'a, L> {
     }
 }
 
-impl<'a, L> Selector for LaneSelector<'a, L> {
+impl<L> Selector for LaneSelector<'_, L> {
     type Target = L;
 
     fn select(&self) -> Option<&Self::Target> {
@@ -440,7 +440,7 @@ pub struct BorrowedLane<'a> {
     inner: BorrowedLaneInner<'a>,
 }
 
-impl<'a> BorrowItem for BorrowedLane<'a> {
+impl BorrowItem for BorrowedLane<'_> {
     fn borrow_item(&self) -> DynamicItem<'_> {
         let BorrowedLane { name, inner } = self;
         match inner {
@@ -451,9 +451,10 @@ impl<'a> BorrowItem for BorrowedLane<'a> {
 }
 
 impl DynamicAgent for ConnectorAgent {
-    type Borrowed<'a> = BorrowedLane<'a>
-        where
-            Self: 'a;
+    type Borrowed<'a>
+        = BorrowedLane<'a>
+    where
+        Self: 'a;
 
     fn item<'a>(&'a self, name: &'a str) -> Option<Self::Borrowed<'a>> {
         let ConnectorAgent {

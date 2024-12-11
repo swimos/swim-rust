@@ -95,7 +95,8 @@ struct FakeLifecycle {
 }
 
 impl OnLinked<FakeAgent> for FakeLifecycle {
-    type OnLinkedHandler<'a> = LocalBoxEventHandler<'a, FakeAgent>
+    type OnLinkedHandler<'a>
+        = LocalBoxEventHandler<'a, FakeAgent>
     where
         Self: 'a;
 
@@ -109,7 +110,8 @@ impl OnLinked<FakeAgent> for FakeLifecycle {
 }
 
 impl OnUnlinked<FakeAgent> for FakeLifecycle {
-    type OnUnlinkedHandler<'a> = LocalBoxEventHandler<'a, FakeAgent>
+    type OnUnlinkedHandler<'a>
+        = LocalBoxEventHandler<'a, FakeAgent>
     where
         Self: 'a;
 
@@ -123,7 +125,8 @@ impl OnUnlinked<FakeAgent> for FakeLifecycle {
 }
 
 impl OnFailed<FakeAgent> for FakeLifecycle {
-    type OnFailedHandler<'a> = LocalBoxEventHandler<'a, FakeAgent>
+    type OnFailedHandler<'a>
+        = LocalBoxEventHandler<'a, FakeAgent>
     where
         Self: 'a;
 
@@ -137,7 +140,8 @@ impl OnFailed<FakeAgent> for FakeLifecycle {
 }
 
 impl OnSynced<i32, FakeAgent> for FakeLifecycle {
-    type OnSyncedHandler<'a> = LocalBoxEventHandler<'a, FakeAgent>
+    type OnSyncedHandler<'a>
+        = LocalBoxEventHandler<'a, FakeAgent>
     where
         Self: 'a;
 
@@ -152,7 +156,8 @@ impl OnSynced<i32, FakeAgent> for FakeLifecycle {
 }
 
 impl OnDownlinkEvent<i32, FakeAgent> for FakeLifecycle {
-    type OnEventHandler<'a> = LocalBoxEventHandler<'a, FakeAgent>
+    type OnEventHandler<'a>
+        = LocalBoxEventHandler<'a, FakeAgent>
     where
         Self: 'a;
 
@@ -167,7 +172,8 @@ impl OnDownlinkEvent<i32, FakeAgent> for FakeLifecycle {
 }
 
 impl OnDownlinkSet<i32, FakeAgent> for FakeLifecycle {
-    type OnSetHandler<'a> = LocalBoxEventHandler<'a, FakeAgent>
+    type OnSetHandler<'a>
+        = LocalBoxEventHandler<'a, FakeAgent>
     where
         Self: 'a;
 
@@ -1153,9 +1159,10 @@ impl TestState {
 }
 
 impl OnLinked<FakeAgent> for TestState {
-    type OnLinkedHandler<'a> = LocalBoxEventHandler<'a, FakeAgent>
-        where
-            Self: 'a;
+    type OnLinkedHandler<'a>
+        = LocalBoxEventHandler<'a, FakeAgent>
+    where
+        Self: 'a;
 
     fn on_linked(&self) -> Self::OnLinkedHandler<'_> {
         SideEffect::from(move || {
@@ -1167,9 +1174,10 @@ impl OnLinked<FakeAgent> for TestState {
 }
 
 impl OnUnlinked<FakeAgent> for TestState {
-    type OnUnlinkedHandler<'a> = LocalBoxEventHandler<'a, FakeAgent>
-        where
-            Self: 'a;
+    type OnUnlinkedHandler<'a>
+        = LocalBoxEventHandler<'a, FakeAgent>
+    where
+        Self: 'a;
 
     fn on_unlinked(&self) -> Self::OnUnlinkedHandler<'_> {
         SideEffect::from(move || {
@@ -1181,9 +1189,10 @@ impl OnUnlinked<FakeAgent> for TestState {
 }
 
 impl OnFailed<FakeAgent> for TestState {
-    type OnFailedHandler<'a> = LocalBoxEventHandler<'a, FakeAgent>
-        where
-            Self: 'a;
+    type OnFailedHandler<'a>
+        = LocalBoxEventHandler<'a, FakeAgent>
+    where
+        Self: 'a;
 
     fn on_failed(&self) -> Self::OnFailedHandler<'_> {
         panic!("Downlink failed.");
@@ -1191,9 +1200,10 @@ impl OnFailed<FakeAgent> for TestState {
 }
 
 impl OnSynced<i32, FakeAgent> for TestState {
-    type OnSyncedHandler<'a> = LocalBoxEventHandler<'a, FakeAgent>
-        where
-            Self: 'a;
+    type OnSyncedHandler<'a>
+        = LocalBoxEventHandler<'a, FakeAgent>
+    where
+        Self: 'a;
 
     fn on_synced<'a>(&'a self, value: &i32) -> Self::OnSyncedHandler<'a> {
         let n = *value;
@@ -1207,9 +1217,10 @@ impl OnSynced<i32, FakeAgent> for TestState {
 }
 
 impl OnDownlinkEvent<i32, FakeAgent> for TestState {
-    type OnEventHandler<'a> = LocalBoxEventHandler<'a, FakeAgent>
-        where
-            Self: 'a;
+    type OnEventHandler<'a>
+        = LocalBoxEventHandler<'a, FakeAgent>
+    where
+        Self: 'a;
 
     fn on_event(&self, value: &i32) -> Self::OnEventHandler<'_> {
         let n = *value;
@@ -1222,9 +1233,10 @@ impl OnDownlinkEvent<i32, FakeAgent> for TestState {
 }
 
 impl OnDownlinkSet<i32, FakeAgent> for TestState {
-    type OnSetHandler<'a> = UnitHandler
-        where
-            Self: 'a;
+    type OnSetHandler<'a>
+        = UnitHandler
+    where
+        Self: 'a;
 
     fn on_set<'a>(&'a self, _previous: Option<i32>, _new_value: &i32) -> Self::OnSetHandler<'a> {
         UnitHandler::default()

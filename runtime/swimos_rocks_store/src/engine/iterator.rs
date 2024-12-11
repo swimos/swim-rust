@@ -29,7 +29,7 @@ impl<'d> RocksRawPrefixIterator<'d> {
     }
 }
 
-impl<'d> RangeConsumer for RocksRawPrefixIterator<'d> {
+impl RangeConsumer for RocksRawPrefixIterator<'_> {
     fn consume_next(&mut self) -> Result<Option<KeyValue<'_>>, StoreError> {
         let RocksRawPrefixIterator { iter, first } = self;
         if *first {

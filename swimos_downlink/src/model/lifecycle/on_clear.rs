@@ -53,11 +53,12 @@ pub trait OnClearShared<K, V, Shared>: Send {
 }
 
 impl<K, V> OnClear<K, V> for NoHandler {
-    type OnClearFut<'a> = Ready<()>
+    type OnClearFut<'a>
+        = Ready<()>
     where
         Self: 'a,
         K: 'a,
-        V:'a;
+        V: 'a;
 
     fn on_clear<'a>(&'a mut self, _map: BTreeMap<K, V>) -> Self::OnClearFut<'a>
     where
@@ -72,7 +73,8 @@ impl<K, V, F> OnClear<K, V> for FnMutHandler<F>
 where
     F: for<'a> MapClearFn<'a, K, V> + Send,
 {
-    type OnClearFut<'a> = <F as MapClearFn<'a, K, V>>::Fut
+    type OnClearFut<'a>
+        = <F as MapClearFn<'a, K, V>>::Fut
     where
         Self: 'a,
         K: 'a,
@@ -89,11 +91,12 @@ where
 }
 
 impl<K, V, Shared> OnClearShared<K, V, Shared> for NoHandler {
-    type OnClearFut<'a> = Ready<()>
+    type OnClearFut<'a>
+        = Ready<()>
     where
         Self: 'a,
         K: 'a,
-        V:'a,
+        V: 'a,
         Shared: 'a;
 
     fn on_clear<'a>(
@@ -113,7 +116,8 @@ impl<K, V, Shared, F> OnClearShared<K, V, Shared> for FnMutHandler<F>
 where
     F: for<'a> SharedMapClearFn<'a, Shared, K, V> + Send,
 {
-    type OnClearFut<'a> = <F as SharedMapClearFn<'a, Shared, K,V>>::Fut
+    type OnClearFut<'a>
+        = <F as SharedMapClearFn<'a, Shared, K, V>>::Fut
     where
         Self: 'a,
         K: 'a,
@@ -138,7 +142,8 @@ impl<K, V, H, Shared> OnClearShared<K, V, Shared> for WithShared<H>
 where
     H: OnClearShared<K, V, Shared>,
 {
-    type OnClearFut<'a> = H::OnClearFut<'a>
+    type OnClearFut<'a>
+        = H::OnClearFut<'a>
     where
         Self: 'a,
         K: 'a,
@@ -162,7 +167,8 @@ impl<F, K, V> OnClear<K, V> for BlockingHandler<F>
 where
     F: FnMut(BTreeMap<K, V>) + Send,
 {
-    type OnClearFut<'a> = Ready<()>
+    type OnClearFut<'a>
+        = Ready<()>
     where
         Self: 'a,
         K: 'a,
@@ -183,7 +189,8 @@ impl<F, K, V, Shared> OnClearShared<K, V, Shared> for BlockingHandler<F>
 where
     F: FnMut(&mut Shared, BTreeMap<K, V>) + Send,
 {
-    type OnClearFut<'a> = Ready<()>
+    type OnClearFut<'a>
+        = Ready<()>
     where
         Self: 'a,
         K: 'a,

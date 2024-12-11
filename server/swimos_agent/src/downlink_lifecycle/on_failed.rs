@@ -49,7 +49,8 @@ pub trait OnFailedShared<Context, Shared>: Send {
 }
 
 impl<Context> OnFailed<Context> for NoHandler {
-    type OnFailedHandler<'a> = UnitHandler
+    type OnFailedHandler<'a>
+        = UnitHandler
     where
         Self: 'a;
 
@@ -59,7 +60,8 @@ impl<Context> OnFailed<Context> for NoHandler {
 }
 
 impl<Context, Shared> OnFailedShared<Context, Shared> for NoHandler {
-    type OnFailedHandler<'a> = UnitHandler
+    type OnFailedHandler<'a>
+        = UnitHandler
     where
         Self: 'a,
         Shared: 'a;
@@ -78,7 +80,8 @@ where
     F: Fn() -> H + Send,
     H: EventHandler<Context> + 'static,
 {
-    type OnFailedHandler<'a> = H
+    type OnFailedHandler<'a>
+        = H
     where
         Self: 'a;
 
@@ -92,7 +95,8 @@ impl<Context, Shared, F> OnFailedShared<Context, Shared> for FnHandler<F>
 where
     F: for<'a> HandlerFn0<'a, Context, Shared> + Send,
 {
-    type OnFailedHandler<'a> = <F as HandlerFn0<'a, Context, Shared>>::Handler
+    type OnFailedHandler<'a>
+        = <F as HandlerFn0<'a, Context, Shared>>::Handler
     where
         Self: 'a,
         Shared: 'a;
@@ -112,7 +116,8 @@ where
     F: Fn(HandlerContext<Context>) -> H + Send,
     H: EventHandler<Context> + 'static,
 {
-    type OnFailedHandler<'a> = H
+    type OnFailedHandler<'a>
+        = H
     where
         Self: 'a;
 
@@ -126,7 +131,8 @@ impl<Context, Shared, F> OnFailedShared<Context, Shared> for LiftShared<F, Share
 where
     F: OnFailed<Context> + Send,
 {
-    type OnFailedHandler<'a> = F::OnFailedHandler<'a>
+    type OnFailedHandler<'a>
+        = F::OnFailedHandler<'a>
     where
         Self: 'a;
 

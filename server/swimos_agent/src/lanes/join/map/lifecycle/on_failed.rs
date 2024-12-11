@@ -59,7 +59,8 @@ pub trait OnJoinMapFailedShared<L, K, Context, Shared>: Send {
 }
 
 impl<L, K, Context> OnJoinMapFailed<L, K, Context> for NoHandler {
-    type OnJoinMapFailedHandler<'a> = ConstHandler<LinkClosedResponse>
+    type OnJoinMapFailedHandler<'a>
+        = ConstHandler<LinkClosedResponse>
     where
         Self: 'a;
 
@@ -74,7 +75,8 @@ impl<L, K, Context> OnJoinMapFailed<L, K, Context> for NoHandler {
 }
 
 impl<L, K, Context, Shared> OnJoinMapFailedShared<L, K, Context, Shared> for NoHandler {
-    type OnJoinMapFailedHandler<'a> = ConstHandler<LinkClosedResponse>
+    type OnJoinMapFailedHandler<'a>
+        = ConstHandler<LinkClosedResponse>
     where
         Self: 'a,
         Shared: 'a;
@@ -96,7 +98,8 @@ where
     F: Fn(L, Address<&str>, HashSet<K>) -> H + Send,
     H: HandlerAction<Context, Completion = LinkClosedResponse> + 'static,
 {
-    type OnJoinMapFailedHandler<'a> = H
+    type OnJoinMapFailedHandler<'a>
+        = H
     where
         Self: 'a;
 
@@ -115,7 +118,8 @@ impl<L, K, Context, Shared, F> OnJoinMapFailedShared<L, K, Context, Shared> for 
 where
     F: for<'a> JoinMapHandlerStoppedFn<'a, Context, Shared, L, K, LinkClosedResponse> + Send,
 {
-    type OnJoinMapFailedHandler<'a> = <F as JoinMapHandlerStoppedFn<'a, Context, Shared, L, K, LinkClosedResponse>>::Handler
+    type OnJoinMapFailedHandler<'a>
+        = <F as JoinMapHandlerStoppedFn<'a, Context, Shared, L, K, LinkClosedResponse>>::Handler
     where
         Self: 'a,
         Shared: 'a;
@@ -138,7 +142,8 @@ where
     F: Fn(HandlerContext<Context>, L, Address<&str>, HashSet<K>) -> H + Send,
     H: HandlerAction<Context, Completion = LinkClosedResponse> + 'static,
 {
-    type OnJoinMapFailedHandler<'a> = H
+    type OnJoinMapFailedHandler<'a>
+        = H
     where
         Self: 'a;
 
@@ -158,7 +163,8 @@ impl<L, K, Context, Shared, F> OnJoinMapFailedShared<L, K, Context, Shared>
 where
     F: OnJoinMapFailed<L, K, Context> + Send,
 {
-    type OnJoinMapFailedHandler<'a> = F::OnJoinMapFailedHandler<'a>
+    type OnJoinMapFailedHandler<'a>
+        = F::OnJoinMapFailedHandler<'a>
     where
         Self: 'a,
         Shared: 'a;

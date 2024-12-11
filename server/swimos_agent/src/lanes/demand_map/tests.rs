@@ -229,7 +229,8 @@ impl Default for TestLifecycle {
 }
 
 impl Keys<i32, FakeAgent> for TestLifecycle {
-    type KeysHandler<'a> = ConstHandler<HashSet<i32>>
+    type KeysHandler<'a>
+        = ConstHandler<HashSet<i32>>
     where
         Self: 'a;
 
@@ -239,7 +240,8 @@ impl Keys<i32, FakeAgent> for TestLifecycle {
 }
 
 impl OnCueKey<i32, i32, FakeAgent> for TestLifecycle {
-    type OnCueKeyHandler<'a> = ConstHandler<Option<i32>>
+    type OnCueKeyHandler<'a>
+        = ConstHandler<Option<i32>>
     where
         Self: 'a;
 

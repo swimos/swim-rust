@@ -794,7 +794,8 @@ where
     V: Clone + 'static,
     M: MapOpsWithEntry<K, V, K> + Clone + 'static,
 {
-    type GetHandler<C> = MapLaneGet<C, K, V, M>
+    type GetHandler<C>
+        = MapLaneGet<C, K, V, M>
     where
         C: AgentDescription + 'static;
 
@@ -805,7 +806,8 @@ where
         MapLaneGet::new(projection, key)
     }
 
-    type GetMapHandler<C> = MapLaneGetMap<C, K, V, M>
+    type GetMapHandler<C>
+        = MapLaneGetMap<C, K, V, M>
     where
         C: AgentDescription + 'static;
 
@@ -823,7 +825,8 @@ where
     B: ?Sized + 'static,
     M: MapOpsWithEntry<K, V, K>,
 {
-    type WithEntryHandler<'a, C, F, U> = MapLaneWithEntry<C, K, V, F, B, M>
+    type WithEntryHandler<'a, C, F, U>
+        = MapLaneWithEntry<C, K, V, F, B, M>
     where
         Self: 'static,
         C: AgentDescription + 'a,
@@ -849,15 +852,18 @@ where
     V: Send + 'static,
     M: MapOps<K, V> + 'static,
 {
-    type UpdateHandler<C> = MapLaneUpdate<C, K, V, M>
+    type UpdateHandler<C>
+        = MapLaneUpdate<C, K, V, M>
     where
         C: AgentDescription + 'static;
 
-    type RemoveHandler<C> = MapLaneRemove<C, K, V, M>
+    type RemoveHandler<C>
+        = MapLaneRemove<C, K, V, M>
     where
         C: AgentDescription + 'static;
 
-    type ClearHandler<C> = MapLaneClear<C, K, V, M>
+    type ClearHandler<C>
+        = MapLaneClear<C, K, V, M>
     where
         C: AgentDescription + 'static;
 
@@ -882,7 +888,8 @@ where
         MapLaneClear::new(projection)
     }
 
-    type TransformEntryHandler<'a, C, F> = MapLaneTransformEntry<C, K, V, F, M>
+    type TransformEntryHandler<'a, C, F>
+        = MapLaneTransformEntry<C, K, V, F, M>
     where
         Self: 'static,
         C: AgentDescription + 'a,

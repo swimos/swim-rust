@@ -304,7 +304,7 @@ where
         source: MessageSource<'_>,
         key: Option<&'a Value>,
         value: &'a Value,
-    ) -> Option<&str> {
+    ) -> Option<&'a str> {
         let MqttSender { selectors, .. } = self;
         selectors
             .select_source(source)
@@ -316,7 +316,7 @@ where
         source: MessageSource<'_>,
         key: Option<&'a Value>,
         value: &'a Value,
-    ) -> &Value {
+    ) -> &'a Value {
         let MqttSender { selectors, .. } = self;
         selectors
             .select_source(source)

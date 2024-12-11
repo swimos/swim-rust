@@ -84,7 +84,8 @@ impl<T, Context> OnCue<T, Context> for NoHandler
 where
     T: 'static,
 {
-    type OnCueHandler<'a> = CueUndefined<T>
+    type OnCueHandler<'a>
+        = CueUndefined<T>
     where
         Self: 'a;
 
@@ -97,7 +98,8 @@ impl<T, Context, Shared> OnCueShared<T, Context, Shared> for NoHandler
 where
     T: 'static,
 {
-    type OnCueHandler<'a> = CueUndefined<T>
+    type OnCueHandler<'a>
+        = CueUndefined<T>
     where
         Self: 'a,
         Shared: 'a;
@@ -117,7 +119,8 @@ where
     H: HandlerAction<Context, Completion = T> + 'static,
     T: 'static,
 {
-    type OnCueHandler<'a> = H
+    type OnCueHandler<'a>
+        = H
     where
         Self: 'a;
 
@@ -132,7 +135,8 @@ where
     T: 'static,
     F: for<'a> CueFn0<'a, T, Context, Shared> + Send,
 {
-    type OnCueHandler<'a> = <F as CueFn0<'a, T, Context, Shared>>::Handler
+    type OnCueHandler<'a>
+        = <F as CueFn0<'a, T, Context, Shared>>::Handler
     where
         Self: 'a,
         Shared: 'a;

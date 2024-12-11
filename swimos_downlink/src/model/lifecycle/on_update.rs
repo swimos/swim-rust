@@ -56,11 +56,12 @@ pub trait OnUpdateShared<K, V, Shared>: Send {
 }
 
 impl<K, V> OnUpdate<K, V> for NoHandler {
-    type OnUpdateFut<'a> = Ready<()>
+    type OnUpdateFut<'a>
+        = Ready<()>
     where
         Self: 'a,
         K: 'a,
-        V:'a;
+        V: 'a;
 
     fn on_update<'a>(
         &'a mut self,
@@ -77,7 +78,8 @@ impl<K, V, F> OnUpdate<K, V> for FnMutHandler<F>
 where
     F: for<'a> MapUpdateFn<'a, K, V> + Send,
 {
-    type OnUpdateFut<'a> = <F as MapUpdateFn<'a, K, V>>::Fut
+    type OnUpdateFut<'a>
+        = <F as MapUpdateFn<'a, K, V>>::Fut
     where
         Self: 'a,
         K: 'a,
@@ -96,11 +98,12 @@ where
 }
 
 impl<K, V, Shared> OnUpdateShared<K, V, Shared> for NoHandler {
-    type OnUpdateFut<'a> = Ready<()>
+    type OnUpdateFut<'a>
+        = Ready<()>
     where
         Self: 'a,
         K: 'a,
-        V:'a,
+        V: 'a,
         Shared: 'a;
 
     fn on_update<'a>(
@@ -119,7 +122,8 @@ impl<K, V, Shared, F> OnUpdateShared<K, V, Shared> for FnMutHandler<F>
 where
     F: for<'a> SharedMapUpdateFn<'a, Shared, K, V> + Send,
 {
-    type OnUpdateFut<'a> = <F as SharedMapUpdateFn<'a, Shared, K,V>>::Fut
+    type OnUpdateFut<'a>
+        = <F as SharedMapUpdateFn<'a, Shared, K, V>>::Fut
     where
         Self: 'a,
         K: 'a,
@@ -143,7 +147,8 @@ impl<K, V, H, Shared> OnUpdateShared<K, V, Shared> for WithShared<H>
 where
     H: OnUpdateShared<K, V, Shared>,
 {
-    type OnUpdateFut<'a> = H::OnUpdateFut<'a>
+    type OnUpdateFut<'a>
+        = H::OnUpdateFut<'a>
     where
         Self: 'a,
         K: 'a,
@@ -166,7 +171,8 @@ impl<F, K, V> OnUpdate<K, V> for BlockingHandler<F>
 where
     F: FnMut(K, &BTreeMap<K, V>, Option<V>, &V) + Send,
 {
-    type OnUpdateFut<'a> = Ready<()>
+    type OnUpdateFut<'a>
+        = Ready<()>
     where
         Self: 'a,
         K: 'a,
@@ -189,7 +195,8 @@ impl<F, K, V, Shared> OnUpdateShared<K, V, Shared> for BlockingHandler<F>
 where
     F: FnMut(&mut Shared, K, &BTreeMap<K, V>, Option<V>, &V) + Send,
 {
-    type OnUpdateFut<'a> = Ready<()>
+    type OnUpdateFut<'a>
+        = Ready<()>
     where
         Self: 'a,
         K: 'a,

@@ -125,7 +125,8 @@ impl<C> ItemEvent<ConnectorAgent> for IngressConnectorLifecycle<C>
 where
     C: IngressConnector,
 {
-    type ItemEventHandler<'a> = UnitHandler
+    type ItemEventHandler<'a>
+        = UnitHandler
     where
         Self: 'a;
 

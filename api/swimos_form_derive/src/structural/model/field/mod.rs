@@ -59,7 +59,7 @@ pub struct Binder<'a> {
 }
 
 // Consistently gives the same name to a given field wherever it is referred to.
-impl<'a> ToTokens for FieldSelector<'a> {
+impl ToTokens for FieldSelector<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         match self {
             FieldSelector::Named(id) => format_ident!("_{}", *id).to_tokens(tokens),
@@ -68,7 +68,7 @@ impl<'a> ToTokens for FieldSelector<'a> {
     }
 }
 
-impl<'a> ToTokens for Binder<'a> {
+impl ToTokens for Binder<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let Binder { field, is_default } = self;
         if *is_default {
@@ -106,7 +106,7 @@ pub struct FieldModel<'a> {
     pub field_ty: &'a Type,
 }
 
-impl<'a> FieldModel<'a> {
+impl FieldModel<'_> {
     /// Get the (potentially renamed) name of the field as a string literal.
     pub fn resolve_name(&self) -> ResolvedName {
         ResolvedName(self)
@@ -129,7 +129,7 @@ impl<'a> ResolvedName<'a> {
     }
 }
 
-impl<'a> ToTokens for ResolvedName<'a> {
+impl ToTokens for ResolvedName<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let ResolvedName(field) = self;
         let name_fn = || self.intrinsic_name();
@@ -143,7 +143,7 @@ pub struct TaggedFieldModel<'a> {
     pub directive: FieldKind,
 }
 
-impl<'a> TaggedFieldModel<'a> {
+impl TaggedFieldModel<'_> {
     /// Determine whether the serialized from of the field should have a label.
     pub fn is_labelled(&self) -> bool {
         !matches!(
@@ -404,7 +404,7 @@ pub enum BodyFields<'a> {
     StdBody(Vec<&'a FieldModel<'a>>),
 }
 
-impl<'a> Default for BodyFields<'a> {
+impl Default for BodyFields<'_> {
     fn default() -> Self {
         BodyFields::StdBody(vec![])
     }
@@ -417,7 +417,7 @@ pub struct SegregatedFields<'a> {
     pub body: BodyFields<'a>,
 }
 
-impl<'a> SegregatedFields<'a> {
+impl SegregatedFields<'_> {
     /// The number of field blocks in the type (most fields are a block in themself but the header,
     /// if it exists, is a single block).
     pub fn num_field_blocks(&self) -> usize {

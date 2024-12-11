@@ -302,7 +302,7 @@ impl Agent for BoxAgent {
     }
 }
 
-impl<'a, A> Agent for &'a A
+impl<A> Agent for &A
 where
     A: Agent,
 {

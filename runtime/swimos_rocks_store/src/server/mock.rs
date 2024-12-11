@@ -43,7 +43,8 @@ impl MockStore {
 }
 
 impl KeyspaceByteEngine for MockStore {
-    type RangeCon<'a> = NoRange
+    type RangeCon<'a>
+        = NoRange
     where
         Self: 'a;
 

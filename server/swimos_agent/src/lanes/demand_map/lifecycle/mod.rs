@@ -117,7 +117,8 @@ where
     OnCueKey: Send,
     K: 'static,
 {
-    type KeysHandler<'a> = <Keys as KeysShared<K, Context, Shared>>::KeysHandler<'a>
+    type KeysHandler<'a>
+        = <Keys as KeysShared<K, Context, Shared>>::KeysHandler<'a>
     where
         Self: 'a,
         Shared: 'a;
@@ -137,7 +138,8 @@ where
     Keys: Send,
     OnCueK: OnCueKeyShared<K, V, Context, Shared>,
 {
-    type OnCueKeyHandler<'a> = <OnCueK as OnCueKeyShared<K, V, Context, Shared>>::OnCueKeyHandler<'a>
+    type OnCueKeyHandler<'a>
+        = <OnCueK as OnCueKeyShared<K, V, Context, Shared>>::OnCueKeyHandler<'a>
     where
         Self: 'a,
         Shared: 'a;

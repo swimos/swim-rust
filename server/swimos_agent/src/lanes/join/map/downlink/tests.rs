@@ -129,7 +129,8 @@ impl TestLifecycle {
 }
 
 impl OnJoinMapLinked<String, TestAgent> for TestLifecycle {
-    type OnJoinMapLinkedHandler<'a> = LocalBoxEventHandler<'a, TestAgent>
+    type OnJoinMapLinkedHandler<'a>
+        = LocalBoxEventHandler<'a, TestAgent>
     where
         Self: 'a;
 
@@ -150,7 +151,8 @@ impl OnJoinMapLinked<String, TestAgent> for TestLifecycle {
 }
 
 impl OnJoinMapSynced<String, i32, TestAgent> for TestLifecycle {
-    type OnJoinMapSyncedHandler<'a> = LocalBoxEventHandler<'a, TestAgent>
+    type OnJoinMapSyncedHandler<'a>
+        = LocalBoxEventHandler<'a, TestAgent>
     where
         Self: 'a;
 
@@ -174,7 +176,8 @@ impl OnJoinMapSynced<String, i32, TestAgent> for TestLifecycle {
 }
 
 impl OnJoinMapUnlinked<String, i32, TestAgent> for TestLifecycle {
-    type OnJoinMapUnlinkedHandler<'a> = LocalBoxHandlerAction<'a, TestAgent, LinkClosedResponse>
+    type OnJoinMapUnlinkedHandler<'a>
+        = LocalBoxHandlerAction<'a, TestAgent, LinkClosedResponse>
     where
         Self: 'a;
 
@@ -202,7 +205,8 @@ impl OnJoinMapUnlinked<String, i32, TestAgent> for TestLifecycle {
 }
 
 impl OnJoinMapFailed<String, i32, TestAgent> for TestLifecycle {
-    type OnJoinMapFailedHandler<'a> = LocalBoxHandlerAction<'a, TestAgent, LinkClosedResponse>
+    type OnJoinMapFailedHandler<'a>
+        = LocalBoxHandlerAction<'a, TestAgent, LinkClosedResponse>
     where
         Self: 'a;
 

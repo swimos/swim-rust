@@ -57,7 +57,8 @@ pub trait OnRemoveShared<K, V, M, Context, Shared>: Send {
 }
 
 impl<K, V, M, Context> OnRemove<K, V, M, Context> for NoHandler {
-    type OnRemoveHandler<'a> = UnitHandler
+    type OnRemoveHandler<'a>
+        = UnitHandler
     where
         Self: 'a;
 
@@ -67,7 +68,8 @@ impl<K, V, M, Context> OnRemove<K, V, M, Context> for NoHandler {
 }
 
 impl<K, V, M, Context, Shared> OnRemoveShared<K, V, M, Context, Shared> for NoHandler {
-    type OnRemoveHandler<'a> = UnitHandler
+    type OnRemoveHandler<'a>
+        = UnitHandler
     where
         Self: 'a,
         Shared: 'a;
@@ -89,7 +91,8 @@ where
     F: Fn(&M, K, V) -> H + Send,
     H: EventHandler<Context> + 'static,
 {
-    type OnRemoveHandler<'a> = H
+    type OnRemoveHandler<'a>
+        = H
     where
         Self: 'a;
 
@@ -103,7 +106,8 @@ impl<K, V, M, Context, Shared, F> OnRemoveShared<K, V, M, Context, Shared> for F
 where
     F: for<'a> MapRemoveFn<'a, Context, Shared, K, V, M> + Send,
 {
-    type OnRemoveHandler<'a> = <F as MapRemoveFn<'a, Context, Shared, K, V, M>>::Handler
+    type OnRemoveHandler<'a>
+        = <F as MapRemoveFn<'a, Context, Shared, K, V, M>>::Handler
     where
         Self: 'a,
         Shared: 'a;

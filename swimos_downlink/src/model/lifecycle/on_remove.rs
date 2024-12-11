@@ -54,11 +54,12 @@ pub trait OnRemoveShared<K, V, Shared>: Send {
 }
 
 impl<K, V> OnRemove<K, V> for NoHandler {
-    type OnRemoveFut<'a> = Ready<()>
+    type OnRemoveFut<'a>
+        = Ready<()>
     where
         Self: 'a,
         K: 'a,
-        V:'a;
+        V: 'a;
 
     fn on_remove<'a>(
         &'a mut self,
@@ -74,7 +75,8 @@ impl<K, V, F> OnRemove<K, V> for FnMutHandler<F>
 where
     F: for<'a> MapRemoveFn<'a, K, V> + Send,
 {
-    type OnRemoveFut<'a> = <F as MapRemoveFn<'a, K, V>>::Fut
+    type OnRemoveFut<'a>
+        = <F as MapRemoveFn<'a, K, V>>::Fut
     where
         Self: 'a,
         K: 'a,
@@ -92,11 +94,12 @@ where
 }
 
 impl<K, V, Shared> OnRemoveShared<K, V, Shared> for NoHandler {
-    type OnRemoveFut<'a> = Ready<()>
+    type OnRemoveFut<'a>
+        = Ready<()>
     where
         Self: 'a,
         K: 'a,
-        V:'a,
+        V: 'a,
         Shared: 'a;
 
     fn on_remove<'a>(
@@ -114,7 +117,8 @@ impl<K, V, Shared, F> OnRemoveShared<K, V, Shared> for FnMutHandler<F>
 where
     F: for<'a> SharedMapRemoveFn<'a, Shared, K, V> + Send,
 {
-    type OnRemoveFut<'a> = <F as SharedMapRemoveFn<'a, Shared, K,V>>::Fut
+    type OnRemoveFut<'a>
+        = <F as SharedMapRemoveFn<'a, Shared, K, V>>::Fut
     where
         Self: 'a,
         K: 'a,
@@ -137,7 +141,8 @@ impl<K, V, H, Shared> OnRemoveShared<K, V, Shared> for WithShared<H>
 where
     H: OnRemoveShared<K, V, Shared>,
 {
-    type OnRemoveFut<'a> = H::OnRemoveFut<'a>
+    type OnRemoveFut<'a>
+        = H::OnRemoveFut<'a>
     where
         Self: 'a,
         K: 'a,
@@ -159,7 +164,8 @@ impl<F, K, V> OnRemove<K, V> for BlockingHandler<F>
 where
     F: FnMut(K, &BTreeMap<K, V>, V) + Send,
 {
-    type OnRemoveFut<'a> = Ready<()>
+    type OnRemoveFut<'a>
+        = Ready<()>
     where
         Self: 'a,
         K: 'a,
@@ -181,7 +187,8 @@ impl<F, K, V, Shared> OnRemoveShared<K, V, Shared> for BlockingHandler<F>
 where
     F: FnMut(&mut Shared, K, &BTreeMap<K, V>, V) + Send,
 {
-    type OnRemoveFut<'a> = Ready<()>
+    type OnRemoveFut<'a>
+        = Ready<()>
     where
         Self: 'a,
         K: 'a,

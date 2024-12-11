@@ -186,7 +186,7 @@ impl<'a> StructModel<'a> {
 
 pub struct ResolvedName<'a>(&'a StructModel<'a>);
 
-impl<'a> ToTokens for ResolvedName<'a> {
+impl ToTokens for ResolvedName<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let ResolvedName(def) = self;
         if let StructTransform::Standard { rename, .. } = &def.transform {
@@ -229,13 +229,13 @@ pub(crate) struct StructDef<'a, Flds> {
     definition: &'a Flds,
 }
 
-impl<'a, Flds> Clone for StructDef<'a, Flds> {
+impl<Flds> Clone for StructDef<'_, Flds> {
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl<'a, Flds> Copy for StructDef<'a, Flds> {}
+impl<Flds> Copy for StructDef<'_, Flds> {}
 
 impl<'a, Flds> StructDef<'a, Flds> {
     pub fn new(
